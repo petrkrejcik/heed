@@ -33,6 +33,11 @@ decided on top of the brief, and the build order. Keep it true to `Sources/`.
 - **Resume**: claude `--resume <id>` (its session file under `~/.claude/projects/<cwd, / and . as ->/` tells whether
   it still exists), codex `resume <id>`, cursor `--resume <id>`, pi and opencode `--session <id>`; gemini starts fresh
   until verified. Resumed agent panes start at launch even off screen.
+- **Web pages**: a pane role (`browser`, with its `url` in the domain), so a page is a tab or a split next to a
+  terminal, in its session. WebKit's `WKWebView` (system framework, macOS 15), not Chromium: no 250 MB framework or
+  helper apps, and neither would share your browser's logins anyway. One cookie store for every page. Mouse first, with
+  a browser's own keys in `[keys.browser]` (`ModeEngine.paneScope`: single ⌘/⌃ chords that apply in INSERT too);
+  clicking into a page enters INSERT; ⌘W closes the page. Pages never open another app or a tab on their own.
 - **Signing and deploy**: ad-hoc signed, rsync to the MacBook's SMB share after every build (`HEED_DEPLOY_DIR` in `mise.local.toml`).
 
 ## Build order

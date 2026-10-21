@@ -214,8 +214,12 @@ private struct PaneView: View {
                     .foregroundStyle(active ? Theme.ink : Theme.fg)
                     .padding(.horizontal, 5)
                     .background(RoundedRectangle(cornerRadius: 3).fill(active ? Theme.inverse : Theme.selected))
-                Text(pane.title)
-                Spacer()
+                if pane.role == .browser {
+                    BrowserToolbar(pane: pane)
+                } else {
+                    Text(pane.title)
+                    Spacer()
+                }
                 if pane.role == .agent, let session = model.currentSession {
                     Text(session.state.state.rawValue).foregroundStyle(stateColor(session.state.state))
                 }
@@ -223,12 +227,20 @@ private struct PaneView: View {
             .font(Theme.mono(11))
             .foregroundStyle(active ? Theme.fg : Theme.fg3)
             .padding(.horizontal, 10)
-            .frame(height: 26)
+            .frame(height: pane.role == .browser ? 30 : 26)
             .background(Theme.paneHeader)
 
-            // The tutor's agents are scripted too: no shell, so nothing typed there reaches a real one.
+            // The tutor's agents are scripted too: no shell, so nothing typed there reaches a real one. Pages in
+            // screenshots stay off the network.
             if ShotMode.active || model.tutor != nil {
-                FakeTerminal(pane: pane)
+                if pane.role == .browser { FakeBrowser(pane: pane) } else { FakeTerminal(pane: pane) }
+            } else if pane.role == .browser {
+                BrowserPane(
+                    pane: pane, isFocused: active && model.mode == .insert, focusRequest: model.terminalFocusRequest
+                )
+                .overlay {
+                    if let failure = BrowserSurfaces.shared.page(for: pane).failure { PageFailure(message: failure) }
+                }
             } else {
                 TerminalPane(
                     pane: pane,

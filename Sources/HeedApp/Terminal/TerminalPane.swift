@@ -19,15 +19,29 @@ struct TerminalPane: NSViewRepresentable {
     }
 
     func updateNSView(_ view: NSView, context _: Context) {
-        guard isFocused else { return }
-        if let window = view.window {
-            if window.firstResponder !== view { window.makeFirstResponder(view) }
-        } else {
-            // A pane Start work just made is not in the window yet; focus it once it is.
-            DispatchQueue.main.async {
-                if let window = view.window, window.firstResponder !== view { window.makeFirstResponder(view) }
-            }
+        if isFocused { takeKeyboard(view) }
+    }
+}
+
+/// Makes a pane's view the one keys go to (INSERT).
+@MainActor
+func takeKeyboard(_ view: NSView) {
+    if let window = view.window {
+        if window.firstResponder !== view { window.makeFirstResponder(view) }
+    } else {
+        // A pane just made is not in the window yet; focus it once it is.
+        DispatchQueue.main.async {
+            if let window = view.window, window.firstResponder !== view { window.makeFirstResponder(view) }
         }
+    }
+}
+
+/// A pane closed for good, whatever runs in it.
+@MainActor
+enum PaneSurfaces {
+    static func close(paneID: String) {
+        TerminalSurfaces.shared.close(paneID: paneID)
+        BrowserSurfaces.shared.close(paneID: paneID)
     }
 }
 

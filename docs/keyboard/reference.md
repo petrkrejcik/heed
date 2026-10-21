@@ -51,12 +51,21 @@ This page is generated from the code (`mise run shots`).
 | `pane.split.right` | `<C-w>v` | split right |
 | `pane.split.below` | `<C-w>s` | split below |
 | `pane.zoom` | `<C-w>z` | zoom pane |
-| `pane.close` | `<C-w>q` | close pane |
+| `pane.close` | `<C-w>q`, `<D-w>` (browser) | close pane |
 | `tab.close` |  | close the tab, every pane in it |
 | `tab.next` | `gt` | next tab |
 | `tab.prev` | `gT` | previous tab |
 | `tab.new` | `gn` | new tab with shell |
 | `tab.go` `<n>` |  | go to tab n |
+| `browser.new` `[url]` | `<D-t>`, `<D-t>` (browser) | new tab with a web page (no address: type one) |
+| `browser.back` | `<D-[>` (browser) | web page: back |
+| `browser.forward` | `<D-]>` (browser) | web page: forward |
+| `browser.reload` | `<D-r>` (browser) | web page: reload, or stop loading |
+| `browser.location` | `<D-l>` (browser) | web page: type an address |
+| `browser.zoom.in` | `<D-=>` (browser), `<D-+>` (browser) | web page: zoom in |
+| `browser.zoom.out` | `<D-->` (browser) | web page: zoom out |
+| `browser.zoom.reset` | `<D-0>` (browser) | web page: actual size |
+| `browser.external` |  | web page: open it in your default browser |
 
 ## Views & overlays
 

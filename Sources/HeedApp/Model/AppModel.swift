@@ -1348,11 +1348,18 @@ final class AppModel {
             handleStartWork(stroke)
             return true
         }
+        // Escape in a page's address field leaves it, as in a browser.
+        if editingAddress != nil, stroke == .escape {
+            endAddressEdit()
+            return true
+        }
         let before = engine.mode
+        engine.paneScope = focusedBrowserPane == nil ? nil : "browser"
         let outcome = engine.handle(stroke)
         switch outcome {
         case .terminal:
-            if var session = currentSession {
+            // Typing into a web page is not typing to the agent: feedback does not wait for it.
+            if focusedBrowserPane == nil, var session = currentSession {
                 let now = Date()
                 lastTyped[session.id] = now
                 if now.timeIntervalSince(session.lastActivity) > 60 {
@@ -1498,6 +1505,12 @@ final class AppModel {
         case "tab.next": cycleTab(by: count)
         case "tab.prev": cycleTab(by: -count)
         case "tab.new": newTab()
+        case "browser.new": newPageTab(command.arguments.joined(separator: " "))
+        case "browser.location":
+            if let pane = focusedBrowserPane { beginAddressEdit(pane) } else { flash = "not on a web page" }
+        case "browser.back", "browser.forward", "browser.reload", "browser.zoom.in", "browser.zoom.out",
+             "browser.zoom.reset", "browser.external":
+            pageCommand(command.name)
         case "view": if let target = AppView(rawValue: command.arguments.first ?? "") { view = target }
         case "view.history": view = .history
         case "view.watch": view = .watch
@@ -1967,7 +1980,7 @@ final class AppModel {
             session: session, closedAt: Date(), outcome: HistoryEntry.outcome(closing: session)
         )))
         for pane in panes {
-            TerminalSurfaces.shared.close(paneID: pane.id)
+            PaneSurfaces.close(paneID: pane.id)
         }
         cursor = min(cursor, max(list.ordered.count - 1, 0))
         flash = "closed; worktree kept · in history (gh)"
@@ -2411,7 +2424,7 @@ final class AppModel {
         }
         for id in Set(removals.flatMap(\.sessions)) {
             for pane in layouts[id]?.tabs.flatMap(\.tree.panes) ?? [] {
-                TerminalSurfaces.shared.close(paneID: pane.id)
+                PaneSurfaces.close(paneID: pane.id)
             }
         }
         let skipped = kept
@@ -3693,7 +3706,7 @@ final class AppModel {
         let screen = TerminalSurfaces.shared.visibleText(paneID: live.paneID).map { text in
             text.split(separator: "\n", omittingEmptySubsequences: false).suffix(40).joined(separator: "\n")
         }
-        TerminalSurfaces.shared.close(paneID: live.paneID)
+        PaneSurfaces.close(paneID: live.paneID)
         runStates[live.paneID] = nil
         if var layout = layouts[live.sessionID], let index = layout.tabs.firstIndex(where: { $0.id == live.tabID }) {
             layout.removeTab(at: index)
@@ -4638,7 +4651,7 @@ final class AppModel {
     private func removePane(_ paneID: String, in sessionID: String) {
         guard var layout = layouts[sessionID], layout.removePane(paneID) else { return }
         commit(.layoutChanged(session: sessionID, layout))
-        TerminalSurfaces.shared.close(paneID: paneID)
+        PaneSurfaces.close(paneID: paneID)
         if layout.tabs.isEmpty { sessionEmptied(sessionID) }
     }
 
@@ -4701,7 +4714,7 @@ final class AppModel {
                 if let id = liveRuns.first(where: { $0.value.paneID == pane.id })?.key { endRun(id, outcome: .stopped) }
             }
             for pane in panes {
-                TerminalSurfaces.shared.close(paneID: pane.id)
+                PaneSurfaces.close(paneID: pane.id)
             }
             if layout.tabs.isEmpty { sessionEmptied(session.id) }
         }
@@ -4775,6 +4788,94 @@ final class AppModel {
 
     func selectTab(_ index: Int) {
         updateLayout { $0.activeTab = index }
+    }
+
+    // MARK: Web pages
+
+    /// The focused pane when it is a web page on screen (Sessions, nothing over it): what ⌘L and the page's other
+    /// keys act on.
+    var focusedBrowserPane: String? {
+        guard view == .sessions, overlay == nil, reader == nil, issueReader == nil, let tab = currentTab,
+              let pane = tab.tree.panes.first(where: { $0.id == tab.focused }), pane.role == .browser
+        else { return nil }
+        return pane.id
+    }
+
+    /// The page whose address field you are typing in.
+    private(set) var editingAddress: String?
+
+    /// `browser.new` (⌘T): a tab with a page at `text`, or an empty one with its address field ready.
+    private func newPageTab(_ text: String) {
+        guard let session = currentSession, var layout = layouts[session.id] else {
+            flash = "no session to open a page in"
+            return
+        }
+        let url = BrowserAddress.url(from: text)
+        let directory = currentTab?.tree.panes.first?.directory ?? NSHomeDirectory()
+        let pane = layout.openPage(url, directory: directory, show: true)
+        commit(.layoutChanged(session: session.id, layout))
+        if url == nil { beginAddressEdit(pane.id) }
+    }
+
+    /// A page asked for a new tab (a link with a target, ⌘-click): next to its own, in its session.
+    func openPageTab(from paneID: String, url: String, show: Bool) {
+        guard let (sessionID, layout) = layouts.first(where: { $0.value.contains(pane: paneID) }) else { return }
+        var edited = layout
+        let directory = layout.tabs.first { $0.tree.contains(paneID) }?.tree.panes.first?.directory
+        edited.openPage(url, nextTo: paneID, directory: directory ?? NSHomeDirectory(), show: show)
+        commit(.layoutChanged(session: sessionID, edited))
+        if !show { flash = "opened in a new tab" }
+    }
+
+    func pageChanged(_ paneID: String, url: String, title: String) {
+        guard let (sessionID, layout) = layouts.first(where: { $0.value.contains(pane: paneID) }) else { return }
+        var edited = layout
+        edited.pageChanged(paneID, url: url, title: title)
+        if edited != layout { commit(.layoutChanged(session: sessionID, edited)) }
+    }
+
+    /// ⌘L or a click in the address field: keys go to the field until ↩ or ⎋.
+    func beginAddressEdit(_ paneID: String) {
+        if mode == .insert {
+            let before = engine.mode
+            engine.enter(.normal)
+            modeChanged(from: before)
+        }
+        if currentTab?.focused != paneID { focusPane(paneID) }
+        editingAddress = paneID
+        textInputActive = true
+    }
+
+    func endAddressEdit() {
+        editingAddress = nil
+        textInputActive = false
+    }
+
+    /// ↩ in the address field: go there (or search), and hand the keyboard to the page.
+    func openAddress(_ text: String, in paneID: String) {
+        endAddressEdit()
+        guard let url = BrowserAddress.url(from: text) else { return }
+        BrowserSurfaces.shared.load(url, paneID: paneID)
+        clickedPane(paneID)
+    }
+
+    private func pageCommand(_ name: String) {
+        guard let pane = focusedBrowserPane else {
+            flash = "not on a web page"
+            return
+        }
+        let pages = BrowserSurfaces.shared
+        switch name {
+        case "browser.back": pages.back(pane)
+        case "browser.forward": pages.forward(pane)
+        case "browser.reload": pages.reloadOrStop(pane)
+        case "browser.zoom.in": pages.zoom(pane, by: 1.1)
+        case "browser.zoom.out": pages.zoom(pane, by: 1 / 1.1)
+        case "browser.zoom.reset": pages.zoom(pane, by: nil)
+        case "browser.external":
+            if let address = pages.address(of: pane), let url = URL(string: address) { NSWorkspace.shared.open(url) }
+        default: break
+        }
     }
 
     /// The key bound to `command` in NORMAL (first binding), as key-cap text: what the title bar shows per view.

@@ -11,6 +11,8 @@ public struct PaneSpec: Hashable, Sendable, Codable, Identifiable {
         /// A dedicated agent for get it green or get it merged (`[pilot] send_to = "tab"`): its own state, closed when
         /// its PR is done, dropped at launch.
         case helper
+        /// A web page (`url`), not a terminal: `title` is the page's.
+        case browser
     }
 
     public var id: String
@@ -21,10 +23,12 @@ public struct PaneSpec: Hashable, Sendable, Codable, Identifiable {
     public var command: String?
     /// Where its terminal runs: this Mac, or a host over ssh (`directory` is then a path there).
     public var location: Location
+    /// The page a browser pane shows, as last navigated; nil for terminals and a page not opened yet.
+    public var url: String?
 
     public init(
         id: String = UUID().uuidString, role: Role, title: String, directory: String, command: String? = nil,
-        location: Location = .local
+        location: Location = .local, url: String? = nil
     ) {
         self.id = id
         self.role = role
@@ -32,9 +36,10 @@ public struct PaneSpec: Hashable, Sendable, Codable, Identifiable {
         self.directory = directory
         self.command = command
         self.location = location
+        self.url = url
     }
 
-    private enum CodingKeys: String, CodingKey { case id, role, title, directory, command, location }
+    private enum CodingKeys: String, CodingKey { case id, role, title, directory, command, location, url }
 
     /// Panes cached before hosts run here.
     public init(from decoder: Decoder) throws {
@@ -45,6 +50,7 @@ public struct PaneSpec: Hashable, Sendable, Codable, Identifiable {
         directory = try container.decode(String.self, forKey: .directory)
         command = try container.decodeIfPresent(String.self, forKey: .command)
         location = try container.decodeIfPresent(Location.self, forKey: .location) ?? .local
+        url = try container.decodeIfPresent(String.self, forKey: .url)
     }
 }
 

@@ -21,7 +21,7 @@ public enum DefaultKeys {
         ("<C-w>v", "pane.split.right"), ("<C-w>s", "pane.split.below"), ("<C-w>z", "pane.zoom"),
         ("<C-w>q", "pane.close"), ("<C-w>h", "pane.left"), ("<C-w>l", "pane.right"), ("<C-w>j", "pane.down"),
         ("<C-w>k", "pane.up"),
-        ("gt", "tab.next"), ("gT", "tab.prev"), ("gn", "tab.new"),
+        ("gt", "tab.next"), ("gT", "tab.prev"), ("gn", "tab.new"), ("<D-t>", "browser.new"),
         ("gs", "view.sessions"), ("gm", "view.inbox"), ("gi", "view.issues"), ("gp", "view.prs"),
         ("go", "overlay.item"), ("]p", "pr.next"), ("[p", "pr.prev"), ("gd", "overlay.diff"), ("gS", "pr.session"),
         ("<C-o>", "jump.back"), ("gB", "open.browser"), ("gR", "open.repo"), ("gU", "pr.track"), (
@@ -64,8 +64,19 @@ public enum DefaultKeys {
         ("<Esc>", "mode.normal"), ("<D-/>", "overlay.help"),
     ]
 
-    /// Bindings that only apply in one view, keyed by view name.
+    /// Scopes that follow the focused pane rather than the view: they apply in INSERT too (`ModeEngine.paneScope`).
+    public static let paneScopes: Set<String> = ["browser"]
+
+    /// Bindings that only apply in one view, or to one kind of pane (`paneScopes`), keyed by its name.
     public static let scoped: [String: [(String, String)]] = [
+        /// A focused web page: a browser's own shortcuts. ⌘← and ⌘→ are the page's (back and forward outside a text
+        /// field, start and end of line in one).
+        "browser": [
+            ("<D-[>", "browser.back"), ("<D-]>", "browser.forward"), ("<D-l>", "browser.location"),
+            ("<D-r>", "browser.reload"), ("<D-=>", "browser.zoom.in"), ("<D-+>", "browser.zoom.in"),
+            ("<D-->", "browser.zoom.out"), ("<D-0>", "browser.zoom.reset"), ("<D-t>", "browser.new"),
+            ("<D-w>", "pane.close"),
+        ],
         "sessions": [("dd", "session.delete"), ("Iw", "session.import"), ("Ip", "session.import.path")],
         "repos": [
             ("o", "worktree.new"), ("r", "repo.scan"), ("w", "issues.visibility"), ("dd", "select.remove"),
@@ -180,6 +191,15 @@ public enum Keymaps {
                             mode: .normal,
                             keys: notation,
                             message: "unknown command in [keys.\(scope)]"
+                        ))
+                        continue
+                    }
+                    if DefaultKeys.paneScopes.contains(scope),
+                       keys.count != 1 || keys[0].modifiers.isDisjoint(with: [.command, .control])
+                    {
+                        problems.append(Problem(
+                            mode: .normal, keys: notation,
+                            message: "[keys.\(scope)]: one ⌘ or ⌃ chord; other keys are typed into the page"
                         ))
                         continue
                     }

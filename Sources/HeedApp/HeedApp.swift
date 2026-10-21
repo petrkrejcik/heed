@@ -98,7 +98,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private static func closePanes(of model: AppModel) {
         for pane in model.layouts.values.flatMap({ $0.tabs.flatMap(\.tree.panes) }) {
-            TerminalSurfaces.shared.close(paneID: pane.id)
+            PaneSurfaces.close(paneID: pane.id)
         }
     }
 
@@ -182,6 +182,13 @@ final class ModelHost {
         let model = current
         TerminalSurfaces.shared.onPaneClick = { [weak model] paneID in model?.clickedPane(paneID) }
         TerminalSurfaces.shared.onPaneExited = { [weak model] paneID in model?.paneExited(paneID) }
+        BrowserSurfaces.shared.onPaneClick = { [weak model] paneID in model?.clickedPane(paneID) }
+        BrowserSurfaces.shared.onNavigated = { [weak model] paneID, url, title in
+            model?.pageChanged(paneID, url: url, title: title)
+        }
+        BrowserSurfaces.shared.onOpenTab = { [weak model] paneID, url, show in
+            model?.openPageTab(from: paneID, url: url.absoluteString, show: show)
+        }
     }
 }
 
