@@ -11,14 +11,6 @@
   <key>CFBundleVersion</key><string>__BUILD__</string>
   <key>CFBundleShortVersionString</key><string>__VERSION__</string>
   <key>HeedCommit</key><string>__COMMIT__</string>
-  <!-- Sparkle: the appcast the release workflow attaches to every release, and the public half of the key that signs
-       each update (printed by the sparkle option of scripts/release-secrets.sh). Empty: the updater stays off. -->
-  <key>SUFeedURL</key><string>https://github.com/heed-build/heed/releases/latest/download/appcast.xml</string>
-  <key>SUPublicEDKey</key><string>n7QyCs/WV9RWGYg8wB8XhSqXjvnKhmQWd2ke2+aU2RQ=</string>
-  <key>SUEnableInstallerLauncherService</key><false/>
-  <!-- The appcast itself must carry the same key's signature, and an update is checked before it is unpacked. -->
-  <key>SURequireSignedFeed</key><true/>
-  <key>SUVerifyUpdateBeforeExtraction</key><true/>
   <!-- Web pages may use plain http (dev servers on *.localhost, docs previews). Only web views: everything else Heed
        fetches still needs https. -->
   <key>NSAppTransportSecurity</key>
