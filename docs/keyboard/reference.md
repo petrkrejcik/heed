@@ -91,14 +91,9 @@ This page is generated from the code (`mise run shots`).
 | `inspector.toggle` | `zi` | collapse / expand the inspector |
 | `sidebar.toggle` | `zs` | collapse / expand the sessions sidebar |
 | `config.edit` |  | open config.toml in $EDITOR |
-| `tutor` `[lesson]` | `<D-T>`, `<D-T>` (INSERT) | the tutor: pick a lesson, or start one by name (tour, sessions, prs…) |
-| `tutor.hide` `[all]` |  | hide the title bar's tutor reminder for this lesson (all: every reminder) |
 | `host.open` | `gH` | hosts: the ones heed drives over ssh, and ones from ~/.ssh/config to add |
 | `host.filter` `[host]` | `@` | narrow the view to one host (@devbox) |
 | `agents.stop` |  | stop every agent and shell in every pane (with [sessions] persist = "zmx") |
-| `tutor.back` |  | the tutor's previous step, the world as it was then |
-| `tutor.skip` |  | skip the tutor's step |
-| `tutor.exit` | `<D-.>`, `<D-.>` (INSERT) | leave the tutor; your sessions come back as they were |
 | `tools.detect` |  | find git and gh again (login shell PATH, usual places, [tools]) |
 | `app.quit` |  | quit Heed |
 | `settings.open` `[section]` | `<D-,>` | open Settings, on a section (general, agents, colors, cleanup, pilot, keys) |

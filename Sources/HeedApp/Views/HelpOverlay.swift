@@ -23,7 +23,7 @@ struct HelpOverlay: View {
             [("v V", "enter"), ("d m y", "remove, pin, copy")]
         ),
         (.command, "Typed commands with completion.", [
-            (":", "enter"), ("⇥", "complete"), (":tutor", "lessons on a pretend world"),
+            (":", "enter"), ("⇥", "complete"),
         ]),
         (
             .hint,
@@ -76,8 +76,6 @@ struct HelpOverlay: View {
             Text("everywhere").foregroundStyle(Theme.fg2)
             KeyCap(text: "⎋")
             Text("close").foregroundStyle(Theme.fg2)
-            KeyCap(text: "t")
-            Text("tutor for this view").foregroundStyle(Theme.fg2)
         }
         .font(Theme.ui(12))
     }

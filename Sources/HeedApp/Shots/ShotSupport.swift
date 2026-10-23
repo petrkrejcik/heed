@@ -11,9 +11,8 @@ enum ShotMode {
 /// The parts of the UI a shot can crop to or highlight. Views mark them with `.shotRegion(_:)`.
 enum ShotRegion: String, CaseIterable {
     case titleBar, viewTabs, statusBar
-    case sidebar, rail, center, tabStrip, panes, inspector, needsYou
+    case sidebar, rail, center, tabStrip, panes, inspector
     case dialog, confirm, picker, leaderHints, commandLine, filterPill, help
-    case tutorBanner, tutorCard, tutorReminder
     case repoColumn, worktreeTable, rulesPanel, sweepBanner
     case chips, list, pickedPanel, issueRepos, syncBanner
     case pipeline, delivery, promptPreview, reader

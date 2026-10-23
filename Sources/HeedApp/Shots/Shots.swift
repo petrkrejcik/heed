@@ -48,31 +48,10 @@ enum Shots {
 
     static let gettingStarted: [Shot] = [
         Shot(id: "getting-started/first-run", crop: .dialog, prepare: { $0.showFirstRun(report: firstRunReport) }),
-        // The tour on its fourth step: the banner, the spotlight on what needs you, the card, the TUTOR pill.
-        Shot(id: "getting-started/tutor", prepare: { $0.beginTutor(lesson: "tour", step: 3) }),
-        // The title bar's reminder, until the tour is done.
-        Shot(id: "getting-started/tutor-reminder", crop: .titleBar, prepare: { $0.tutorReminderInShots = true }),
         // Every terminal of a session exited: delete it, close it, or keep it.
         Shot(id: "sessions/all-closed", crop: .confirm, prepare: { model in
             model.panesEnded(Set(model.currentTabs.flatMap(\.tree.panes).map(\.id)))
         }),
-        Shot(
-            id: "getting-started/tutor-picker",
-            crop: .dialog,
-            prepare: { $0.perform(CommandInvocation(name: "tutor")) }
-        ),
-        Shot(
-            id: "getting-started/tutor-nudge", keys: "q", crop: .tutorCard,
-            prepare: { $0.beginTutor(lesson: "tour", step: 0) }
-        ),
-        Shot(
-            id: "getting-started/tutor-done", keys: "i<S-Esc>", crop: .tutorCard,
-            prepare: { $0.beginTutor(lesson: "tour", step: 0) }
-        ),
-        Shot(
-            id: "getting-started/tutor-finish", crop: .tutorCard,
-            prepare: { $0.beginTutor(lesson: "sessions", step: 4, startedAt: ShotRunner.instant - 161) }
-        ),
         Shot(
             id: "getting-started/first-session-1-start",
             keys: "o" + typed("Fix broken anchors in the redirect pages"),

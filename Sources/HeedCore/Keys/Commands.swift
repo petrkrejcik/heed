@@ -102,20 +102,9 @@ public enum Commands {
         .init("inspector.toggle", "collapse / expand the inspector", .views),
         .init("sidebar.toggle", "collapse / expand the sessions sidebar", .views),
         .init("config.edit", "open config.toml in $EDITOR", .views),
-        .init(
-            "tutor", "the tutor: pick a lesson, or start one by name (tour, sessions, prs…)", .views,
-            arguments: "[lesson]"
-        ),
-        .init(
-            "tutor.hide", "hide the title bar's tutor reminder for this lesson (all: every reminder)", .views,
-            arguments: "[all]"
-        ),
         .init("host.open", "hosts: the ones heed drives over ssh, and ones from ~/.ssh/config to add", .views),
         .init("host.filter", "narrow the view to one host (@devbox)", .views, arguments: "[host]"),
         .init("agents.stop", "stop every agent and shell in every pane (with [sessions] persist = \"zmx\")", .views),
-        .init("tutor.back", "the tutor's previous step, the world as it was then", .views),
-        .init("tutor.skip", "skip the tutor's step", .views),
-        .init("tutor.exit", "leave the tutor; your sessions come back as they were", .views),
         .init("tools.detect", "find git and gh again (login shell PATH, usual places, [tools])", .views),
         .init("app.quit", "quit Heed", .views),
         .init(

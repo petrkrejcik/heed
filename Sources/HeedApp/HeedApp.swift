@@ -21,10 +21,6 @@ struct HeedApp: App {
         .commands {
             // Keys are the mode engine's; the menu must not claim ⌘/ or other keys before it sees them.
             CommandGroup(replacing: .newItem) {}
-            // No key equivalent: ⌘⇧T is the mode engine's, so it works from a terminal pane too.
-            CommandGroup(replacing: .help) {
-                Button("Heed Tutor") { delegate.host.current.perform(CommandInvocation(name: "tutor")) }
-            }
         }
 
         Settings {
@@ -61,52 +57,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return AppModel(domain: .empty, isFixture: false)
     }()
 
-    /// What the window shows: the live model, or the tutor's sandbox while it runs.
-    lazy var host: ModelHost = {
-        let host = ModelHost(live: model)
-        model.onTutorRequest = { [weak self] request in self?.setTutor(request) }
-        return host
-    }()
+    /// What the window shows.
+    lazy var host = ModelHost(live: model)
 
     private lazy var router = KeyRouter(host: host)
-
-    /// The tutor runs on its own model over a fake world in the same window: nothing done there reaches the live
-    /// sessions, which keep running (and updating the Dock and menu bar) underneath, and come back as they were.
-    func setTutor(_ request: AppModel.TutorRequest) {
-        switch request {
-        case let .start(lesson, world):
-            guard let chosen = world ?? Tutor.lesson(lesson)?.world else { return }
-            let previous = host.current
-            let sandbox = AppModel(domain: chosen.domain, isFixture: true)
-            sandbox.onTutorRequest = { [weak self] request in self?.setTutor(request) }
-            sandbox.openSettings = model.openSettings
-            sandbox.reopenWindow = model.reopenWindow
-            sandbox.beginTutor(lesson: lesson, world: chosen)
-            host.current = sandbox
-            if previous !== model { Self.closePanes(of: previous) }
-        case .exit:
-            let sandbox = host.current
-            host.current = model
-            if sandbox !== model { Self.closePanes(of: sandbox) }
-        }
-    }
-
-    private static func closePanes(of model: AppModel) {
-        for pane in model.layouts.values.flatMap({ $0.tabs.flatMap(\.tree.panes) }) {
-            TerminalSurfaces.shared.close(paneID: pane.id)
-        }
-    }
 
     func applicationDidFinishLaunching(_: Notification) {
         // Heed's palette is dark only. Without this, anything left to the system colours (a Text with no style, native
         // controls, Settings) follows macOS and turns black on the dark panels in light mode.
         NSApp.appearance = NSAppearance(named: .darkAqua)
         // HEED_SHOTS: render the docs' screenshots from the fake world, then quit; nothing else starts.
-        if TutorCheck.requested {
-            NSApp.setActivationPolicy(.accessory)
-            Task { await exit(TutorCheck.run()) }
-            return
-        }
         if ShotRunner.requested {
             NSApp.setActivationPolicy(.accessory)
             Task {
@@ -158,7 +118,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 }
 
-/// Which model the main window, the keys and pane clicks belong to. Swapped by the tutor.
+/// Which model the main window, the keys and pane clicks belong to.
 @MainActor
 @Observable
 final class ModelHost {

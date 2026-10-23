@@ -16,7 +16,6 @@ toc:
       - file: index.md
       - file: installation.md
       - file: first-run.md
-      - file: tutor.md
       - file: first-session.md
   - folder: concepts
     children:

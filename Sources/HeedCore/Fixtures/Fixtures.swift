@@ -399,7 +399,7 @@ public enum Fixtures {
         ]
     }()
 
-    /// The tutor's PR storm: every review comment and failing check on #2841 is new, and it is the PR updated last,
+    /// A PR storm: every review comment and failing check on #2841 is new, and it is the PR updated last,
     /// while the session that owns it is busy working.
     public static let prStorm: Domain = {
         var domain = main
@@ -418,7 +418,7 @@ public enum Fixtures {
         return domain
     }()
 
-    /// The tutor's fresh repos: every repo and worktree, no sessions or history yet.
+    /// Fresh repos: every repo and worktree, no sessions or history yet.
     public static let freshRepos: Domain = {
         var domain = main
         domain.sessions = []

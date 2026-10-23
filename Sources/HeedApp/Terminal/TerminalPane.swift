@@ -92,7 +92,7 @@ final class TerminalSurfaces {
                 host: host, pane: pane.id, directory: pane.directory, sessionID: sessionID, zmx: hostZmx[host]
             )
         }
-        // Only a pane in a real worktree: fixture and tutor panes, and ones whose worktree is gone, stay plain shells.
+        // Only a pane in a real worktree: fixture panes, and ones whose worktree is gone, stay plain shells.
         else if let zmx, FileManager.default.fileExists(atPath: pane.directory) {
             withPath.merge(Zmx.environment(socketDirectory: zmxDirectory)) { _, new in new }
             attach = Zmx.attachCommand(zmx: zmx, pane: pane.id)

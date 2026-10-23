@@ -112,9 +112,6 @@ jobs:
           [ -n "$identity" ] || { echo "No Developer ID Application identity in DEVELOPER_ID_P12" >&2; exit 1; }
           scripts/sign.sh "$identity" "$keychain"
 
-      - name: Tutor check
-        run: HEED_TUTOR_CHECK=1 build/Heed.app/Contents/MacOS/Heed
-
       - name: Notarize and staple the app
         if: env.NOTARIZE == 'true'
         env:

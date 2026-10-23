@@ -46,8 +46,6 @@ struct Sidebar: View {
                                     .id(session.id)
                                 }
                             }
-                            // The tutor lights this group when it is about what needs you.
-                            .shotRegion(section.group == .needsYou ? .needsYou : nil)
                         }
                     }
                 }

@@ -40,8 +40,7 @@ brew install --cask heed-build/tap/heed
 ```
 
 Or [download the latest release](https://github.com/heed-build/heed/releases/latest/download/Heed-arm64.dmg)
-(signed and notarized, Apple silicon), or `curl -fsSL https://heed.build/install.sh | sh`. Then press `t` on the
-first screen for the tour, or `:tutor` any time.
+(signed and notarized, Apple silicon), or `curl -fsSL https://heed.build/install.sh | sh`.
 
 ## What it does
 
@@ -57,7 +56,7 @@ first screen for the tour, or `:tutor` any time.
   merging itself once your rules hold (green, reviewed after the last push, quiet, gate checks, no hold label, an
   optional self-review).
 - **Keyboard first.** NORMAL, INSERT, VISUAL, COMMAND and HINT modes, counts, relative numbers, `:` commands, and every
-  feature a named command you can rebind. The tutor teaches it by doing, on a pretend world.
+  feature a named command you can rebind.
 - **Worktrees that tidy up.** Create, list and remove worktrees across repos; cleanup removes only what has been quiet
   for days, never dirty or unpushed work.
 
@@ -142,8 +141,8 @@ yabai -m rule --add app="^Heed$" title="^Heed Start Work$" manage=off
 
 ## Contributing and releasing
 
-`main` only changes through pull requests, and CI must pass: lint, the tests, a release build and the tutor check on
-macOS, and the docs build. Branch names label pull requests for the release notes: `feature/…`, `fix/…`, `docs/…`.
+`main` only changes through pull requests, and CI must pass: lint, the tests and a release build on macOS, and
+the docs build. Branch names label pull requests for the release notes: `feature/…`, `fix/…`, `docs/…`.
 
 [release-drafter](https://github.com/release-drafter/release-drafter) keeps a draft release up to date as pull requests
 merge, and works out the next version from their labels (`major`, `minor` or `enhancement`, otherwise a patch). To
