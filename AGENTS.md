@@ -21,7 +21,8 @@
  file, the upstream brief (`design/BRIEF.md`) and the boards (`design/screens/*.png`, still the visual reference).
  The current milestone's plan: `/Users/petr/notes/Projects/Heed fork - tasks from notes.md`.
 - `mise run test` and `mise run lint` before committing. Without mise, run the tasks' commands from `mise.toml` with
- the env from `mise.local.toml` (this Mac has no Xcode: it sets `SDKROOT`, `TOOLCHAIN_DIR` and the lint tools' path). Core logic goes in `HeedCore` with tests; the app layer
+ the env from `mise.local.toml` (this Mac has no mise: it puts zig and the lint tools on the path and sets `TOOLCHAINS`
+ so `xcrun metal` works for `scripts/ghostty.sh`). Core logic goes in `HeedCore` with tests; the app layer
   stays thin.
 - Never block the main actor: no `Process.waitUntilExit`, file or network IO on it.
 - All libghostty calls live in `Sources/HeedTerminal`.
