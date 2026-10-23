@@ -14,7 +14,7 @@ global_activate = "<C-M-h>"        # brings Heed forward from any app
 
 [keys.normal]
 "<C-j>" = "row.next"
-"gC" = ""                          # "" unbinds a default
+"gB" = ""                          # "" unbinds a default
 
 [keys.repos]
 "x" = "select.remove"

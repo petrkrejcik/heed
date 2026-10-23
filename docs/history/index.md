@@ -14,7 +14,7 @@ description: Sessions that ended, with their outcome, prompt and timeline.
 | merged | Its pull request was merged |
 | closed | Closed by you, with a pull request |
 | abandoned | Closed without one |
-| cleaned up | Its worktree was removed by cleanup |
+| cleaned up | Its worktree was removed |
 
 `t` cycles the outcome filter and `/` searches titles, prompts and branches. The detail shows the prompt, the
 timeline (started, PR opened, ended) and the agent's resume command.

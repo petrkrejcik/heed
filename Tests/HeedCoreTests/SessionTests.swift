@@ -81,7 +81,6 @@ struct SessionListTests {
     }
 
     @Test func aliases() {
-        #expect(CommandAliases.resolve("wt sweep") == CommandInvocation(name: "cleanup.sweep"))
         #expect(CommandAliases.resolve("pr 2841") == CommandInvocation(name: "open.reader", arguments: ["pr", "2841"]))
         #expect(CommandAliases.resolve("inbox") == CommandInvocation(name: "view", arguments: ["inbox"]))
         #expect(CommandAliases.resolve("pane.zoom") == CommandInvocation(name: "pane.zoom"))

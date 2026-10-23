@@ -210,7 +210,7 @@ enum Shots {
     ]
 
     static let worktrees: [Shot] = [
-        Shot(id: "worktrees/repos", keys: "gr", highlight: [.repoColumn, .worktreeTable, .rulesPanel]),
+        Shot(id: "worktrees/repos", keys: "gr", highlight: [.repoColumn, .worktreeTable]),
         Shot(id: "worktrees/repos-filtered", keys: "gr/fix<CR>", crop: .worktreeTable),
         Shot(id: "worktrees/repo-column", size: short, keys: "gr", crop: .repoColumn),
         Shot(id: "worktrees/import-worktree", keys: "Iw", crop: .picker),
@@ -218,10 +218,6 @@ enum Shots {
         Shot(id: "worktrees/import-worktree-filtered", keys: "Iwgantt", crop: .picker),
         Shot(id: "worktrees/import-path", keys: "Ip" + "code/wt/docs-builder/toc", crop: .picker),
         Shot(id: "worktrees/remove", keys: "gr4jvjd", crop: .confirm),
-        Shot(id: "worktrees/rules", keys: "gr", crop: .rulesPanel),
-        Shot(id: "worktrees/sweep", keys: "gr", crop: .sweepBanner, prepare: { model in
-            model.applyConfig(source: "[cleanup]\nenabled = true\nidle_days = 3\n")
-        }),
     ]
 
     static let diff: [Shot] = [
@@ -245,7 +241,7 @@ enum Shots {
 
     static let configuration: [Shot] = [
         Shot(id: "configuration/problem", keys: "", crop: .statusBar, cropPadding: 0, prepare: { model in
-            model.applyConfig(source: "[cleanup]\nidle_days = 0\n")
+            model.applyConfig(source: "[sessions]\nresume_on_launch = \"sometimes\"\n")
         }),
         Shot(id: "configuration/settings", subject: .settings(), size: CGSize(width: 900, height: 1180)),
         Shot(id: "configuration/orgs-repos", subject: .settings(.colors), size: CGSize(width: 1180, height: 1400)),

@@ -5,9 +5,9 @@ description: The Repos view, every worktree of every repo, and how they come and
 
 # Worktrees
 
-`gr` opens Repos: every repo Heed knows, every worktree added to them, and the cleanup rules.
+`gr` opens Repos: every repo Heed knows, and every worktree added to them.
 
-![Repos: the repo column, the worktree table, and the cleanup rules](../images/shots/worktrees/repos.png)
+![Repos: the repo column and the worktree table](../images/shots/worktrees/repos.png)
 
 The table shows each worktree's repo, its branch with its path small below, the agent of the session working there, its
 status (upstream, ahead, behind, uncommitted changes) and its pull request.
@@ -21,7 +21,6 @@ status (upstream, ahead, behind, uncommitted changes) and its pull request.
 | `w` | Flip the repo between all issues and only yours ([Issues](../github/issues.md)) |
 | `r` | Refresh: rescan for repos |
 | `:repo.add <path>` | Add a repo outside the scanned folders; it is kept in `repo_paths` |
-| `:cleanup.rules` | Show the cleanup rules panel (it hides on narrow windows and with `zi`) |
 | `{` `}` | Previous / next repo |
 | `/` | [Filter](../sessions/filtering.md) by repo, branch, path or agent |
 
@@ -34,4 +33,3 @@ path.
 - [Repos](repos.md): where repos come from, and their order and colours.
 - [Importing](importing.md): worktrees made outside Heed, and any path.
 - [Removing](removing.md): what is removed, and what never is.
-- [Cleanup](cleanup.md): removing idle worktrees automatically.

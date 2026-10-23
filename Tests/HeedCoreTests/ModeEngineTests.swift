@@ -176,7 +176,7 @@ struct ScopedKeyTests {
 
     @Test func commandsOutliveTheirKeys() {
         // Unbinding a key keeps its command: : runs it, and config can bind it again.
-        for name in ["repo.add", "cleanup.rules"] {
+        for name in ["repo.add"] {
             #expect(Commands.spec(name) != nil, "\(name)")
         }
     }

@@ -57,8 +57,7 @@ Or [download the latest release](https://github.com/heed-build/heed/releases/lat
   optional self-review).
 - **Keyboard first.** NORMAL, INSERT, VISUAL, COMMAND and HINT modes, counts, relative numbers, `:` commands, and every
   feature a named command you can rebind.
-- **Worktrees that tidy up.** Create, list and remove worktrees across repos; cleanup removes only what has been quiet
-  for days, never dirty or unpushed work.
+- **Worktrees.** Create, list and remove worktrees across repos; removal never touches dirty or unpushed work.
 
 <table>
   <tr>

@@ -10,9 +10,6 @@ description: Pinning, parking, closing and deleting sessions, and what each keep
 | `zz` | Park: move the session out of the way, to **Parked** | Everything; the agent keeps running |
 | `x` | Close: the agent and panes stop, the session goes to History | The worktree and branch |
 | `dd` | Delete: close, and remove its worktrees and their local branches | Worktrees with unsaved work |
-
-Pinned sessions are never removed by [cleanup](../worktrees/cleanup.md).
-
 ## Closing and deleting ask first
 
 Both ask before doing anything, and say exactly what will happen. `y` or `↩` goes ahead; `n`, `⎋` or `q` cancels.

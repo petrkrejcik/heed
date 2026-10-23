@@ -19,7 +19,6 @@ public struct HeedConfig: Equatable, Sendable {
     public var scopedKeys: [String: [(String, String)]]
     public var orgColors: [String: String]
     public var repos: [String: RepoConfig]
-    public var cleanup: CleanupRule
     public var githubPollSeconds: Int
     public var tools = ToolSettings()
     public var issues = IssueRules()
@@ -43,7 +42,7 @@ public struct HeedConfig: Equatable, Sendable {
 
     public static let `default` = HeedConfig(
         work: .default, insertEscape: DefaultKeys.insertEscape, keys: [:], scopedKeys: [:], orgColors: [:], repos: [:],
-        cleanup: CleanupRule(), githubPollSeconds: 60
+        githubPollSeconds: 60
     )
 
     public static func == (lhs: HeedConfig, rhs: HeedConfig) -> Bool {
@@ -65,7 +64,6 @@ public struct HeedConfig: Equatable, Sendable {
             flat(lhs.scopedKeys) == flat(rhs.scopedKeys),
             lhs.orgColors == rhs.orgColors,
             lhs.repos == rhs.repos,
-            lhs.cleanup == rhs.cleanup,
             lhs.githubPollSeconds == rhs.githubPollSeconds,
             lhs.tools == rhs.tools,
             lhs.issues == rhs.issues,
@@ -78,23 +76,6 @@ public struct HeedConfig: Equatable, Sendable {
     /// The keymaps this config asks for, with problems reported per entry.
     public func keymaps() -> (keymaps: [Mode: Keymap], scoped: [String: Keymap], problems: [Keymaps.Problem]) {
         Keymaps.build(overrides: keys, scopedOverrides: scopedKeys, insertEscape: insertEscape)
-    }
-}
-
-/// The one cleanup rule of version 1: worktrees with no activity for `idleDays` are removed by the sweep. Dirty or
-/// unpushed work is never removed (not configurable), nor anything a pinned session uses.
-public struct CleanupRule: Equatable, Sendable, Codable {
-    /// Off by default: worktrees are only removed by hand until you turn this on.
-    public var enabled = false
-    public var idleDays = 14
-    public var deleteBranch = true
-    public var askBeforeSweep = false
-
-    public init(enabled: Bool = false, idleDays: Int = 14, deleteBranch: Bool = true, askBeforeSweep: Bool = false) {
-        self.enabled = enabled
-        self.idleDays = idleDays
-        self.deleteBranch = deleteBranch
-        self.askBeforeSweep = askBeforeSweep
     }
 }
 
@@ -214,11 +195,6 @@ public enum ConfigLoader {
                 problems.append(ConfigProblem(path: "sessions.persist", message: "expected auto, zmx or none"))
             }
         }
-        // [cleanup]
-        if let flag = bool(["cleanup", "enabled"]) { config.cleanup.enabled = flag }
-        if let days = integer(["cleanup", "idle_days"], range: 1 ... 365) { config.cleanup.idleDays = days }
-        if let flag = bool(["cleanup", "delete_branch"]) { config.cleanup.deleteBranch = flag }
-        if let flag = bool(["cleanup", "ask_before_sweep"]) { config.cleanup.askBeforeSweep = flag }
         // [github]
         if let seconds = integer(["github", "poll_seconds"], range: 15 ... 3600) { config.githubPollSeconds = seconds }
         // [pilot], and the same keys under [orgs.<name>] and [repos."org/name"] below
@@ -511,15 +487,6 @@ public enum ConfigLoader {
     # zmx, or none (panes end with heed).
     persist = "auto"
 
-    [cleanup]
-    # Automatic cleanup, off by default. When on, worktrees with no activity (agent output, keystrokes, commits, PR
-    # events) for idle_days are removed, wherever they live. Dirty or unpushed work is never removed, nor a pinned
-    # session's.
-    enabled = false
-    idle_days = 14
-    delete_branch = true               # the local branch; the remote is left alone
-    ask_before_sweep = false
-
     [github]
     # How often the view on screen refreshes from GitHub; the others refresh five times less often.
     poll_seconds = 60
@@ -630,7 +597,7 @@ public enum ConfigLoader {
     # Bindings per mode ([keys.normal], [keys.visual], ...) or per view ([keys.repos], [keys.inbox], [keys.history],
     # [keys.diff], [keys.pr]), in vim notation, each naming a command (the same names : completes). "" unbinds.
     # [keys.normal]
-    # "gC" = ""
+    # "gB" = ""
     # "<C-j>" = "row.next"
     """
 }

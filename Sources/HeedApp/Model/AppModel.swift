@@ -76,9 +76,6 @@ final class AppModel {
     private(set) var configProblems: [ConfigProblem] = []
     let configFile = ConfigLoader.defaultFile()
     private var configWatcher: ConfigWatcher?
-    /// Last commit date per worktree path, gathered with the repo refresh (sweep activity).
-    private(set) var lastCommits: [String: Date] = [:]
-    private var sweepTask: Task<Void, Never>?
     /// Results of pinned tasks by pane: the exit code of the last run.
     private(set) var taskResults: [String: Int] = [:]
     /// The first-run screen, while shown.
@@ -263,7 +260,6 @@ final class AppModel {
         startScreenReading()
         await refreshRepos()
         if !isFixture { _ = await cleanUpRunLeftovers() }
-        startSweepSchedule()
     }
 
     // MARK: Screen reading
@@ -318,53 +314,6 @@ final class AppModel {
             changes.append(.sessionUpserted(session))
         }
         commit(changes)
-    }
-
-    // MARK: Cleanup
-
-    var sweepPlan: SweepPlan {
-        Sweep.plan(domain: currentDomain, rule: config.cleanup, lastCommit: lastCommits)
-    }
-
-    /// Sweeps hourly unless config asks to be asked first; `gs` always runs one now.
-    private func startSweepSchedule() {
-        sweepTask?.cancel()
-        sweepTask = Task { [weak self] in
-            while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(3600))
-                guard let self, config.cleanup.enabled, !self.config.cleanup.askBeforeSweep else { continue }
-                await refreshRepos()
-                await runSweep(explicit: false)
-            }
-        }
-    }
-
-    func runSweep(explicit: Bool) async {
-        guard !isFixture else {
-            flash = "fixture: no IO"
-            return
-        }
-        // What get it green runs left behind is heed's own: removed when safe, whatever the cleanup rule says.
-        let leftovers = await cleanUpRunLeftovers().filter(\.removed)
-        if explicit, !leftovers.isEmpty {
-            flash = "removed \(leftovers.count) worktree\(leftovers.count == 1 ? "" : "s") left by runs"
-        }
-        guard config.cleanup.enabled else {
-            if explicit {
-                flash = "automatic cleanup is off ([cleanup] enabled, or Settings); dd removes worktrees by hand"
-            }
-            return
-        }
-        let plan = sweepPlan
-        guard !plan.removals.isEmpty else {
-            if explicit { flash = plan.summary }
-            return
-        }
-        let (changes, failures) = await Sweep.execute(plan, domain: currentDomain)
-        commit(changes)
-        flash = failures.isEmpty
-            ? "cleaned up \(plan.removals.count) worktree\(plan.removals.count == 1 ? "" : "s")"
-            : "cleanup: \(failures.count) failed: \(failures[0])"
     }
 
     // MARK: GitHub
@@ -872,11 +821,6 @@ final class AppModel {
                 commit(changes)
             }
         }
-        var commits: [String: Date] = [:]
-        for worktree in worktrees where !worktree.isMain && worktree.location.isLocal {
-            if let date = await Git.lastCommitDate(at: worktree.path) { commits[worktree.path] = date }
-        }
-        lastCommits = commits
         await refreshHosts()
     }
 
@@ -1443,9 +1387,6 @@ final class AppModel {
             }
         case "repo.scan": rescan()
         case "repo.add": addRepo(command.arguments.joined(separator: " "))
-        case "cleanup.rules":
-            view = .repos
-            inspectorVisible = true
         case "pane.left": updateTab { $0.focus(.left) }
         case "pane.right": updateTab { $0.focus(.right) }
         case "pane.up": updateTab { $0.focus(.up) }
@@ -1498,7 +1439,6 @@ final class AppModel {
         case "select.open": openSelected()
         case "select.remove": confirmRemoveSelected()
         case "session.filter": startFilter()
-        case "cleanup.sweep": confirmSweep()
         case "github.sync": Task { await syncGitHub() }
         case "items.start": startFromItems()
         case "items.add": addItemsToSession()
@@ -1845,7 +1785,7 @@ final class AppModel {
     }
 
     /// What deleting a session removes: its worktrees, minus those with work not saved anywhere else.
-    private func deletion(of session: Session) -> ([SweepPlan.Removal], [String], [String]) {
+    private func deletion(of session: Session) -> ([WorktreeRemoval], [String], [String]) {
         let mine = worktrees.filter { !$0.isMain && session.owns($0) }
         let (removals, kept) = planRemoval(mine, sessionsFollow: false)
         let lines = removals.map { removal in
@@ -1855,29 +1795,9 @@ final class AppModel {
         return (removals, kept, lines)
     }
 
-    private func deleteSession(_ id: String, removals: [SweepPlan.Removal], kept: [String]) {
+    private func deleteSession(_ id: String, removals: [WorktreeRemoval], kept: [String]) {
         closeSession(id)
         if !removals.isEmpty { removeWorktrees(removals, kept: kept) }
-    }
-
-    private func confirmSweep() {
-        guard config.cleanup.enabled else {
-            flash = "automatic cleanup is off ([cleanup] enabled, or Settings); dd in Repos removes worktrees by hand"
-            return
-        }
-        let plan = sweepPlan
-        guard !plan.removals.isEmpty else {
-            flash = plan.summary
-            return
-        }
-        ask(Confirmation(
-            title: "Run the cleanup sweep?",
-            lines: plan.removals.map {
-                "remove \($0.worktree.repo.name)/\($0.worktree.branch ?? "") (\($0.idleText))"
-            },
-            kept: plan.skips.map { "\($0.worktree.repo.name)/\($0.worktree.branch ?? ""): \($0.reason)" },
-            accept: "Sweep"
-        ) { [weak self] in Task { await self?.runSweep(explicit: true) } })
     }
 
     /// Shell panes close at once; an agent pane asks, since its agent stops with it.
@@ -2295,20 +2215,20 @@ final class AppModel {
 
     /// Which of `rows` can go (clean, pushed, not pinned) and why the rest stay.
     private func planRemoval(_ rows: [Worktree], sessionsFollow: Bool = true) -> (
-        removals: [SweepPlan.Removal], kept: [String]
+        removals: [WorktreeRemoval], kept: [String]
     ) {
         var kept: [String] = []
-        var removals: [SweepPlan.Removal] = []
+        var removals: [WorktreeRemoval] = []
         for worktree in rows {
             let users = sessions.filter { $0.branch == worktree.branch && $0.repos.contains(worktree.repo) }
             if sessionsFollow, users.contains(where: \.pinned) {
                 kept.append("\(worktree.repo.name)/\(worktree.branch ?? worktree.path): pinned session")
-            } else if let reason = Sweep.unsafe(worktree) {
+            } else if let reason = WorktreeRemoval.unsafe(worktree) {
                 kept.append("\(worktree.repo.name)/\(worktree.branch ?? worktree.path): \(reason)")
             } else {
-                removals.append(SweepPlan.Removal(
-                    worktree: worktree, idleDays: 0, sessions: sessionsFollow ? users.map(\.id) : [],
-                    deleteBranch: config.cleanup.deleteBranch && worktree.branch != nil
+                removals.append(WorktreeRemoval(
+                    worktree: worktree, sessions: sessionsFollow ? users.map(\.id) : [],
+                    deleteBranch: worktree.branch != nil
                 ))
             }
         }
@@ -2347,7 +2267,7 @@ final class AppModel {
         ) { [weak self] in self?.removeWorktrees(removals, kept: kept) })
     }
 
-    private func removeWorktrees(_ removals: [SweepPlan.Removal], kept: [String]) {
+    private func removeWorktrees(_ removals: [WorktreeRemoval], kept: [String]) {
         guard !isFixture else {
             flash = "fixture: no IO"
             return
@@ -2359,9 +2279,7 @@ final class AppModel {
         }
         let skipped = kept
         Task {
-            let (changes, failures) = await Sweep.execute(
-                SweepPlan(removals: removals, skips: [], next: nil), domain: currentDomain
-            )
+            let (changes, failures) = await WorktreeRemoval.execute(removals, domain: currentDomain)
             commit(changes)
             flash = "removed \(removals.count - failures.count)" +
                 (skipped.isEmpty ? "" : " · kept \(skipped.count): \(skipped[0])")
@@ -3674,7 +3592,7 @@ final class AppModel {
     }
 
     /// Removes what runs left behind (`heed/…` branches and their worktrees) that is safe to remove, in every repo
-    /// on this Mac. Part of the cleanup sweep, and once at launch.
+    /// on this Mac. Once at launch.
     func cleanUpRunLeftovers() async -> [RunCleanup.Leftover] {
         let live = Set(liveRuns.values.map(\.branch))
         var result: [RunCleanup.Leftover] = []

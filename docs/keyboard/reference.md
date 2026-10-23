@@ -86,8 +86,6 @@ This page is generated from the code (`mise run shots`).
 | `issue.add` `[url]` |  | link an issue to the session (its URL, or the copied one) |
 | `issue.remove` `[url]` |  | take an issue off the session |
 | `open.reader` | `<CR>` | read inbox item, issue or PR |
-| `cleanup.rules` |  | show the cleanup rules (Repos, with its rules panel) |
-| `cleanup.sweep` | `gC` | run the cleanup sweep now |
 | `inspector.toggle` | `zi` | collapse / expand the inspector |
 | `sidebar.toggle` | `zs` | collapse / expand the sessions sidebar |
 | `config.edit` |  | open config.toml in $EDITOR |
@@ -96,7 +94,7 @@ This page is generated from the code (`mise run shots`).
 | `agents.stop` |  | stop every agent and shell in every pane (with [sessions] persist = "zmx") |
 | `tools.detect` |  | find git and gh again (login shell PATH, usual places, [tools]) |
 | `app.quit` |  | quit Heed |
-| `settings.open` `[section]` | `<D-,>` | open Settings, on a section (general, agents, colors, cleanup, pilot, keys) |
+| `settings.open` `[section]` | `<D-,>` | open Settings, on a section (general, agents, colors, worktrees, pilot, keys) |
 | `app.activate` |  | bring Heed's window to the front, as the global shortcut does |
 | `welcome` |  | show the getting-started checks again |
 

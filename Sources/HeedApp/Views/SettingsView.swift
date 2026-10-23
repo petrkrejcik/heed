@@ -18,13 +18,12 @@ struct SettingsView: View {
             let key = name.lowercased()
             let short: [String: Section] = [
                 "general": .general, "agents": .agents, "colors": .colors, "repos": .colors, "orgs": .colors,
-                "cleanup": .cleanup,
-                "worktrees": .cleanup, "keys": .keys, "modes": .keys, "pilot": .pilot,
+                "worktrees": .worktrees, "keys": .keys, "modes": .keys, "pilot": .pilot,
             ]
             return short[key]
         }
 
-        case general = "General", agents = "Agents", colors = "Orgs & repos", cleanup = "Worktrees & cleanup"
+        case general = "General", agents = "Agents", colors = "Orgs & repos", worktrees = "Worktrees"
         case pilot = "Pilot", keys = "Keys & modes"
 
         var id: String { rawValue }
@@ -79,7 +78,7 @@ struct SettingsView: View {
                     case .general: GeneralSettings()
                     case .agents: AgentSettings()
                     case .colors: OrgRepoSettings()
-                    case .cleanup: CleanupSettings()
+                    case .worktrees: WorktreeSettings()
                     case .pilot: PilotSettingsView()
                     case .keys: KeySettings()
                     }
@@ -513,56 +512,17 @@ private struct PilotSettingsView: View {
     }
 }
 
-private struct CleanupSettings: View {
+private struct WorktreeSettings: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
-        let rule = model.config.cleanup
         VStack(alignment: .leading, spacing: 16) {
-            Text("Worktrees & cleanup").font(Theme.ui(17, weight: .semibold))
-            GroupLabel(title: "Worktrees")
+            Text("Worktrees").font(Theme.ui(17, weight: .semibold))
             Field(label: "Worktree root", detail: "New worktrees go to <root>/<repo>/<name>.") {
                 ConfigTextField(path: ["worktrees", "root"], value: model.config.work.worktreeRoot)
             }
             Field(label: "Repo roots", detail: "Comma separated; scanned two levels deep.") {
                 RootsField(roots: model.config.work.repoRoots)
-            }
-            GroupLabel(title: "Cleanup")
-            Field(
-                label: "Remove idle worktrees",
-                detail: "No agent output, keystrokes, commits or PR events for this long."
-            ) {
-                HStack {
-                    Toggle(
-                        "",
-                        isOn: Binding(
-                            get: { rule.enabled },
-                            set: { model.setConfig(["cleanup", "enabled"], .bool($0)) }
-                        )
-                    )
-                    .labelsHidden()
-                    Stepper(value: Binding(
-                        get: { rule.idleDays }, set: { model.setConfig(["cleanup", "idle_days"], .integer($0)) }
-                    ), in: 1 ... 365) {
-                        Text("\(rule.idleDays) days").font(Theme.mono(12.5))
-                    }
-                }
-            }
-            Field(
-                label: "Never remove dirty or unpushed work",
-                detail: "Always on. Skipped worktrees show a warning instead."
-            ) {
-                Toggle("", isOn: .constant(true)).labelsHidden().disabled(true)
-            }
-            Field(label: "Delete the local branch too", detail: "The remote branch is left alone.") {
-                Toggle("", isOn: Binding(
-                    get: { rule.deleteBranch }, set: { model.setConfig(["cleanup", "delete_branch"], .bool($0)) }
-                )).labelsHidden()
-            }
-            Field(label: "Ask before each sweep") {
-                Toggle("", isOn: Binding(
-                    get: { rule.askBeforeSweep }, set: { model.setConfig(["cleanup", "ask_before_sweep"], .bool($0)) }
-                )).labelsHidden()
             }
         }
     }

@@ -1,19 +1,14 @@
 import HeedCore
 import SwiftUI
 
-/// Repos & worktrees (design/screens/Repos.png): repos on the left, every added worktree in a table, cleanup rules on
-/// the right.
+/// Repos & worktrees (design/screens/Repos.png): repos on the left, every added worktree in a table.
 struct ReposView: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
-        GeometryReader { geometry in
-            HStack(spacing: 0) {
-                repoColumn.shotRegion(.repoColumn)
-                table.shotRegion(.worktreeTable)
-                // The rules panel gives way first when the window is narrow; `zi` hides it outright.
-                if model.inspectorVisible, geometry.size.width >= 1240 { rules.shotRegion(.rulesPanel) }
-            }
+        HStack(spacing: 0) {
+            repoColumn.shotRegion(.repoColumn)
+            table.shotRegion(.worktreeTable)
         }
     }
 
@@ -104,7 +99,6 @@ struct ReposView: View {
                     if rows.indices.contains(model.repoCursor) { proxy.scrollTo(rows[model.repoCursor].id) }
                 }
             }
-            if model.config.cleanup.enabled { SweepBanner(plan: model.sweepPlan).shotRegion(.sweepBanner) }
             if rows.isEmpty {
                 VStack(spacing: 8) {
                     Text(model.repos.isEmpty ? "No repos found yet."
@@ -144,48 +138,6 @@ struct ReposView: View {
         .padding(.trailing, 16)
         .frame(height: 34)
         .overlay(alignment: .bottom) { Theme.line.frame(height: 1) }
-    }
-
-    private var rules: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack {
-                SectionHeader(title: "Auto cleanup rules")
-                Spacer()
-                KeyCap(text: "zi")
-            }
-            let rule = model.config.cleanup
-            ruleRow(
-                "Remove worktrees with no activity\(rule.enabled ? "" : " (off)")",
-                rule.enabled
-                    ? "Nothing for \(rule.idleDays)d: no agent output, keystrokes, commits or PR events."
-                    : "Off. Turn it on in Settings (⌘,) or [cleanup] enabled; dd removes worktrees by hand."
-            )
-            ruleRow("Never remove dirty or unpushed work", "Always on. Skipped trees show a warning instead.")
-            ruleRow("Delete the local branch too\(rule.deleteBranch ? "" : " (off)")", "Remote branch is left alone.")
-            ruleRow(
-                "Ask before each sweep\(rule.askBeforeSweep ? " (on)" : " (off)")",
-                rule.askBeforeSweep ? "Sweeps run only with gC." : "Sweeps run hourly; gC runs one now."
-            )
-            Text("Edit in Settings (⌘,) or config.toml [cleanup].")
-                .font(Theme.ui(11.5))
-                .foregroundStyle(Theme.fg3)
-            HStack(spacing: 8) {
-                KeyCap(text: "m")
-                Text("pinned sessions are never cleaned up").font(Theme.ui(12)).foregroundStyle(Theme.fg2)
-            }
-            Spacer()
-        }
-        .padding(18)
-        .frame(width: 320)
-        .background(Theme.bg2)
-        .overlay(alignment: .leading) { Theme.line.frame(width: 1) }
-    }
-
-    private func ruleRow(_ title: String, _ detail: String) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
-            Text(title).font(Theme.ui(13, weight: .medium))
-            Text(detail).font(Theme.ui(11.5)).foregroundStyle(Theme.fg3).fixedSize(horizontal: false, vertical: true)
-        }
     }
 }
 
@@ -255,37 +207,5 @@ private struct WorktreeRow: View {
         .frame(height: 48)
         .background(isSelected ? Theme.block.opacity(0.18) : isCursor ? Theme.bg3 : .clear)
         .overlay(alignment: .bottom) { Theme.line.opacity(0.6).frame(height: 1) }
-    }
-}
-
-/// What the next sweep would do (design/screens/Repos.png).
-private struct SweepBanner: View {
-    let plan: SweepPlan
-
-    var body: some View {
-        HStack(alignment: .top, spacing: 10) {
-            StateGlyph(state: plan.skips.isEmpty ? .idle : .blocked)
-            VStack(alignment: .leading, spacing: 4) {
-                Text(plan.summary).font(Theme.ui(12.5))
-                ForEach(plan.skips.prefix(3), id: \.worktree.id) { skip in
-                    Text("kept \(skip.worktree.repo.name)/\(skip.worktree.branch ?? ""): \(skip.reason)")
-                        .font(Theme.mono(11.5))
-                        .foregroundStyle(Theme.block)
-                }
-                ForEach(plan.removals.prefix(3), id: \.worktree.id) { removal in
-                    Text(
-                        "would remove \(removal.worktree.repo.name)/\(removal.worktree.branch ?? "") (\(removal.idleText))"
-                    )
-                    .font(Theme.mono(11.5))
-                    .foregroundStyle(Theme.fg2)
-                }
-            }
-            Spacer()
-            KeyCap(text: "gC")
-            Text("run now").font(Theme.ui(12)).foregroundStyle(Theme.fg3)
-        }
-        .padding(14)
-        .background(RoundedRectangle(cornerRadius: 8).strokeBorder(Theme.line))
-        .padding(16)
     }
 }

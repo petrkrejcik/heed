@@ -48,15 +48,6 @@ shell_split = false
 # zmx, or none (panes end with heed).
 persist = "auto"
 
-[cleanup]
-# Automatic cleanup, off by default. When on, worktrees with no activity (agent output, keystrokes, commits, PR
-# events) for idle_days are removed, wherever they live. Dirty or unpushed work is never removed, nor a pinned
-# session's.
-enabled = false
-idle_days = 14
-delete_branch = true               # the local branch; the remote is left alone
-ask_before_sweep = false
-
 [github]
 # How often the view on screen refreshes from GitHub; the others refresh five times less often.
 poll_seconds = 60
@@ -167,6 +158,6 @@ global_activate = "<C-M-h>"
 # Bindings per mode ([keys.normal], [keys.visual], ...) or per view ([keys.repos], [keys.inbox], [keys.history],
 # [keys.diff], [keys.pr]), in vim notation, each naming a command (the same names : completes). "" unbinds.
 # [keys.normal]
-# "gC" = ""
+# "gB" = ""
 # "<C-j>" = "row.next"
 ```

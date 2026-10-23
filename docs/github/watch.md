@@ -188,8 +188,8 @@ one takes you to its tab.
 
 ### Leftovers
 
-If heed quits mid-run, or a removal fails, a `heed/…` branch and its worktree can be left behind. Every cleanup sweep
-(and launch) removes them when it's safe: no uncommitted changes, and nothing that isn't on the pull request's
+If heed quits mid-run, or a removal fails, a `heed/…` branch and its worktree can be left behind. Every launch
+removes them when it's safe: no uncommitted changes, and nothing that isn't on the pull request's
 branch. Otherwise it keeps them and says why. From a terminal, `heed cleanup runs` does the same in the repo you are
 in, and also skips anything git touched in the last hour. Since every run branch starts with `heed/`, a script can
 find them too:

@@ -121,8 +121,6 @@ struct ConfigTests {
         [sessions]
         resume_on_launch = "sometimes"
         default_agent = "nobody"
-        [cleanup]
-        idle_days = 0
         [agents.ghost]
         prompt = "argument"
         [keys.nonsense]
@@ -131,9 +129,8 @@ struct ConfigTests {
         let config = try #require(decoded)
         #expect(config.work.resumeOnLaunch == .ask)
         #expect(config.work.defaultAgent == "claude")
-        #expect(config.cleanup.idleDays == 14)
         #expect(Set(problems.map(\.path)) == [
-            "sessions.resume_on_launch", "sessions.default_agent", "cleanup.idle_days", "agents.ghost.command",
+            "sessions.resume_on_launch", "sessions.default_agent", "agents.ghost.command",
             "keys.nonsense",
         ])
     }

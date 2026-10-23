@@ -67,7 +67,6 @@ toc:
       - file: repos.md
       - file: importing.md
       - file: removing.md
-      - file: cleanup.md
   - folder: hosts
     children:
       - file: index.md

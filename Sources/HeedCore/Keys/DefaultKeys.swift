@@ -1,5 +1,5 @@
 /// The default bindings, per mode, in the same notation as `[keys.<mode>]` in config.toml. Config entries are laid over
-/// these; `"gC" = ""` unbinds a default.
+/// these; `"gB" = ""` unbinds a default.
 public enum DefaultKeys {
     /// INSERT's way out. Configurable as `insert_escape` because `<C-\>` is also SIGQUIT in a terminal.
     public static let insertEscape = "<C-\\>"
@@ -24,10 +24,7 @@ public enum DefaultKeys {
         ("gt", "tab.next"), ("gT", "tab.prev"), ("gn", "tab.new"),
         ("gs", "view.sessions"), ("gm", "view.inbox"), ("gi", "view.issues"), ("gp", "view.prs"),
         ("go", "overlay.item"), ("]p", "pr.next"), ("[p", "pr.prev"), ("gd", "overlay.diff"), ("gS", "pr.session"),
-        ("<C-o>", "jump.back"), ("gB", "open.browser"), ("gR", "open.repo"), ("gU", "pr.track"), (
-            "gC",
-            "cleanup.sweep"
-        ),
+        ("<C-o>", "jump.back"), ("gB", "open.browser"), ("gR", "open.repo"), ("gU", "pr.track"),
         ("zi", "inspector.toggle"), ("zs", "sidebar.toggle"),
         // The pilot, the same keys everywhere: the PR under the cursor, the open PR, or the session's PRs.
         ("zw", "pilot.watch"), ("zg", "pilot.green"), ("zm", "pilot.merge"), ("zp", "pilot.pause"), (

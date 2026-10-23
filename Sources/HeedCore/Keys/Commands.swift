@@ -97,8 +97,6 @@ public enum Commands {
         .init("issue.add", "link an issue to the session (its URL, or the copied one)", .views, arguments: "[url]"),
         .init("issue.remove", "take an issue off the session", .views, arguments: "[url]"),
         .init("open.reader", "read inbox item, issue or PR", .views),
-        .init("cleanup.rules", "show the cleanup rules (Repos, with its rules panel)", .views),
-        .init("cleanup.sweep", "run the cleanup sweep now", .views),
         .init("inspector.toggle", "collapse / expand the inspector", .views),
         .init("sidebar.toggle", "collapse / expand the sessions sidebar", .views),
         .init("config.edit", "open config.toml in $EDITOR", .views),
@@ -108,7 +106,7 @@ public enum Commands {
         .init("tools.detect", "find git and gh again (login shell PATH, usual places, [tools])", .views),
         .init("app.quit", "quit Heed", .views),
         .init(
-            "settings.open", "open Settings, on a section (general, agents, colors, cleanup, pilot, keys)", .views,
+            "settings.open", "open Settings, on a section (general, agents, colors, worktrees, pilot, keys)", .views,
             arguments: "[section]"
         ),
         .init("app.activate", "bring Heed's window to the front, as the global shortcut does", .views),
