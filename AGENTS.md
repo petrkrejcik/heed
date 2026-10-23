@@ -11,14 +11,17 @@
 - **Differential UI updates.** Changes land as small domain diffs on `@Observable` models, so only what changed
   redraws. No whole-list replacement when one row changed; stable identities everywhere.
 - **The UI starts from a domain value, with no IO.** The window is a function of a domain snapshot plus the input
-  state (mode, overlay, cursor). Fixtures are plain domain values (`main`, `blocked`, `offline`, `empty`, `first-run`,
-  one per design board), so the app can open in any of them for snapshots, previews and tests with every adapter
-  (gh, git, sockets, terminals) switched off: `HEED_FIXTURE=offline HEED_SNAPSHOT=out.png`.
+ state (mode, overlay, cursor). Fixtures are plain domain values (`main`, `empty`, `pr-storm`, `fresh-repos`; `resume`
+ and `firstrun` are `main` with a dialog open), so the app can open in any of them for snapshots, previews and tests
+ with every adapter (gh, git, sockets, terminals) switched off: `HEED_FIXTURE=main HEED_SNAPSHOT=out.png`.
 - **Never steal focus.** Heed never activates itself or raises a window on its own: not on launch from a hook, not on
   a state change, not when a PR event arrives. Attention is asked for (badge, `ga`, a notification), never taken.
 
-- Read `PLAN.md` first; the brief is `design/BRIEF.md`, the boards `design/screens/*.png`.
-- `mise run test` and `mise run lint` before committing. Core logic goes in `HeedCore` with tests; the app layer
+- This is a personal hard fork. Read the PRD first: `/Users/petr/notes/Projects/Heed fork.md`. It wins over this
+ file, the upstream brief (`design/BRIEF.md`) and the boards (`design/screens/*.png`, still the visual reference).
+ The current milestone's plan: `/Users/petr/notes/Projects/Heed fork - tasks from notes.md`.
+- `mise run test` and `mise run lint` before committing. Without mise, run the tasks' commands from `mise.toml` with
+ the env from `mise.local.toml` (this Mac has no Xcode: it sets `SDKROOT`, `TOOLCHAIN_DIR` and the lint tools' path). Core logic goes in `HeedCore` with tests; the app layer
   stays thin.
 - Never block the main actor: no `Process.waitUntilExit`, file or network IO on it.
 - All libghostty calls live in `Sources/HeedTerminal`.

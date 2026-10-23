@@ -19,7 +19,7 @@ description: The environment variables Heed sets in its panes, and the ones it r
 | Variable | |
 |---|---|
 | `XDG_CONFIG_HOME` | Where `heed/config.toml` lives, if set |
-| `HEED_FIXTURE` | Open on made-up data, with no IO: `main`, `empty`, `resume`, `firstrun` |
+| `HEED_FIXTURE` | Open on made-up data, with no IO: `main`, `empty`, `pr-storm`, `fresh-repos`, `resume`, `firstrun` |
 | `HEED_SNAPSHOT` | Render the window to this PNG and quit (`HEED_SNAPSHOT_KEYS`, `_SIZE`, `_DELAY`, `_SETTLE`) |
 | `HEED_SHOTS` | Render every docs screenshot into this folder and quit (`HEED_SHOTS_ONLY`, `HEED_DOCS`) |
 
