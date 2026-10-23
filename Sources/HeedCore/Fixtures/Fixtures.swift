@@ -30,54 +30,6 @@ public enum Fixtures {
         IssueRef(repo: docsBuilder, number: 2830): IssueInfo(title: "Anchors lost when a page is moved", closed: false),
     ]
 
-    /// Hosts: @devbox answers, @gpu wants your key, @ci is down.
-    public static let hosts: [String: HostConfig] = [
-        "devbox": HostConfig(name: "devbox", color: "teal"),
-        "gpu": HostConfig(name: "gpu", worktreeRoot: "~/runs", color: "periwinkle"),
-        "ci": HostConfig(name: "ci", ssh: "ci@10.0.4.9", worktreeRoot: "~/builds", color: "pink"),
-        "lab": HostConfig(name: "lab", color: "sky"),
-    ]
-
-    public static let hostStatuses: [String: HostStatus] = [
-        "devbox": .connected(HostInfo(
-            latency: .milliseconds(24), platform: "Linux x86_64", git: "2.46.0", zmx: "0.8.1",
-            agents: ["claude", "codex"], checkedAt: Clock.now, home: "/home/you",
-            zmxPath: "/home/you/.local/bin/zmx", os: "ubuntu"
-        )),
-        // Answers, but zmx is not installed there yet: heed says how.
-        "lab": .connected(HostInfo(
-            latency: .milliseconds(41), platform: "Linux aarch64", git: "2.43.0", zmx: nil, agents: ["claude"],
-            checkedAt: Clock.now, home: "/home/you", os: "debian"
-        )),
-        "gpu": .needsAuth("martijn@gpu: Permission denied (publickey)."),
-        "ci": .offline(
-            reason: "ssh: connect to host 10.0.4.9 port 22: Operation timed out",
-            lastSeen: Clock.now.addingTimeInterval(-3 * 86400)
-        ),
-    ]
-
-    static let remoteRepos = [
-        RepoRecord(
-            repo: docsBuilder,
-            path: "/home/you/code/docs-builder",
-            defaultBranch: "main",
-            location: .host("devbox")
-        ),
-    ]
-
-    /// On @devbox: one registered worktree, one a scan found.
-    static let remoteWorktrees = [
-        Worktree(
-            repo: docsBuilder, path: "/home/you/code/wt/flake-hunt", branch: "flake-hunt", head: "4e1c2aa",
-            isMain: false, status: WorktreeStatus(ahead: 0, behind: 4, upstream: "origin/flake-hunt"),
-            location: .host("devbox")
-        ),
-        Worktree(
-            repo: docsBuilder, path: "/home/you/code/wt/old-spike", branch: "old-spike", head: "9b0d113",
-            isMain: false, status: WorktreeStatus(changedFiles: 2, upstream: nil), location: .host("devbox")
-        ),
-    ]
-
     public static func named(_ name: String) -> Domain? {
         switch name {
         case "main": main
@@ -144,29 +96,10 @@ public enum Fixtures {
                 agentSessionID: "b36c9d71-04fa-42e8-8a3d-7e1c5b2f9d60",
                 state: ObservedState(.idle), activity: "idle 2h", trackedPRs: [PullRef(repo: docsBuilder, number: 2852)]
             ),
-            // On @devbox: its agent runs there, in zmx, and outlives the link.
-            {
-                var session = Session(
-                    id: "s7", title: "Nightly flake hunt", repos: [docsBuilder], branch: "flake-hunt", agent: "claude",
-                    state: ObservedState(.idle), activity: "idle 20m"
-                )
-                session.host = "devbox"
-                session.worktreePaths = ["/home/you/code/wt/flake-hunt"]
-                return session
-            }(),
         ]
         var worktrees: [Worktree] = []
         var layouts: [String: SessionLayout] = [:]
         for session in sessions {
-            if let host = session.host {
-                // Its worktree is on the host (remoteWorktrees); its pane runs there.
-                let pane = PaneSpec(
-                    id: "\(session.id)-agent", role: .agent, title: session.agent,
-                    directory: session.worktreePaths.first ?? "~", location: .host(host)
-                )
-                layouts[session.id] = SessionLayout(tabs: [PaneTab(title: "agent", tree: .leaf(pane))])
-                continue
-            }
             for repo in session.repos {
                 worktrees.append(Worktree(
                     repo: repo, path: "\(root)/wt/\(repo.name)/\(session.branch)", branch: session.branch,
@@ -231,11 +164,11 @@ public enum Fixtures {
         pipeline.merge = .heed
         pipeline.mergeSet = true
         return Domain(
-            repos: repos + remoteRepos, worktrees: worktrees + remoteWorktrees, sessions: sessions, layouts: layouts,
+            repos: repos, worktrees: worktrees, sessions: sessions, layouts: layouts,
             history: history, github: github,
             pullDetails: Dictionary(([detail] + otherDetails).map { ($0.ref.description, $0) }) { first, _ in first },
             feedback: pilots.merging([detail.ref.description: pipeline]) { _, main in main }, pilotLog: log,
-            mergeRuns: mergeRuns, registeredWorktrees: [remoteWorktrees[0].id], runs: runs
+            mergeRuns: mergeRuns, runs: runs
         )
     }()
 

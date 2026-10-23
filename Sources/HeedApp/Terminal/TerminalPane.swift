@@ -49,21 +49,12 @@ final class TerminalSurfaces {
     var persist: PanePersistence = .none
     /// Panes whose zmx session is alive: they reattach as they are, and nothing is typed into them.
     var livePanes: Set<String> = []
-    /// Where each pane's terminal runs, for ending the right session when it closes.
-    private var paneLocations: [String: Location] = [:]
     /// Where heed keeps its zmx sessions.
     let zmxDirectory = Zmx.socketDirectory()
 
     /// zmx on this Mac, as tool detection found it on your PATH (heed ships no copy); nil when not installed.
     var zmxPath: String?
     private var zmx: String? { persist == .zmx ? zmxPath : nil }
-
-    /// zmx on each host, as the host checks last found it (remembered, so panes reattach before the next check).
-    var hostZmx: [String: String] = UserDefaults.standard
-        .dictionary(forKey: "heed.hostZmx") as? [String: String] ?? [:]
-    {
-        didSet { UserDefaults.standard.set(hostZmx, forKey: "heed.hostZmx") }
-    }
 
     /// PATH for new panes: the detected search path (an app opened from Finder has a minimal one).
     var searchPath = ProcessInfo.processInfo.environment["PATH"] ?? "/usr/bin:/bin"
@@ -83,17 +74,8 @@ final class TerminalSurfaces {
         var withPath = environment
         withPath["PATH"] = searchPath
         var attach: String?
-        paneLocations[pane.id] = pane.location
-        if let host = pane.location.hostName {
-            // On a host: ssh there and attach to the pane's zmx session in its worktree (always zmx: a remote agent
-            // must
-            // outlive the link). A live session is reattached as it is, with nothing typed again.
-            attach = RemotePane.command(
-                host: host, pane: pane.id, directory: pane.directory, sessionID: sessionID, zmx: hostZmx[host]
-            )
-        }
         // Only a pane in a real worktree: fixture panes, and ones whose worktree is gone, stay plain shells.
-        else if let zmx, FileManager.default.fileExists(atPath: pane.directory) {
+        if let zmx, FileManager.default.fileExists(atPath: pane.directory) {
             withPath.merge(Zmx.environment(socketDirectory: zmxDirectory)) { _, new in new }
             attach = Zmx.attachCommand(zmx: zmx, pane: pane.id)
             // A live session is reattached as it is: whatever runs in it keeps running, and nothing is typed again.
@@ -174,11 +156,6 @@ final class TerminalSurfaces {
     /// zmx its session too, so nothing is left running.
     func close(paneID: String) {
         views.removeValue(forKey: paneID)?.removeFromSuperview()
-        if let host = paneLocations.removeValue(forKey: paneID)?.hostName {
-            if let zmx = hostZmx[host] { Task.detached { await RemotePane.kill(panes: [paneID], host: host, zmx: zmx) }
-            }
-            return
-        }
         guard let zmx, livePanes.remove(paneID) != nil else { return }
         let directory = zmxDirectory
         Task.detached { await Zmx.kill(panes: [paneID], zmx: zmx, socketDirectory: directory) }

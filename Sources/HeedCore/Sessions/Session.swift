@@ -64,8 +64,6 @@ public struct Session: Identifiable, Hashable, Sendable, Codable {
     public var worktreePaths: [String]
     /// PRs taken off it by hand (`pr.untrack`), so no rule adds them back.
     public var untrackedPRs: [PullRef]
-    /// The host it runs on (`[hosts.<name>]`); nil for this Mac.
-    public var host: String?
     /// Issues linked by hand (`heed issue add`, `:issue.add`); its prompt's and its PRs' closing references are added
     /// when shown (`IssueLinks.issues`).
     public var issues: [IssueRef]
@@ -111,7 +109,7 @@ public struct Session: Identifiable, Hashable, Sendable, Codable {
 
     private enum CodingKeys: String, CodingKey {
         case id, title, prompt, repos, branch, agent, agentSessionID, state, activity, trackedPRs, pinned, parked,
-             lastActivity, createdAt, timeline, branches, worktreePaths, untrackedPRs, host, issues, hiddenIssues
+             lastActivity, createdAt, timeline, branches, worktreePaths, untrackedPRs, issues, hiddenIssues
     }
 
     /// Sessions cached before branches were followed still load.
@@ -135,7 +133,6 @@ public struct Session: Identifiable, Hashable, Sendable, Codable {
         branches = try container.decodeIfPresent([String].self, forKey: .branches) ?? [branch]
         worktreePaths = try container.decodeIfPresent([String].self, forKey: .worktreePaths) ?? []
         untrackedPRs = try container.decodeIfPresent([PullRef].self, forKey: .untrackedPRs) ?? []
-        host = try container.decodeIfPresent(String.self, forKey: .host)
         issues = try container.decodeIfPresent([IssueRef].self, forKey: .issues) ?? []
         hiddenIssues = try container.decodeIfPresent([IssueRef].self, forKey: .hiddenIssues) ?? []
     }
@@ -149,12 +146,8 @@ public struct Session: Identifiable, Hashable, Sendable, Codable {
     /// Whether a worktree is this session's: one it has by path, or (for sessions that predate paths) one on its
     /// first branch, in one of its repos.
     public func owns(_ worktree: Worktree) -> Bool {
-        worktree.location == location && repos.contains(worktree.repo)
-            && (worktreePaths.contains(worktree.path) || worktree.branch == branch)
+        repos.contains(worktree.repo) && (worktreePaths.contains(worktree.path) || worktree.branch == branch)
     }
-
-    /// Where it runs.
-    public var location: Location { host.map(Location.host) ?? .local }
 
     /// Tracks a PR unless it is already tracked or was untracked by hand; says why on the timeline. True when added.
     @discardableResult

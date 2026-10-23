@@ -66,17 +66,13 @@ public struct StartWorkForm: Sendable {
     /// Makes the new session's id; screenshots pin it so the command preview never changes between runs.
     public nonisolated(unsafe) static var newSessionID: () -> String = { UUID().uuidString.lowercased() }
     private let integration: IntegrationFiles?
-    /// The agents' hook files on each host (under its ~/.heed), for work started there.
-    private let hostIntegrations: [String: IntegrationFiles]
     private var nameEdited = false
     private var reposTouched = false
 
     public init(
         repos: [RepoRecord], lastWorked: [String: Date] = [:], context: StartContext? = nil,
-        settings: WorkSettings, prompt: String = "", integration: IntegrationFiles? = nil,
-        hostIntegrations: [String: IntegrationFiles] = [:]
+        settings: WorkSettings, prompt: String = "", integration: IntegrationFiles? = nil
     ) {
-        self.hostIntegrations = hostIntegrations
         self.repos = repos
         self.lastWorked = lastWorked
         self.context = context
@@ -115,8 +111,7 @@ public struct StartWorkForm: Sendable {
     public var plan: StartWorkPlan {
         let records = selectedRecords
         var plan = StartWorkPlan(
-            prompt: prompt, repos: records, name: name, agent: agent, sessionID: sessionID,
-            integration: records.first?.location.hostName.map { hostIntegrations[$0] } ?? integration
+            prompt: prompt, repos: records, name: name, agent: agent, sessionID: sessionID, integration: integration
         )
         plan.autostart = autostart && agent != nil
         plan.planFirst = planFirst

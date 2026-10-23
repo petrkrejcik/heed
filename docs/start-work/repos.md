@@ -11,9 +11,9 @@ chips says why:
 - **The prompt names it**: the strongest signal (`… in docs-builder`). Whole names only, and not inside a link or
   an `org/repo#12` reference: those point at an issue, not at where the work happens.
 - **Words in common** with the repo's name.
-- **Where you opened it**: the repos of the session under the cursor (on its host, if it runs on one), or of the
-  worktree, PR, issue or history entry. Strong, but a repo the prompt names still wins. Start work from anywhere (the
-  global shortcut) has no cursor to go by.
+- **Where you opened it**: the repos of the session under the cursor, or of the worktree, PR, issue or history
+  entry. Strong, but a repo the prompt names still wins. Start work from anywhere (the global shortcut) has no cursor
+  to go by.
 - **How recently you worked there**: the last activity of its sessions, open or closed, counting for half as much
   every two days. Between equal guesses, the more recent repo comes first.
 
@@ -21,9 +21,6 @@ chips says why:
 
 Move to the repo field (`⎋` then `j`) and use `h` `l` to move between chips and `space` to add or remove one. More than
 one repo makes a cross-repo session: a worktree in each, on the same branch. `⌃n` `⌃p` cycle which one is primary.
-
-Repos on your [hosts](../hosts/index.md) are guessed the same way and their chips say `@host`: picking one starts
-the work there.
 
 ## Any other repo
 

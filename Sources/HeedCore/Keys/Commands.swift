@@ -99,8 +99,6 @@ public enum Commands {
         .init("inspector.toggle", "collapse / expand the inspector", .views),
         .init("sidebar.toggle", "collapse / expand the sessions sidebar", .views),
         .init("config.edit", "open config.toml in $EDITOR", .views),
-        .init("host.open", "hosts: the ones heed drives over ssh, and ones from ~/.ssh/config to add", .views),
-        .init("host.filter", "narrow the view to one host (@devbox)", .views, arguments: "[host]"),
         .init("agents.stop", "stop every agent and shell in every pane (with [sessions] persist = \"zmx\")", .views),
         .init("tools.detect", "find git and gh again (login shell PATH, usual places, [tools])", .views),
         .init("app.quit", "quit Heed", .views),

@@ -81,9 +81,7 @@ struct ReposView: View {
                                 isSelected: selected.contains(worktree.id),
                                 roots: model.settings.pathRoots,
                                 query: model.filter(for: .repos),
-                                pilot: model.session(for: worktree).flatMap { model.pilotStatus(of: $0) },
-                                registration: model.registration(of: worktree),
-                                hostColor: worktree.location.hostName.flatMap { model.config.hosts[$0]?.color }
+                                pilot: model.session(for: worktree).flatMap { model.pilotStatus(of: $0) }
                             )
                             .hint(model.hintLabel(for: .row(.repos, index)))
                             .contentShape(Rectangle())
@@ -124,7 +122,6 @@ struct ReposView: View {
             Color.clear.frame(width: 64)
             Group {
                 Text("REPO").frame(width: 140, alignment: .leading)
-                Text("HOST").frame(width: 96, alignment: .leading)
                 Text("BRANCH").frame(minWidth: 140, maxWidth: .infinity, alignment: .leading)
                 Text("AGENT").frame(width: 90, alignment: .leading)
                 Text("STATUS").frame(width: 120, alignment: .leading)
@@ -152,8 +149,6 @@ private struct WorktreeRow: View {
     let query: String
     /// The state of the session's PR, by the PR number.
     let pilot: PilotStatus?
-    var registration: WorktreeRegistration = .registered
-    var hostColor: String?
 
     var body: some View {
         HStack(spacing: 0) {
@@ -170,7 +165,6 @@ private struct WorktreeRow: View {
             }
             .frame(width: 34)
             RepoChip(repo: worktree.repo, highlight: query).frame(width: 140, alignment: .leading)
-            HostChip(location: worktree.location, color: hostColor).frame(width: 96, alignment: .leading)
             // The branch, and the worktree's path small below it.
             VStack(alignment: .leading, spacing: 2) {
                 Highlighted(text: worktree.branch ?? "detached \(worktree.head)", query: query)
@@ -185,10 +179,7 @@ private struct WorktreeRow: View {
                 alignment: .leading
             )
             Group {
-                if registration != .registered {
-                    // Found on a host and not heed's yet (↩ registers it), or a host that does not answer.
-                    RegistrationChip(registration: registration)
-                } else if let status = worktree.status {
+                if let status = worktree.status {
                     WorktreeStatusLine(status: status, showUpstream: false)
                 } else {
                     Text("…").foregroundStyle(Theme.fg3)

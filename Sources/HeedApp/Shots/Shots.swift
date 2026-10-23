@@ -6,10 +6,7 @@ import SwiftUI
 @MainActor
 enum Shots {
     static let all: [Shot] = landing + home + gettingStarted + concepts + sessions + startWork + agents + pilot +
-        hosts +
-        github +
-        worktrees
-        + diff + history + keyboard + outside + configuration
+        github + worktrees + diff + history + keyboard + outside + configuration
 
     /// Types a sentence (spaces become <Space>).
     static func typed(_ text: String) -> String {
@@ -85,7 +82,6 @@ enum Shots {
         Shot(id: "landing/prs", chrome: false, keys: "gp"),
         Shot(id: "landing/worktrees", chrome: false, keys: "gr4jvj"),
         Shot(id: "landing/resume", chrome: false, prepare: { $0.showResumeForFixture() }),
-        Shot(id: "landing/hosts", chrome: false, keys: "G"),
         Shot(id: "landing/diff", chrome: false, keys: "gd"),
         Shot(id: "landing/inbox", chrome: false, keys: "gm<Space>j<Space>"),
     ]
@@ -131,44 +127,12 @@ enum Shots {
         Shot(id: "start-work/from-github-picked", keys: "gi<Space>j<Space>", highlight: [.list, .pickedPanel]),
         Shot(id: "start-work/from-github-dialog", keys: "gi<Space>j<Space>s", crop: .dialog),
         Shot(id: "start-work/again", keys: "ghO", crop: .dialog),
-        Shot(
-            id: "start-work/on-a-host", keys: "o" + typed("Fix the flaky link checker in docs-builder") + "<C-n>",
-            crop: .dialog
-        ),
     ]
 
     static let short = CGSize(width: 1440, height: 640)
 
     static let agents: [Shot] = [
         Shot(id: "agents/guessed", size: short, keys: "2j", crop: .sidebar),
-    ]
-
-    static let hosts: [Shot] = [
-        // gH: the hosts, with @devbox's checks; @gpu wants a key, @ci is down.
-        Shot(
-            id: "hosts/picker",
-            keys: "<C-n>",
-            crop: .dialog,
-            prepare: { $0.perform(CommandInvocation(name: "host.open")) }
-        ),
-        Shot(
-            id: "hosts/picker-auth",
-            keys: "<C-n><C-n>",
-            crop: .dialog,
-            prepare: { $0.perform(CommandInvocation(name: "host.open")) }
-        ),
-        Shot(id: "hosts/picker-offline", crop: .dialog, prepare: { $0.perform(CommandInvocation(name: "host.open")) }),
-        // A host without zmx: the line that installs it there.
-        Shot(
-            id: "hosts/picker-no-zmx", keys: "<C-n><C-n><C-n>", crop: .dialog,
-            prepare: { $0.perform(CommandInvocation(name: "host.open")) }
-        ),
-        // Repos with a host column: a registered and a discovered worktree on @devbox.
-        Shot(id: "hosts/repos", keys: "gr"),
-        // @ narrows a view to one host.
-        Shot(id: "hosts/filter", keys: "gr@dev<CR>", crop: .worktreeTable),
-        // A session on @devbox: the pane strip, the sidebar rail and chip, the status bar's host segment.
-        Shot(id: "hosts/session", keys: "G"),
     ]
 
     static let pilot: [Shot] = [

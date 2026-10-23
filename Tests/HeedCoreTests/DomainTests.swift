@@ -140,60 +140,6 @@ struct StartWorkTests {
         #expect(layout.tabs[0].focused == panes[0].id)
         #expect(layout.tabs[1].tree.panes[0].directory == "/wt/two/n")
     }
-
-    @Test func guessesKeepHostsApartAndSayWhereARepoIs() {
-        let repo = Repo(org: "elastic", name: "docs-builder")
-        let local = RepoRecord(repo: repo, path: "/code/docs-builder")
-        let remote = RepoRecord(repo: repo, path: "/home/me/code/docs-builder", location: .host("devbox"))
-        var ran = Session(title: "x", repos: [repo], branch: "x", agent: "claude", state: ObservedState(.done))
-        ran.host = "devbox"
-        let lastWorked = StartWork.lastWorked(sessions: [ran])
-        #expect(lastWorked.keys.sorted() == ["elastic/docs-builder@devbox"])
-        let guesses = StartWork.guessRepos(for: "tidy things", in: [local, remote], lastWorked: lastWorked)
-        #expect(guesses.first?.repo.id == "elastic/docs-builder@devbox")
-        #expect(guesses.first?.reason.contains("You worked here") == true)
-        #expect(guesses.first?.reason.contains("On @devbox.") == true)
-        #expect(guesses.last?.reason.contains("You worked here") == false)
-    }
-
-    @Test func worktreesOnAHostGoUnderItsWorktreeRoot() {
-        let repo = Repo(org: "o", name: "r")
-        let settings = WorkSettings(worktreeRoot: "/wt")
-        let hosts = ["devbox": HostConfig(name: "devbox", worktreeRoot: "~/src/wt")]
-        let local = RepoRecord(repo: repo, path: "/r")
-        let remote = RepoRecord(repo: repo, path: "/r", location: .host("devbox"))
-        #expect(StartWork.worktreePath(for: local, name: "fix/a", settings: settings, hosts: hosts) == "/wt/r/fix-a")
-        #expect(StartWork.worktreePath(for: remote, name: "fix/a", settings: settings, hosts: hosts)
-            == "~/src/wt/r/fix-a")
-        let unknown = RepoRecord(repo: repo, path: "/r", location: .host("gpu"))
-        #expect(StartWork.worktreePath(for: unknown, name: "a", settings: settings, hosts: hosts) == "~/code/wt/r/a")
-    }
-
-    @Test func aSessionRunsInOnePlace() async {
-        let repo = Repo(org: "o", name: "r")
-        let plan = StartWorkPlan(
-            prompt: "p",
-            repos: [RepoRecord(repo: repo, path: "/r"), RepoRecord(repo: repo, path: "/r", location: .host("devbox"))],
-            name: "n", agent: nil
-        )
-        #expect(plan.location == .local)
-        await #expect(throws: StartWorkError.mixedHosts) {
-            try await StartWork.execute(plan, settings: WorkSettings(worktreeRoot: "/wt"))
-        }
-    }
-
-    @Test func panesRunWhereTheirWorktreeIs() {
-        let record = RepoRecord(repo: repo, path: "/r", location: .host("devbox"))
-        var plan = StartWorkPlan(prompt: "p", repos: [record], name: "n", agent: AgentProfile.builtIn[0])
-        plan.shellSplit = true
-        #expect(plan.location == .host("devbox"))
-        let session = Session(title: "t", repos: [repo], branch: "n", agent: "claude", state: .init(.idle))
-        let worktree = Worktree(
-            repo: repo, path: "/home/me/code/wt/r/n", branch: "n", head: "", isMain: false, location: .host("devbox")
-        )
-        let panes = StartWork.layout(for: plan, session: session, worktrees: [worktree]).tabs[0].tree.panes
-        #expect(panes.map(\.location) == [.host("devbox"), .host("devbox")])
-    }
 }
 
 struct DomainChangeTests {
@@ -423,11 +369,6 @@ struct RepoOrderTests {
         // A repo the prompt names still wins over where you were.
         let named = StartWork.guessRepos(for: "fix three", in: repos, context: context, now: now)
         #expect(named.first?.repo.id == "a/three")
-        // A session on a host hints its repos there, not here.
-        let remote = RepoRecord(repo: Repo(org: "a", name: "two"), path: "/r", location: .host("devbox"))
-        let onHost = StartContext(repos: [StartContext.id(remote.repo, remote.location)], label: "x")
-        let placed = StartWork.guessRepos(for: "", in: repos + [remote], context: onHost, now: now)
-        #expect(placed.first?.repo.id == "a/two@devbox")
     }
 
     @Test func onlyWholeRepoNamesOutsideLinksCount() {

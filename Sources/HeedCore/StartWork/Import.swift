@@ -73,7 +73,6 @@ public enum Import {
             agent: agent?.name ?? "shell", agentSessionID: resume?.id, state: ObservedState(.idle, source: .guessed),
             lastActivity: now, createdAt: now
         )
-        session.host = worktree.location.hostName
         session.worktreePaths = [worktree.path]
         var command: String?
         if let agent {
@@ -83,8 +82,8 @@ public enum Import {
                     AgentIntegration.launchArguments(agent: agent, sessionID: session.id, files: $0, resuming: resuming)
                 } ?? []
             }
-            // Cursor reads hooks from a file in the worktree, which heed writes here only (not on hosts yet).
-            if agent.name == "cursor", worktree.location.isLocal, let heed = integration?.heedBinary {
+            // Cursor reads hooks from a file in the worktree.
+            if agent.name == "cursor", let heed = integration?.heedBinary {
                 try? AgentIntegration.installCursorHooks(worktree: worktree.path, heed: heed)
             }
             if let resume,
@@ -101,7 +100,7 @@ public enum Import {
         }
         let pane = PaneSpec(
             role: command == nil ? .shell : .agent, title: agent?.name ?? "zsh", directory: worktree.path,
-            command: command, location: worktree.location
+            command: command
         )
         let layout = SessionLayout(tabs: [PaneTab(title: command == nil ? "shell" : "agent", tree: .leaf(pane))])
         return [.sessionUpserted(session), .layoutChanged(session: session.id, layout)]

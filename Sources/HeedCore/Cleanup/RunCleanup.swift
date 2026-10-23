@@ -30,7 +30,7 @@ public enum RunCleanup {
                 continue
             }
             var dirty = false
-            if let worktree, let status = try? await Git.status(at: worktree, on: record.location) {
+            if let worktree, let status = try? await Git.status(at: worktree) {
                 dirty = status.changedFiles > 0 || status.untrackedFiles > 0
             }
             let unpushed = if let pr = Runs.prBranch(of: branch) {
@@ -46,7 +46,7 @@ public enum RunCleanup {
                     await Git.removeWorktree(record, path: worktree, branch: branch)
                 } else {
                     _ = try? await ProcessRunner.run(
-                        on: record.location, "git", ["-C", record.path, "branch", "-D", branch], timeout: .seconds(10)
+                        "git", ["-C", record.path, "branch", "-D", branch], timeout: .seconds(10)
                     )
                 }
             }

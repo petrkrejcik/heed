@@ -88,8 +88,6 @@ This page is generated from the code (`mise run shots`).
 | `inspector.toggle` | `zi` | collapse / expand the inspector |
 | `sidebar.toggle` | `zs` | collapse / expand the sessions sidebar |
 | `config.edit` |  | open config.toml in $EDITOR |
-| `host.open` | `gH` | hosts: the ones heed drives over ssh, and ones from ~/.ssh/config to add |
-| `host.filter` `[host]` | `@` | narrow the view to one host (@devbox) |
 | `agents.stop` |  | stop every agent and shell in every pane (with [sessions] persist = "zmx") |
 | `tools.detect` |  | find git and gh again (login shell PATH, usual places, [tools]) |
 | `app.quit` |  | quit Heed |

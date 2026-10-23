@@ -34,9 +34,7 @@ struct Sidebar: View {
                                         pilot: model.pilotStatus(of: session),
                                         group: section.group,
                                         label: Self.showsLabel(section.group, model.sessionPilot(session))
-                                            ? model.watchLabel(of: session) : nil,
-                                        hostColor: session.host.flatMap { model.config.hosts[$0]?.color },
-                                        hostLink: session.host.map { model.hostStatus($0) }
+                                            ? model.watchLabel(of: session) : nil
                                     )
                                     .contentShape(Rectangle())
                                     .onTapGesture { model.clickSession(session.id) }
@@ -134,9 +132,6 @@ struct SessionRow: View {
     var group: SessionGroup = .working
     /// What heed is doing about its PRs ("getting it merged · waiting for checks"), shown instead of the agent's line.
     var label: String?
-    /// For a session on a host: its colour (`[hosts.x] color`) and how the link stands.
-    var hostColor: String?
-    var hostLink: HostStatus?
 
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
@@ -157,7 +152,6 @@ struct SessionRow: View {
                     Spacer(minLength: 4)
                     if let pinNumber { KeyCap(text: "'\(pinNumber)") }
                     if let pilot, pilot != .unwatched { PilotMark(status: pilot, compact: true) }
-                    if let host = session.host { HostChip(location: .host(host), color: hostColor) }
                     if !session.trackedPRs.isEmpty {
                         Text("\(session.trackedPRs.count) PR")
                             .font(Theme.mono(10.5))
@@ -195,25 +189,11 @@ struct SessionRow: View {
         // Watching asks to be left be: a little quieter than what is yours.
         .opacity(compact ? 0.8 : 1)
         .background(isCursor ? Theme.bg3 : .clear)
-        // A session on a host gets a rail in the host's colour: dashed while the link is down, dimmed when offline.
-        .overlay(alignment: .leading) {
-            if let host = session.host {
-                let palette = HostPalette.color(for: host, configured: hostColor)
-                if hostLink?.isConnected == false {
-                    Rectangle().stroke(palette.swatch, style: StrokeStyle(lineWidth: 3, dash: [4, 4]))
-                        .frame(width: 1.5).padding(.vertical, 4).opacity(0.7)
-                } else {
-                    palette.swatch.frame(width: 3).padding(.vertical, 4)
-                }
-            }
-        }
-        .opacity(isOffline ? 0.55 : 1)
         .overlay(alignment: .topLeading) {
             if let hint { HintBadge(label: hint).padding(.leading, 8).padding(.top, 8) }
         }
     }
 
-    private var isOffline: Bool { if case .offline = hostLink { true } else { false } }
     private var isStalled: Bool { if case .stalled = pilot { true } else { false } }
     /// One line plus heed's label: Watching, unless the cursor is on it.
     private var compact: Bool { group == .watching && !isCursor }

@@ -67,7 +67,6 @@ final class AppModel {
     /// What the pilot noticed and did, newest first.
     private(set) var pilotLog: [PilotEvent] = [] { didSet { rebuildList() } }
     private(set) var mergeRuns: [String: [MergeRun]] = [:]
-    private(set) var registeredWorktrees: Set<String> = []
     private(set) var list = SessionList([])
     private(set) var settings: WorkSettings
     private(set) var config = HeedConfig.default
@@ -226,10 +225,8 @@ final class AppModel {
         keyProblems = built.problems
         if isFixture {
             config.issues = Fixtures.issueRules
-            config.hosts = Fixtures.hosts
             config.pilot = Fixtures.pilotRules
             zmxHealth = ZmxHealth(path: "/opt/homebrew/bin/zmx", version: "0.8.1")
-            hostStatuses = Fixtures.hostStatuses
             issueInfo = Fixtures.issueInfo
         }
         replace(with: domain)
@@ -409,11 +406,7 @@ final class AppModel {
         }.value
         // An agent whose pane's zmx session is alive never stopped: its pane reattaches, there is nothing to resume.
         let live = TerminalSurfaces.shared.livePanes
-        // Sessions on hosts are never resumed: with zmx there their agents never stopped, and without it there is
-        // nothing to resume into.
-        let remote = Set(domain.sessions.filter { $0.host != nil }.map(\.id))
         let candidates = found.filter { candidate in
-            guard !remote.contains(candidate.id) else { return false }
             guard let layout = domain.layouts[candidate.id],
                   let (_, paneID) = agentPane(in: layout) else { return true }
             return !live.contains(paneID)
@@ -542,7 +535,6 @@ final class AppModel {
         let pilotChanged = decoded.pilot != config.pilot
         config = decoded
         settings = decoded.work
-        Remote.setTargets(Dictionary(uniqueKeysWithValues: decoded.hosts.map { ($0.key, $0.value.ssh) }))
         if !isFixture {
             TerminalSurfaces.shared.persist = ZmxHealth.decide(decoded.work.persist, health: zmxHealth)
         }
@@ -715,7 +707,7 @@ final class AppModel {
         list = SessionList(filter.isEmpty ? sessions : sessions.filter { session in
             FilterQuery.matches(
                 filter,
-                [session.title, session.worktreeName, session.branch, session.agent, session.location.label]
+                [session.title, session.worktreeName, session.branch, session.agent]
                     + session.repos.map(\.name) + session.trackedPRs.map { "#\($0.number)" }
             )
         }, pilot: sessionPilot, hold: hold)
@@ -748,7 +740,6 @@ final class AppModel {
         pilotLog = domain.pilotLog
         mergeRuns = domain.mergeRuns
         runs = domain.runs
-        registeredWorktrees = domain.registeredWorktrees
         cursor = min(cursor, max(list.ordered.count - 1, 0))
     }
 
@@ -765,10 +756,6 @@ final class AppModel {
         if after.pilotLog != before.pilotLog { pilotLog = after.pilotLog }
         if after.mergeRuns != before.mergeRuns { mergeRuns = after.mergeRuns }
         if after.runs != before.runs { runs = after.runs }
-        if after.registeredWorktrees != before.registeredWorktrees {
-            registeredWorktrees = after.registeredWorktrees
-            rebuildWorktreeRows()
-        }
         if after.sessions != before.sessions { sessions = after.sessions }
         if after.layouts != before.layouts { layouts = after.layouts }
         if after.repos != before.repos { repos = after.repos }
@@ -782,7 +769,7 @@ final class AppModel {
         Domain(
             repos: repos, worktrees: worktrees, sessions: sessions, layouts: layouts, history: history, github: github,
             pullDetails: pullDetails, feedback: feedback, pilotLog: pilotLog,
-            mergeRuns: mergeRuns, registeredWorktrees: registeredWorktrees, runs: runs
+            mergeRuns: mergeRuns, runs: runs
         )
     }
 
@@ -796,7 +783,7 @@ final class AppModel {
         commit(found.map { .repoUpserted($0) })
         // Every clone, not one per repo: two checkouts of the same GitHub repo (in ~/Projects and ~/code, say) share
         // one record, and each has worktrees of its own. A repo's list is committed once all its clones answered.
-        let known = repos.filter { $0.location.isLocal && !found.map(\.path).contains($0.path) }
+        let known = repos.filter { !found.map(\.path).contains($0.path) }
         let clones = Dictionary(grouping: found + known) { $0.repo }
         await withTaskGroup(of: [DomainChange].self) { group in
             for (repo, records) in clones {
@@ -820,152 +807,8 @@ final class AppModel {
                 commit(changes)
             }
         }
-        await refreshHosts()
     }
 
-    // MARK: Hosts
-
-    /// How each host's link stands, by name: the checks heed last ran.
-    private(set) var hostStatuses: [String: HostStatus] = [:]
-
-    /// `[hosts.<name>]`, by name.
-    var hostList: [HostConfig] { config.hosts.values.sorted { $0.name < $1.name } }
-
-    func hostStatus(_ name: String) -> HostStatus { hostStatuses[name] ?? .unknown }
-
-    /// Checks every host, and for each that answers: its repos and their worktrees, with status. Hosts that do not
-    /// answer keep what was last seen of them (shown stale).
-    func refreshHosts() async {
-        guard !isFixture else { return }
-        await withTaskGroup(of: (String, HostStatus).self) { group in
-            for host in hostList {
-                let lastSeen: Date? = if case let .connected(info) = hostStatuses[host.name] { info.checkedAt } else {
-                    if case let .offline(_, seen) = hostStatuses[host.name] { seen } else { nil }
-                }
-                group.addTask { await (host.name, HostProbe.check(host.name, lastSeen: lastSeen)) }
-            }
-            for await (name, status) in group {
-                hostStatuses[name] = status
-                if case let .connected(info) = status { TerminalSurfaces.shared.hostZmx[name] = info.zmxPath }
-            }
-        }
-        startHostEvents()
-        for host in hostList where hostStatus(host.name).isConnected {
-            let records = await RemoteScan.scan(host)
-            commit(records.map { .repoUpserted($0) })
-            for record in records {
-                guard var listed = try? await Git.worktrees(of: record) else { continue }
-                for index in listed.indices {
-                    listed[index].status = try? await Git.status(at: listed[index].path, on: record.location)
-                }
-                commit(.worktreesListed(repo: record.repo, listed))
-            }
-        }
-    }
-
-    /// Whether heed manages a worktree, and how it stands.
-    func registration(of worktree: Worktree) -> WorktreeRegistration {
-        guard let host = worktree.location.hostName else { return .registered }
-        if !hostStatus(host).isConnected, !isFixture, hostStatuses[host] != nil { return .stale }
-        if case .offline = hostStatus(host) { return .stale }
-        return registeredWorktrees.contains(worktree.id) ? .registered : .discovered
-    }
-
-    // MARK: Sessions on hosts
-
-    private var hostEvents: [String: HostEventStream] = [:]
-
-    /// One event stream per host that has sessions and answers: its agents' hooks, back into `receive`.
-    private func startHostEvents() {
-        guard !isFixture else { return }
-        for host in Set(sessions.compactMap(\.host)) where hostStatus(host).isConnected {
-            let stream = hostEvents[host] ??
-                HostEventStream(host: host) { [weak self] message in self?.receive(message) }
-            hostEvents[host] = stream
-            stream.start()
-        }
-    }
-
-    /// What heed puts on a host for its agents' hooks, with the paths they are given there.
-    private func hostIntegration(home: String) -> (files: [String: String], integration: IntegrationFiles) {
-        let integration = IntegrationFiles(
-            directory: URL(fileURLWithPath: home).appendingPathComponent(".heed"),
-            heedBinary: "\(home)/.heed/bin/heed-hook"
-        )
-        let files = [
-            "~/.heed/claude-hooks.json": AgentIntegration.claudeSettingsJSON(),
-            "~/.heed/heed-pi.js": AgentIntegration.piExtensionSource,
-            "~/.heed/heed-opencode.js": AgentIntegration.opencodePluginSource,
-        ]
-        return (files, integration)
-    }
-
-    /// `↩` on a registered worktree on a host: heed's files go on the host if they are not there yet, then the worktree
-    /// becomes a session there, its agent in a zmx session that outlives the link.
-    private func importOnHost(_ rows: [Worktree]) {
-        guard let host = rows.first?.location.hostName, rows.allSatisfy({ $0.location == .host(host) }) else {
-            return flash = "one host at a time"
-        }
-        guard case let .connected(info) = hostStatus(host), let home = info.home else {
-            return flash = "@\(host) does not answer: gH shows why"
-        }
-        let rows = rows.filter { session(for: $0) == nil }
-        guard !rows.isEmpty else { return }
-        guard !isFixture else { return flash = "fixture: no IO" }
-        let (files, integration) = hostIntegration(home: home)
-        let agent = settings.agent(settings.defaultAgent)
-        flash = "setting up @\(host)…"
-        Task {
-            do {
-                try await HostSetup.install(on: host, files: files)
-            } catch {
-                flash = "could not set up @\(host): \(error)"
-                return
-            }
-            var firstID: String?
-            for worktree in rows {
-                let changes = Import.session(for: worktree, agent: agent, resume: nil, integration: integration)
-                for case let .layoutChanged(_, layout) in changes {
-                    for pane in layout.tabs.flatMap(\.tree.panes) where pane.command != nil {
-                        TerminalSurfaces.shared.autostartPanes.insert(pane.id)
-                    }
-                }
-                for case let .sessionUpserted(session) in changes where firstID == nil {
-                    firstID = session.id
-                }
-                commit(changes)
-                commit(.worktreeRegistered(worktree.id))
-            }
-            startHostEvents()
-            view = .sessions
-            if let firstID { select(sessionID: firstID) }
-            flash = info.zmxPath == nil
-                ? "started \(agent?.name ?? "a shell") on @\(host), not persistent: install zmx there (gH says how)"
-                : "started \(agent?.name ?? "a shell") on @\(host)"
-        }
-    }
-
-    /// `↩` on a discovered worktree: heed manages it from now on.
-    private func register(_ worktrees: [Worktree]) {
-        let found = worktrees.filter { registration(of: $0) == .discovered }
-        guard !found.isEmpty else { return }
-        commit(found.map { .worktreeRegistered($0.id) })
-        flash = found.count == 1
-            ? "registered \(found[0].repo.name)/\(found[0].branch ?? "worktree") \(found[0].location.label)"
-            : "registered \(found.count) worktrees"
-    }
-
-    // MARK: Hosts picker (gH)
-
-    /// A host in the picker: one heed has, or one from ~/.ssh/config it could add.
-    struct HostRow: Sendable, Identifiable {
-        let name: String
-        let summary: String
-        let configured: Bool
-        var id: String { name }
-    }
-
-    private(set) var hostsPicker: Typeahead<HostRow>?
     /// `gB` / `gR` with more than one place to go.
     private(set) var linkPicker: LinkPicker?
     /// The get it green / get it merged runs running now, by run id: their tab, pane and worktree. In memory only.
@@ -996,49 +839,6 @@ final class AppModel {
     /// Titles and states of the issues sessions link to (fetched, not cached on disk).
     private(set) var issueInfo: [IssueRef: IssueInfo] = [:]
     private var issueInfoFetchedAt: [IssueRef: Date] = [:]
-
-    private func openHostsPicker() {
-        let configured = hostList.map { HostRow(name: $0.name, summary: $0.ssh, configured: true) }
-        let text = isFixture ? "" : (try? String(contentsOf: SSHConfig.defaultFile(), encoding: .utf8)) ?? ""
-        let available = SSHConfig.entries(text).filter { config.hosts[$0.alias] == nil }
-            .map { HostRow(name: $0.alias, summary: $0.summary, configured: false) }
-        hostsPicker = Typeahead(items: configured + available) { [$0.name, $0.summary] }
-        if !isFixture { Task { await refreshHosts() } }
-    }
-
-    private func answerHostsPicker(_ stroke: KeyStroke) {
-        guard var picker = hostsPicker else { return }
-        switch picker.handle(stroke) {
-        case .handled: hostsPicker = picker
-        case .cancel: hostsPicker = nil
-        case let .picked(row): pickHost(row)
-        }
-    }
-
-    /// ↩ on a host: one from ~/.ssh/config is added (`[hosts.<name>]`) and checked; one heed has is checked again.
-    func pickHost(_ row: HostRow) {
-        if !row.configured {
-            setConfig(["hosts", row.name, "ssh"], .string(row.name))
-            flash = "added @\(row.name); checking it…"
-        } else {
-            flash = "checking @\(row.name)…"
-        }
-        hostsPicker = nil
-        guard !isFixture else { return }
-        Task { await refreshHosts() }
-    }
-
-    func cancelHostsPicker() { hostsPicker = nil }
-
-    /// `@` (or `:host.filter devbox`): narrows the view you are on to one host, through its filter.
-    private func filterByHost(_ name: String?) {
-        if let name {
-            filters[view] = "@\(name)"
-            return
-        }
-        startFilter()
-        filters[view] = "@"
-    }
 
     // MARK: Derived
 
@@ -1081,8 +881,7 @@ final class AppModel {
             guard let session = currentSession else { return nil }
             return TitleContext(
                 lead: session.repos.first?.name, main: session.branch,
-                detail: [session.trackedPRs.first.map { "#\($0.number)" }, session.host.map { "@\($0)" }]
-                    .compactMap(\.self).joined(separator: " ").nilIfEmpty
+                detail: session.trackedPRs.first.map { "#\($0.number)" }
             )
         case .inbox:
             let rows = inboxRows
@@ -1135,10 +934,9 @@ final class AppModel {
 
     private func rebuildWorktreeRows() {
         let counts = RepoOrder.worktreeCounts(worktrees)
-        // One row per repo in the repo list, wherever its clones are: the one on this Mac if there is one.
+        // One row per repo in the repo list, however many clones it has.
         var seen: Set<Repo> = []
-        let unique = (repos.filter(\.location.isLocal) + repos.filter { !$0.location.isLocal })
-            .filter { seen.insert($0.repo).inserted }
+        let unique = repos.filter { seen.insert($0.repo).inserted }
         sortedRepos = RepoOrder.sorted(unique, counts: counts)
         worktreeCount = counts.values.reduce(0, +)
         let rank = Dictionary(sortedRepos.enumerated().map { ($1.id, $0) }) { first, _ in first }
@@ -1149,7 +947,7 @@ final class AppModel {
         let matching = filter.isEmpty ? added : added.filter { worktree in
             FilterQuery.matches(filter, [
                 worktree.repo.slug, worktree.branch ?? "", Paths.split(worktree.path, roots: roots).relative,
-                session(for: worktree)?.agent ?? "", worktree.location.label,
+                session(for: worktree)?.agent ?? "",
             ])
         }
         worktreeRows = matching.sorted {
@@ -1160,9 +958,7 @@ final class AppModel {
     }
 
     func session(for worktree: Worktree) -> Session? {
-        sessions.first {
-            $0.location == worktree.location && $0.branch == worktree.branch && $0.repos.contains(worktree.repo)
-        }
+        sessions.first { $0.branch == worktree.branch && $0.repos.contains(worktree.repo) }
     }
 
     /// Rows selected in VISUAL: the range from the anchor to the cursor, plus rows toggled with space.
@@ -1207,10 +1003,6 @@ final class AppModel {
         }
         if importPicker != nil {
             answerImportPicker(stroke)
-            return true
-        }
-        if hostsPicker != nil {
-            answerHostsPicker(stroke)
             return true
         }
         if linkPicker != nil {
@@ -1379,7 +1171,7 @@ final class AppModel {
             openStartWork(prompt: "")
             if worktreeRows.indices.contains(repoCursor) {
                 let row = worktreeRows[repoCursor]
-                startWork?.choose(repo: StartContext.id(row.repo, row.location))
+                startWork?.choose(repo: row.repo.slug)
             }
         case "repo.scan": rescan()
         case "repo.add": addRepo(command.arguments.joined(separator: " "))
@@ -1403,8 +1195,6 @@ final class AppModel {
         case "view.issues": view = .issues
         case "view.prs": view = .prs
         case "overlay.help": overlay = overlay == .help ? nil : .help
-        case "host.open": openHostsPicker()
-        case "host.filter": filterByHost(command.arguments.first)
         case "agents.stop": confirmStopAgents()
         case "overlay.diff": toggleDiff()
         case "diff.hunk.next": jumpHunk(by: 1)
@@ -2100,7 +1890,7 @@ final class AppModel {
     private func openImportPicker() {
         let rank = Dictionary(sortedRepos.enumerated().map { ($1.id, $0) }) { first, _ in first }
         let candidates = worktrees.filter {
-            session(for: $0) == nil && $0.location.isLocal && !($0.branch.map(Runs.isRunBranch) ?? false)
+            session(for: $0) == nil && !($0.branch.map(Runs.isRunBranch) ?? false)
         }.sorted {
             if $0.isMain != $1.isMain { return !$0.isMain }
             return $0.repo.slug == $1.repo.slug ? $0.path < $1.path
@@ -2140,15 +1930,6 @@ final class AppModel {
 
     private func openOrImport(_ rows: [Worktree]) {
         guard !rows.isEmpty else { return }
-        // On a host: ↩ registers what a scan found. Sessions there are not supported yet.
-        if rows.contains(where: { !$0.location.isLocal }) {
-            if rows.contains(where: { registration(of: $0) == .discovered }) { return register(rows) }
-            if let existing = session(for: rows[0]) {
-                view = .sessions
-                return select(sessionID: existing.id)
-            }
-            return importOnHost(rows)
-        }
         let missing = rows.filter { session(for: $0) == nil }
         if missing.isEmpty, let session = session(for: rows[0]) {
             view = .sessions
@@ -2302,7 +2083,6 @@ final class AppModel {
                     filter,
                     [
                         entry.session.title, entry.session.prompt, entry.session.branch, entry.session.agent,
-                        entry.session.location.label,
                     ] + entry.session.repos.map(\.name)
                 )
         }
@@ -3415,10 +3195,10 @@ final class AppModel {
         }
         guard let agent = self.settings.agent(agentName) else { return fail("no agent \(agentName)") }
         guard let main = worktrees.first(where: { session.owns($0) && $0.repo == ref.repo }),
-              let record = repos.first(where: { $0.repo == ref.repo && $0.location == main.location })
+              let record = repos.first(where: { $0.repo == ref.repo })
         else { return fail("no worktree of \(ref.repo.name)") }
         guard let prBranch = github.pull(ref)?.headBranch ?? main.branch else { return fail("no branch") }
-        let root = session.host.flatMap { config.hosts[$0]?.worktreeRoot } ?? self.settings.worktreeRoot
+        let root = self.settings.worktreeRoot
         let branch = Runs.branch(goal, prBranch: prBranch)
         let startSHA = await Git.remoteSHA(record, branch: prBranch)
         let worktree: String
@@ -3431,29 +3211,15 @@ final class AppModel {
             return fail("could not make its worktree: \(error)")
         }
         guard var layout = layouts[session.id] else { return fail("the session is gone") }
-        let files: IntegrationFiles? = if let host = session.host {
-            if case let .connected(info) = hostStatus(host), let home = info.home {
-                hostIntegration(home: home).integration
-            } else {
-                nil
-            }
-        } else {
-            integration
-        }
         let agentSession = UUID().uuidString.lowercased()
         let command = agent.launchCommand(
             prompt: Runs.prompt(prompt, prBranch: prBranch, branch: branch),
-            extraArguments: files.map { AgentIntegration.launchArguments(
-                agent: agent,
-                sessionID: agentSession,
-                files: $0
-            ) }
-                ?? [],
-            environment: files.map { AgentIntegration.launchEnvironment(agent: agent, files: $0) } ?? [:],
+            extraArguments: AgentIntegration.launchArguments(agent: agent, sessionID: agentSession, files: integration),
+            environment: AgentIntegration.launchEnvironment(agent: agent, files: integration),
             model: settings.model
         )
         let pane = PaneSpec(
-            role: .helper, title: goal.rawValue, directory: worktree, command: command, location: session.location
+            role: .helper, title: goal.rawValue, directory: worktree, command: command
         )
         let tab = PaneTab(title: Runs.title(goal, ref: ref, pullCount: session.trackedPRs.count), tree: .leaf(pane))
         layout.tabs.append(tab)
@@ -3498,7 +3264,7 @@ final class AppModel {
                 0
             }
             await Git.removeWorktree(live.record, path: live.worktree, branch: live.branch)
-            await Git.fastForwardIfClean(at: live.mainPath, on: live.record.location)
+            await Git.fastForwardIfClean(at: live.mainPath)
             guard var run = runs.first(where: { $0.id == id }) else { return }
             run.endedAt = Date()
             run.outcome = forced ?? Runs.outcome(before: before, after: after, commits: count)
@@ -3537,7 +3303,7 @@ final class AppModel {
     func cleanUpRunLeftovers() async -> [RunCleanup.Leftover] {
         let live = Set(liveRuns.values.map(\.branch))
         var result: [RunCleanup.Leftover] = []
-        for record in repos where record.location.isLocal {
+        for record in repos {
             result += await RunCleanup.clean(record, live: live)
         }
         return result
@@ -4229,7 +3995,7 @@ final class AppModel {
         if view == .history { view = .sessions }
         startWork = StartWorkForm(
             repos: repos, lastWorked: StartWork.lastWorked(sessions: sessions, closed: history), context: context,
-            settings: settings, prompt: prompt, integration: integration, hostIntegrations: hostIntegrations()
+            settings: settings, prompt: prompt, integration: integration
         )
     }
 
@@ -4248,19 +4014,19 @@ final class AppModel {
         case .sessions:
             return currentSession.map { session in
                 StartContext(
-                    repos: session.repos.map { StartContext.id($0, session.location) }, label: session.worktreeName
+                    repos: session.repos.map(\.slug), label: session.worktreeName
                 )
             }
         case .repos:
             guard worktreeRows.indices.contains(repoCursor) else { return nil }
             let row = worktreeRows[repoCursor]
             return StartContext(
-                repos: [StartContext.id(row.repo, row.location)], label: row.branch ?? row.repo.name
+                repos: [row.repo.slug], label: row.branch ?? row.repo.name
             )
         case .history:
             return selectedHistory.map { entry in
                 StartContext(
-                    repos: entry.session.repos.map { StartContext.id($0, entry.session.location) },
+                    repos: entry.session.repos.map(\.slug),
                     label: entry.session.worktreeName
                 )
             }
@@ -4278,17 +4044,6 @@ final class AppModel {
                 ($0.ref.repo, "\($0.ref.repo.name)#\($0.ref.number)")
             })
         }
-    }
-
-    /// Hook file paths on each host that answers, so work started there points its agents at them.
-    private func hostIntegrations() -> [String: IntegrationFiles] {
-        var result: [String: IntegrationFiles] = [:]
-        for host in config.hosts.keys {
-            if case let .connected(info) = hostStatus(host), let home = info.home {
-                result[host] = hostIntegration(home: home).integration
-            }
-        }
-        return result
     }
 
     private func handleStartWork(_ stroke: KeyStroke) {
@@ -4316,33 +4071,18 @@ final class AppModel {
             startWork = nil
             return
         }
-        let host = plan.location.hostName
-        var hostFiles: [String: String] = [:]
-        if let host {
-            guard case let .connected(info) = hostStatus(host), let home = info.home else {
-                startWorkError = "@\(host) does not answer: gH shows why"
-                return
-            }
-            hostFiles = hostIntegration(home: home).files
-        }
         startingWork = true
         let settings = settings
-        let hosts = config.hosts
         Task {
             defer { startingWork = false }
             do {
-                if let host {
-                    flash = "setting up @\(host)…"
-                    try await HostSetup.install(on: host, files: hostFiles)
-                }
-                let changes = try await StartWork.execute(plan, settings: settings, hosts: hosts)
+                let changes = try await StartWork.execute(plan, settings: settings)
                 for case let .layoutChanged(_, layout) in changes {
                     for pane in layout.tabs.flatMap(\.tree.panes) where pane.command != nil {
                         TerminalSurfaces.shared.autostartPanes.insert(pane.id)
                     }
                 }
                 commit(changes)
-                if host != nil { startHostEvents() }
                 startWork = nil
                 view = .sessions
                 if case let .sessionUpserted(session)? = changes.first(where: {
