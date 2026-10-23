@@ -67,7 +67,6 @@ This page is generated from the code (`mise run shots`).
 | `view.inbox` | `gm` | inbox |
 | `view.issues` | `gi` | issues |
 | `view.prs` | `gp` | pull requests |
-| `view.watch` | `gw` | watch: the PRs your sessions track, what heed does for each and has done |
 | `view.repos` | `gr` | repos & worktrees |
 | `overlay.pr` |  | PR overlay for this session (toggle) |
 | `overlay.item` | `go` | open the PR or issue under the cursor; in Sessions, the session's PR (toggle) |
@@ -115,11 +114,11 @@ This page is generated from the code (`mise run shots`).
 
 | Command | Keys | Does |
 |---|---|---|
-| `select.toggle` | `<Space>` (VISUAL), `<Space>` (inbox), `<Space>` (issues), `<Space>` (prs), `<Space>` (watch) | toggle row |
+| `select.toggle` | `<Space>` (VISUAL), `<Space>` (inbox), `<Space>` (issues), `<Space>` (prs) | toggle row |
 | `history.reopen` | `R` (history) | reopen: resume, recreating the worktree if needed |
 | `history.again` | `O` (history) | start a new session from this prompt |
 | `history.outcome` | `t` (history) | cycle the outcome filter |
-| `github.sync` | `r` (inbox), `r` (issues), `r` (pr), `r` (prs), `r` (watch) | sync GitHub now |
+| `github.sync` | `r` (inbox), `r` (issues), `r` (pr), `r` (prs) | sync GitHub now |
 | `items.start` | `s` (inbox), `s` (issue), `s` (issues) | start one session from the picked items |
 | `items.add` | `a` (inbox), `a` (issue), `a` (issues) | add the picked items to the current session |
 | `items.read` | `x` (inbox) | mark read |
@@ -132,16 +131,15 @@ This page is generated from the code (`mise run shots`).
 | `feedback.send` | `s` (pr) | send queued feedback to the session |
 | `feedback.mode` |  | pilot.green, by its former name |
 | `feedback.watch` |  | pilot.watch, by its former name |
-| `pilot.why` |  | what holds the PR back from green, rule by rule (in the Watch view) |
+| `pilot.why` |  | what holds the PR back from green |
 | `pilot.watch` | `zw` | watch or stop watching the PR (or the picked PRs) |
 | `pilot.green` | `zg` | cycle get it green for the PR: off, ask, auto |
 | `pilot.run` |  | show the session's running get it green / get it merged run |
 | `pilot.retry` | `zr` | one more round of get it green for a stalled PR (or the picked PRs) |
-| `pilot.copilot` | `C` (pr), `C` (watch) | ask GitHub's Copilot coding agent to resolve the PR's conflicts and address its comments |
+| `pilot.copilot` | `C` (pr) | ask GitHub's Copilot coding agent to resolve the PR's conflicts and address its comments |
 | `pilot.reviewers` |  | ask the PR's configured reviewers ([pilot] reviewers) to review it |
 | `pilot.merge` | `zm` | get it merged for the PR (or the picked PRs): off or auto |
-| `merge.run` `[repo|all]` | `R` (watch) | run a repo's merge queue now (no name: the PR's repo; all: every queue) |
-| `merge.queue` `[repo]` | `gM` | show a repo's merge queue and its runs (no name: the PR's repo) |
+| `merge.run` `[repo|all]` |  | run a repo's merge queue now (no name: the PR's repo; all: every queue) |
 | `pilot.pause` `[duration]` | `zp`, `zp` (VISUAL) | pause the PR (or the picked PRs), or resume: 30m, 1h, 4h, 1d, forever, off |
 | `feedback.dismiss` | `x` (pr) | dismiss the item |
 | `feedback.session` | `S` (pr) | start a new session from this PR |

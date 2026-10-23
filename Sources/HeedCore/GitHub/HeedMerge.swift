@@ -1,7 +1,7 @@
 import Foundation
 
 /// `merge = "heed"`: the rules a PR meets before heed merges it itself, checked again just before it does. The same
-/// shape as the green verdict, so the Watch view lists them the same way.
+/// shape as the green verdict.
 public enum HeedMerge {
     public static func verdict(
         _ detail: PullDetail, settings: PilotSettings, selfReview: SelfReview?, now: Date

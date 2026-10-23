@@ -59,17 +59,6 @@ Or [download the latest release](https://github.com/heed-build/heed/releases/lat
   feature a named command you can rebind.
 - **Worktrees.** Create, list and remove worktrees across repos; removal never touches dirty or unpushed work.
 
-<table>
-  <tr>
-    <td><img src="docs/images/shots/landing/green.png" alt="The Watch view: PRs by what they need, a PR's green checklist, and what heed did"></td>
-    <td><img src="docs/images/shots/landing/merged.png" alt="A PR heed merges: each merge rule and the one holding it back"></td>
-  </tr>
-  <tr>
-    <td align="center"><sub>Watch (<code>gw</code>): every PR by what it needs</sub></td>
-    <td align="center"><sub>Get it merged: the rules, and the repo's merge queue</sub></td>
-  </tr>
-</table>
-
 heed keeps a record of each session; the agents own their transcripts. It is macOS only and not sandboxed: it has to
 spawn shells, git and agents.
 

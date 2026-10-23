@@ -13,7 +13,7 @@ public enum CommandAliases {
         case "help": return CommandInvocation(name: "overlay.help")
         case "q", "quit": return CommandInvocation(name: "app.quit")
         default:
-            if let view = ["sessions", "inbox", "issues", "prs", "watch", "repos", "history"]
+            if let view = ["sessions", "inbox", "issues", "prs", "repos", "history"]
                 .first(where: { $0 == typed.name })
             {
                 return CommandInvocation(name: "view", arguments: [view])

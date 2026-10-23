@@ -18,7 +18,6 @@ enum ShotRegion: String, CaseIterable {
     case pipeline, delivery, promptPreview, reader
     case diffFiles, diffBody
     case historyList, historyDetail
-    case pilotDetail, pilotActivity
 }
 
 struct ShotRegionKey: PreferenceKey {

@@ -355,7 +355,7 @@ private struct PilotSettingsView: View {
         let pilot = model.config.pilot
         VStack(alignment: .leading, spacing: 16) {
             Text("Pilot").font(Theme.ui(17, weight: .semibold))
-            Text("What heed does with the PRs your sessions track. The Watch view (gw) shows them, and what it did.")
+            Text("What heed does with the PRs your sessions track.")
                 .font(Theme.ui(12.5)).foregroundStyle(Theme.fg2)
             GroupLabel(title: "Watching")
             Field(

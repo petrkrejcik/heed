@@ -83,8 +83,6 @@ enum Shots {
         Shot(id: "landing/agents", subject: .settings(.agents), size: CGSize(width: 1100, height: 700)),
         Shot(id: "landing/keys", chrome: false, keys: "?"),
         Shot(id: "landing/prs", chrome: false, keys: "gp"),
-        Shot(id: "landing/green", chrome: false, keys: "gw"),
-        Shot(id: "landing/merged", chrome: false, keys: "gw/anchors<CR>"),
         Shot(id: "landing/worktrees", chrome: false, keys: "gr4jvj"),
         Shot(id: "landing/resume", chrome: false, prepare: { $0.showResumeForFixture() }),
         Shot(id: "landing/hosts", chrome: false, keys: "G"),
@@ -174,19 +172,6 @@ enum Shots {
     ]
 
     static let pilot: [Shot] = [
-        // The Watch view: watched PRs by state, the selected PR's items and timeline, the pilot's activity.
-        Shot(id: "watch/view", keys: "gw"),
-        Shot(id: "watch/stalled", keys: "gw", crop: .list),
-        Shot(id: "watch/visual", keys: "gwjjvj", crop: .list),
-        Shot(id: "watch/paused", keys: "gwjjvjzp", crop: .list),
-        Shot(id: "watch/detail", keys: "gw", crop: .pilotDetail),
-        // The green PR's checklist, and the conflicting one's.
-        Shot(id: "watch/green", keys: "gw/moved<CR>", crop: .pilotDetail),
-        Shot(id: "watch/conflict", keys: "gw/spec<CR>", crop: .pilotDetail),
-        // Get it merged: a repo's merge queue with its runs, and the queues above the activity.
-        Shot(id: "watch/merge-queue", keys: "gw/moved<CR>gM", crop: .pilotDetail),
-        Shot(id: "watch/queues", keys: "gw", crop: .pilotActivity),
-        Shot(id: "watch/heed", keys: "gw/anchors<CR>", crop: .pilotDetail),
         Shot(id: "watch/inspector", crop: .inspector),
         Shot(id: "watch/prs", keys: "gp", crop: .list),
     ]

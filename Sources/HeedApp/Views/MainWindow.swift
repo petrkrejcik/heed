@@ -31,8 +31,6 @@ struct MainWindow: View {
                         IssuesView()
                     case .prs:
                         PullRequestsView()
-                    case .watch:
-                        WatchView()
                     }
                 }
             }
@@ -330,7 +328,7 @@ struct StatusBar: View {
 
     private var position: String {
         switch model.view {
-        case .inbox, .issues, .prs, .watch:
+        case .inbox, .issues, .prs:
             let count = model.itemIDs(model.view).count
             return "\(count == 0 ? 0 : model.cursor(in: model.view) + 1)/\(count)"
         case .repos: return "\(model.worktreeRows.isEmpty ? 0 : model.repoCursor + 1)/\(model.worktreeRows.count)"
@@ -380,10 +378,9 @@ struct StatusBar: View {
         case .normal where model.view == .inbox: "↩ read · space pick · v range · s start session · a add · x mark read · t unread/all · / filter"
         case .normal where model.view == .issues: "↩ read · space pick · s start session · t filter · ⇥ repo · w all/yours · / filter"
         case .normal where model.view == .prs: "↩ open · \(pilotHints) · v select · gS session · r sync"
-        case .normal where model.view == .watch: "↩ open · \(pilotHints) · v select · R merge now · gM queue"
         case .normal: "i insert · o start work · m pin · { } group · Iw import · : command · ? keys"
         case .insert: "⇧⎋ or \(KeyCapText.of(model.config.insertEscape)) normal · ⌘/ keys"
-        case .visual where model.view == .watch || model.view == .prs:
+        case .visual where model.view == .prs:
             "\(model.pickedIDs(model.view).count) selected · \(model.keyText(for: "pilot.pause")) pause or resume · space toggle · ⎋ cancel"
         case .visual: "\(model.selectedRows.count) selected · space toggle · y copy path · o open session · ⎋ cancel"
         case .command: "⇥ complete · ↩ run · ⎋ cancel"

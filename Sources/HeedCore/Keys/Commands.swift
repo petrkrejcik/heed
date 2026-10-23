@@ -74,7 +74,6 @@ public enum Commands {
         .init("view.inbox", "inbox", .views),
         .init("view.issues", "issues", .views),
         .init("view.prs", "pull requests", .views),
-        .init("view.watch", "watch: the PRs your sessions track, what heed does for each and has done", .views),
         .init("view.repos", "repos & worktrees", .views),
         .init("overlay.pr", "PR overlay for this session (toggle)", .views),
         .init("overlay.item", "open the PR or issue under the cursor; in Sessions, the session's PR (toggle)", .views),
@@ -138,7 +137,7 @@ public enum Commands {
         .init("feedback.send", "send queued feedback to the session", .selection),
         .init("feedback.mode", "pilot.green, by its former name", .selection),
         .init("feedback.watch", "pilot.watch, by its former name", .selection),
-        .init("pilot.why", "what holds the PR back from green, rule by rule (in the Watch view)", .selection),
+        .init("pilot.why", "what holds the PR back from green", .selection),
         .init("pilot.watch", "watch or stop watching the PR (or the picked PRs)", .selection),
         .init("pilot.green", "cycle get it green for the PR: off, ask, auto", .selection),
         .init("pilot.run", "show the session's running get it green / get it merged run", .selection),
@@ -154,12 +153,6 @@ public enum Commands {
             "run a repo's merge queue now (no name: the PR's repo; all: every queue)",
             .selection,
             arguments: "[repo|all]"
-        ),
-        .init(
-            "merge.queue",
-            "show a repo's merge queue and its runs (no name: the PR's repo)",
-            .selection,
-            arguments: "[repo]"
         ),
         .init(
             "pilot.pause", "pause the PR (or the picked PRs), or resume: 30m, 1h, 4h, 1d, forever, off", .selection,
