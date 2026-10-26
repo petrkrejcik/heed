@@ -298,34 +298,26 @@ public enum IssueVisibility: String, CaseIterable, Sendable, Codable {
     case involved
 }
 
-/// `[issues] default`, `[orgs.<org>] issues` and `[repos."org/name"] issues`: the most specific one wins.
+/// `[issues] default` and `[repos."org/name"] issues`: a repo's own setting wins.
 public struct IssueRules: Equatable, Sendable {
     public var fallback: IssueVisibility
-    public var orgs: [String: IssueVisibility]
     public var repos: [String: IssueVisibility]
 
-    public init(
-        fallback: IssueVisibility = .involved, orgs: [String: IssueVisibility] = [:],
-        repos: [String: IssueVisibility] = [:]
-    ) {
+    public init(fallback: IssueVisibility = .involved, repos: [String: IssueVisibility] = [:]) {
         self.fallback = fallback
-        self.orgs = orgs
         self.repos = repos
     }
 
     public func visibility(_ repo: Repo) -> IssueVisibility {
-        repos[repo.slug] ?? orgs[repo.org] ?? fallback
+        repos[repo.slug] ?? fallback
     }
 
-    /// Search qualifiers for the repos that show all issues: `org:` for orgs set to all (a repo there set to
-    /// involved is dropped after fetching), `repo:` for the rest, including local repos when the fallback is all.
+    /// Search qualifiers for the repos that show all issues, including local repos when the fallback is all.
     public func watchQualifiers(local: [Repo]) -> [String] {
-        let watchedOrgs = orgs.filter { $0.value == .all }.keys.sorted()
         var repoSlugs = Set(repos.filter { $0.value == .all }.keys)
         if fallback == .all {
-            repoSlugs.formUnion(local.filter { orgs[$0.org] == nil && repos[$0.slug] == nil }.map(\.slug))
+            repoSlugs.formUnion(local.filter { repos[$0.slug] == nil }.map(\.slug))
         }
-        let outside = repoSlugs.filter { slug in !watchedOrgs.contains { slug.hasPrefix("\($0)/") } }.sorted()
-        return watchedOrgs.map { "org:\($0)" } + outside.map { "repo:\($0)" }
+        return repoSlugs.sorted().map { "repo:\($0)" }
     }
 }

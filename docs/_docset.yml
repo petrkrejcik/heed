@@ -48,7 +48,7 @@ toc:
     children:
       - file: index.md
       - file: hooks.md
-      - file: custom-agents.md
+      - file: configuring-claude.md
   - folder: github
     children:
       - file: index.md

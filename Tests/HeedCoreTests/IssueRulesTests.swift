@@ -13,23 +13,19 @@ struct IssueRulesTests {
         )
     }
 
-    @Test func theMostSpecificSettingWins() {
-        let rules = IssueRules(
-            fallback: .involved, orgs: ["nullean": .all], repos: ["nullean/noisy": .involved, "employer/docs": .all]
-        )
+    @Test func aReposOwnSettingWins() {
+        let rules = IssueRules(fallback: .involved, repos: ["nullean/mermaider": .all])
         #expect(rules.visibility(work) == .involved)
         #expect(rules.visibility(oss) == .all)
-        #expect(rules.visibility(Repo(org: "nullean", name: "noisy")) == .involved)
-        #expect(rules.visibility(Repo(org: "employer", name: "docs")) == .all)
     }
 
-    @Test func watchedOrgsAreSearchedByOrgAndOtherReposByRepo() {
-        let rules = IssueRules(orgs: ["nullean": .all], repos: ["nullean/extra": .all, "employer/docs": .all])
-        #expect(rules.watchQualifiers(local: [work, oss]) == ["org:nullean", "repo:employer/docs"])
+    @Test func reposShowingAllAreSearchedByRepo() {
+        let rules = IssueRules(repos: ["nullean/extra": .all, "employer/docs": .all, "nullean/noisy": .involved])
+        #expect(rules.watchQualifiers(local: [work, oss]) == ["repo:employer/docs", "repo:nullean/extra"])
     }
 
     @Test func anAllFallbackWatchesLocalReposWithoutTheirOwnSetting() {
-        let rules = IssueRules(fallback: .all, orgs: ["employer": .involved])
+        let rules = IssueRules(fallback: .all, repos: ["employer/service": .involved])
         #expect(rules.watchQualifiers(local: [work, oss]) == ["repo:nullean/mermaider"])
     }
 
@@ -58,14 +54,11 @@ struct IssueRulesTests {
         let (config, problems) = ConfigLoader.decode("""
         [issues]
         default = "involved"
-        [orgs.nullean]
-        issues = "all"
         [repos."nullean/noisy"]
         issues = "involved"
         [repos."employer/x"]
         issues = "sometimes"
         """)
-        #expect(config?.issues.orgs == ["nullean": .all])
         #expect(config?.issues.repos == ["nullean/noisy": .involved])
         #expect(problems.map(\.path) == ["repos.employer/x.issues"])
     }

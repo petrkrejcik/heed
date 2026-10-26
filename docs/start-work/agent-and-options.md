@@ -4,8 +4,7 @@ description: Choosing the agent, and the options that change how a session start
 
 # Agent and options
 
-The agent row lists every agent Heed knows, plus **none, shell only**. `default_agent` under `[sessions]` picks the
-one selected first.
+The agent row offers claude, with its [profiles](../agents/configuring-claude.md), and **none, shell only**.
 
 ![The agent row and options, and the command the agent pane will run](../images/shots/start-work/agent-options.png)
 

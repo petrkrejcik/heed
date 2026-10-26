@@ -15,20 +15,17 @@ For each repo, the Issues view shows either every open issue or only those invol
 marks repos showing all of them.
 
 - `w` on an issue flips its repo between the two (`w` does the same in [Repos](../worktrees/index.md)).
-- Set it per org or per repo in `config.toml`; the most specific setting wins:
+- Set it per repo in `config.toml`; a repo's own setting wins over the default:
 
 ```toml
 [issues]
 default = "involved"        # only issues assigned to you or mentioning you
 
-[orgs.nullean]
-issues = "all"              # every open issue in this org's repos
-
-[repos."nullean/noisy"]
-issues = "involved"         # except this one
+[repos."nullean/mermaider"]
+issues = "all"              # every open issue in this repo
 ```
 
-Settings (`⌘,`) sets the default and each org.
+Settings (`⌘,`) sets the default and each repo.
 
 ## Filters
 

@@ -1,8 +1,8 @@
 import Foundation
 
-/// Everything `~/.config/heed/config.toml` says, as domain values. Every section has one shape: agents are all
-/// `[agents.<name>]` with the same fields (built-in or custom), key bindings are `[keys.<mode or view>]` tables of
-/// notation = command, repos and orgs are keyed by name.
+/// Everything `~/.config/heed/config.toml` says, as domain values. The agent is `[agents.claude]`, key bindings are
+/// `[keys.<mode or view>]` tables of notation = command, repos are keyed by `org/name`. Sections this build no longer
+/// has are ignored.
 public struct HeedConfig: Equatable, Sendable {
     public var work: WorkSettings
     public var insertEscape: String
@@ -15,7 +15,6 @@ public struct HeedConfig: Equatable, Sendable {
     public var keys: [Mode: [(String, String)]]
     /// `[keys.repos]`, `[keys.inbox]`, ...: per-view overrides.
     public var scopedKeys: [String: [(String, String)]]
-    public var orgColors: [String: String]
     public var repos: [String: RepoConfig]
     public var githubPollSeconds: Int
     public var tools = ToolSettings()
@@ -35,7 +34,7 @@ public struct HeedConfig: Equatable, Sendable {
     }
 
     public static let `default` = HeedConfig(
-        work: .default, insertEscape: DefaultKeys.insertEscape, keys: [:], scopedKeys: [:], orgColors: [:], repos: [:],
+        work: .default, insertEscape: DefaultKeys.insertEscape, keys: [:], scopedKeys: [:], repos: [:],
         githubPollSeconds: 60
     )
 
@@ -55,7 +54,6 @@ public struct HeedConfig: Equatable, Sendable {
             lhs.showDockState == rhs.showDockState,
             flat(lhs.keys) == flat(rhs.keys),
             flat(lhs.scopedKeys) == flat(rhs.scopedKeys),
-            lhs.orgColors == rhs.orgColors,
             lhs.repos == rhs.repos,
             lhs.githubPollSeconds == rhs.githubPollSeconds,
             lhs.tools == rhs.tools,
@@ -166,7 +164,6 @@ public enum ConfigLoader {
             config.work.prefixes.prefixes = prefixes
         }
         // [sessions]
-        if let agent = string(["sessions", "default_agent"]) { config.work.defaultAgent = agent }
         if let policy = string(["sessions", "resume_on_launch"]) {
             if let parsed = ResumePolicy(rawValue: policy) {
                 config.work.resumeOnLaunch = parsed
@@ -204,62 +201,37 @@ public enum ConfigLoader {
         // [issues]
         if let fallback = visibility(["issues", "default"]) { config.issues.fallback = fallback }
 
-        // [agents.<name>]: built-ins are overridden field by field; other names are custom agents.
-        if let agents = root.value(at: ["agents"])?.table {
-            for name in agents.keys {
-                guard agents[name]?.table != nil else {
-                    problems.append(ConfigProblem(path: "agents.\(name)", message: "expected a table"))
-                    continue
-                }
-                let base = config.work.agents.first { $0.name == name }
-                guard let command = string(["agents", name, "command"]) ?? base?.command else {
-                    problems.append(ConfigProblem(
-                        path: "agents.\(name).command",
-                        message: "a custom agent needs a command"
-                    ))
-                    continue
-                }
-                var agent = base ?? AgentProfile(name: name, command: command)
-                agent.command = command
-                if let delivery = string(["agents", name, "prompt"]) {
-                    if let parsed = PromptDelivery(rawValue: delivery) {
-                        agent.prompt = parsed
-                    } else {
-                        problems.append(ConfigProblem(
-                            path: "agents.\(name).prompt", message: "expected argument, stdin, paste or file"
-                        ))
-                    }
-                }
-                if let plan = string(["agents", name, "plan"]) { agent.planArguments = plan.isEmpty ? nil : plan }
-                if let flag = string(["agents", name, "model_flag"]) { agent.modelFlag = flag.isEmpty ? nil : flag }
-                if let resume = string(["agents", name, "resume"]) {
-                    agent.resumeArguments = resume.isEmpty ? nil : resume
-                }
-                for (profile, line) in pairs(["agents", name, "profiles"]) {
-                    agent.profiles[profile] = line
-                }
-                if let index = config.work.agents.firstIndex(where: { $0.name == name }) {
-                    config.work.agents[index] = agent
+        // [agents.claude], field by field. Other agents run in a plain terminal tab, so other tables are ignored.
+        for (index, base) in config.work.agents.enumerated() {
+            let name = base.name
+            guard let table = root.value(at: ["agents", name]) else { continue }
+            guard table.table != nil else {
+                problems.append(ConfigProblem(path: "agents.\(name)", message: "expected a table"))
+                continue
+            }
+            var agent = base
+            if let command = string(["agents", name, "command"]) { agent.command = command }
+            if let delivery = string(["agents", name, "prompt"]) {
+                if let parsed = PromptDelivery(rawValue: delivery) {
+                    agent.prompt = parsed
                 } else {
-                    config.work.agents.append(agent)
+                    problems.append(ConfigProblem(
+                        path: "agents.\(name).prompt", message: "expected argument, stdin, paste or file"
+                    ))
                 }
             }
-        }
-        if config.work.agent(config.work.defaultAgent) == nil {
-            problems.append(ConfigProblem(
-                path: "sessions.default_agent",
-                message: "no agent named \(config.work.defaultAgent)"
-            ))
-            config.work.defaultAgent = HeedConfig.default.work.defaultAgent
+            if let plan = string(["agents", name, "plan"]) { agent.planArguments = plan.isEmpty ? nil : plan }
+            if let flag = string(["agents", name, "model_flag"]) { agent.modelFlag = flag.isEmpty ? nil : flag }
+            if let resume = string(["agents", name, "resume"]) {
+                agent.resumeArguments = resume.isEmpty ? nil : resume
+            }
+            for (profile, line) in pairs(["agents", name, "profiles"]) {
+                agent.profiles[profile] = line
+            }
+            config.work.agents[index] = agent
         }
 
-        // [orgs.<name>] and [repos."org/name"]
-        if let orgs = root.value(at: ["orgs"])?.table {
-            for org in orgs.keys {
-                if let color = string(["orgs", org, "color"]) { config.orgColors[org] = color }
-                if let issues = visibility(["orgs", org, "issues"]) { config.issues.orgs[org] = issues }
-            }
-        }
+        // [repos."org/name"]
         if let repos = root.value(at: ["repos"])?.table {
             for slug in repos.keys {
                 let repo = HeedConfig.RepoConfig(
@@ -323,7 +295,6 @@ public enum ConfigLoader {
     feature = ["add", "implement", "support", "create", "introduce", "build", "feature"]
 
     [sessions]
-    default_agent = "claude"
     # On launch: ask which sessions to resume, resume them all, or none.
     resume_on_launch = "ask"           # ask | always | never
     # Typed into a resumed session that was mid-turn, once the agent is idle. "" turns it off.
@@ -341,8 +312,8 @@ public enum ConfigLoader {
 
     [issues]
     # Which issues the Issues view shows per repo: "involved" (assigned to you or mentioning you) or "all" open
-    # issues. Override per org ([orgs.<org>] issues = "all") or per repo ([repos."org/name"] issues = "involved");
-    # the most specific wins. w in Issues (I in Repos) flips the repo under the cursor.
+    # issues. Override per repo ([repos."org/name"] issues = "all"). w in Issues (I in Repos) flips the repo under the
+    # cursor.
     default = "involved"
 
     [ui]
@@ -359,20 +330,16 @@ public enum ConfigLoader {
     # Directories searched first, for git, gh and agent commands alike.
     path = []
 
-    # Agents. The built-in claude can be overridden field by field; any other name is a custom agent, which runs
-    # without status (only claude reports its state). Fields: command, prompt (argument | stdin | paste | file), plan,
-    # resume ("{id}" is the agent's session id), and [agents.<name>.profiles] of name = command line.
+    # The agent: claude, overridden field by field. Fields: command, prompt (argument | stdin | paste | file), plan,
+    # resume ("{id}" is the agent's session id), and [agents.claude.profiles] of name = command line. Other agents run
+    # in a plain terminal tab, without status.
     [agents.claude]
     command = "claude"
     plan = "--permission-mode plan"
     resume = "--resume {id}"
 
-    # [agents.mytool]
-    # command = "mytool"
-    # prompt = "argument"
-
-    # Org and repo colors: teal, pink, lime, orange, periwinkle, sky. Repos inherit their org's.
-    # [orgs.elastic]
+    # Repo colors: teal, pink, lime, orange, periwinkle, sky. Unset, a repo gets one from its org's name.
+    # [repos."elastic/docs-builder"]
     # color = "teal"
     # issues = "all"
 

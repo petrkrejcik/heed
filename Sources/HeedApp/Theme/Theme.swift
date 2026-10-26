@@ -102,27 +102,23 @@ extension Color {
 }
 
 extension Repo {
-    /// The repo's color from config (`[repos."org/name"] color`), else its org's (`[orgs.<name>] color`), else one
-    /// picked from the org's name.
+    /// The repo's color from config (`[repos."org/name"] color`), else one picked from the org's name.
     @MainActor var color: OrgPalette { Palette.shared.color(for: self) }
 }
 
-/// Org and repo colors from config, observed so chips redraw when config.toml changes.
+/// Repo colors from config, observed so chips redraw when config.toml changes.
 @MainActor
 @Observable
 final class Palette {
     static let shared = Palette()
-    private(set) var orgs: [String: OrgPalette] = [:]
     private(set) var repos: [String: OrgPalette] = [:]
 
     func apply(_ config: HeedConfig) {
-        orgs = config.orgColors.compactMapValues(OrgPalette.init(rawValue:))
         repos = config.repos.compactMapValues { $0.color.flatMap(OrgPalette.init(rawValue:)) }
     }
 
     func color(for repo: Repo) -> OrgPalette {
-        repos[repo.slug] ?? orgs[repo.org] ?? orgs[repo.org.lowercased()] ?? OrgPalette
-            .automatic(for: repo.org.lowercased())
+        repos[repo.slug] ?? OrgPalette.automatic(for: repo.org.lowercased())
     }
 }
 

@@ -2,7 +2,7 @@ import Foundation
 @testable import HeedCore
 import Testing
 
-/// Org and repo overrides: removing one from config.toml, and what applies where.
+/// Repo overrides: removing one from config.toml, and what applies where.
 struct OverridesTests {
     @Test func removingAKeyKeepsTheRestAndDropsAnEmptiedTable() throws {
         let source = """
@@ -34,19 +34,18 @@ struct OverridesTests {
 
     @Test func eachValueSaysWhereItComesFrom() {
         var config = HeedConfig.default
-        config.orgColors["elastic"] = "teal"
-        config.issues.orgs["elastic"] = .all
+        config.issues.fallback = .all
         config.issues.repos["elastic/docs"] = .involved
         let docs = OverrideScope.repo(Repo(org: "elastic", name: "docs"))
+        let other = OverrideScope.repo(Repo(org: "elastic", name: "other"))
         func key(_ id: String) -> OverrideKey { Overrides.keys.first { $0.id == id }! }
 
         #expect(Overrides.effective(key("issues"), at: docs, in: config) == (.text("involved"), .repo))
-        #expect(Overrides.effective(key("issues"), at: .org("elastic"), in: config) == (.text("all"), .org))
-        #expect(Overrides.effective(key("color"), at: .org("elastic"), in: config) == (.text("teal"), .org))
-        #expect(Overrides.effective(key("color"), at: .org("nullean"), in: config).source == .default)
+        #expect(Overrides.effective(key("issues"), at: other, in: config) == (.text("all"), .default))
+        #expect(Overrides.effective(key("color"), at: docs, in: config).source == .default)
         #expect(Set(Overrides.setKeys(at: docs, in: config)) == ["issues"])
-        #expect(Set(Overrides.setKeys(at: .org("elastic"), in: config)) == ["color", "issues"])
-        #expect(Overrides.configuredScopes(in: config) == [.org("elastic"), docs])
+        #expect(Overrides.setKeys(at: other, in: config).isEmpty)
+        #expect(Overrides.configuredScopes(in: config) == [docs])
         #expect(OverrideValue.list(["a", "b"]).toml == .array([.string("a"), .string("b")]))
     }
 }

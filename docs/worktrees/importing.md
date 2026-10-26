@@ -5,7 +5,7 @@ description: Bringing worktrees made outside Heed in as sessions, resuming the a
 # Importing
 
 Worktrees made outside Heed, where you may have run an agent yourself, can become sessions. Importing one resumes the
-newest Claude Code session kept for that folder (its first prompt becomes the title), or starts your default agent
+newest Claude Code session kept for that folder (its first prompt becomes the title), or starts claude
 fresh. A confirmation says which before anything starts.
 
 ## A worktree Heed knows

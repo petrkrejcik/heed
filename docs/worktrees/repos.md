@@ -16,14 +16,11 @@ repo_paths = []          # repos outside the roots, added when you import one of
 
 - **Order.** Repos with the most worktrees come first, then by name; the worktree table groups rows in the same
   order, and Start work ranks those repos higher too.
-- **Colours.** Every org has a colour, and its repos inherit it. Set them in Settings (`⌘,`) or in `config.toml`:
+- **Colours.** Every repo gets a colour picked from its org's name. Set one in Settings (`⌘,`) or in `config.toml`:
 
 ```toml
-[orgs.elastic]
-color = "teal"      # teal, pink, lime, orange, periwinkle, sky
-
 [repos."elastic/docs-builder"]
-color = "orange"
+color = "orange"    # teal, pink, lime, orange, periwinkle, sky
 ```
 
 Org avatars are fetched once and cached; repos without a GitHub remote get a letter tile.

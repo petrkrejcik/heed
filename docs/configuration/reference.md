@@ -36,7 +36,6 @@ perf = ["perf", "speed", "optimize", "faster"]
 feature = ["add", "implement", "support", "create", "introduce", "build", "feature"]
 
 [sessions]
-default_agent = "claude"
 # On launch: ask which sessions to resume, resume them all, or none.
 resume_on_launch = "ask"           # ask | always | never
 # Typed into a resumed session that was mid-turn, once the agent is idle. "" turns it off.
@@ -54,8 +53,8 @@ poll_seconds = 60
 
 [issues]
 # Which issues the Issues view shows per repo: "involved" (assigned to you or mentioning you) or "all" open
-# issues. Override per org ([orgs.<org>] issues = "all") or per repo ([repos."org/name"] issues = "involved");
-# the most specific wins. w in Issues (I in Repos) flips the repo under the cursor.
+# issues. Override per repo ([repos."org/name"] issues = "all"). w in Issues (I in Repos) flips the repo under the
+# cursor.
 default = "involved"
 
 [ui]
@@ -72,20 +71,16 @@ gh = ""
 # Directories searched first, for git, gh and agent commands alike.
 path = []
 
-# Agents. The built-in claude can be overridden field by field; any other name is a custom agent, which runs
-# without status (only claude reports its state). Fields: command, prompt (argument | stdin | paste | file), plan,
-# resume ("{id}" is the agent's session id), and [agents.<name>.profiles] of name = command line.
+# The agent: claude, overridden field by field. Fields: command, prompt (argument | stdin | paste | file), plan,
+# resume ("{id}" is the agent's session id), and [agents.claude.profiles] of name = command line. Other agents run
+# in a plain terminal tab, without status.
 [agents.claude]
 command = "claude"
 plan = "--permission-mode plan"
 resume = "--resume {id}"
 
-# [agents.mytool]
-# command = "mytool"
-# prompt = "argument"
-
-# Org and repo colors: teal, pink, lime, orange, periwinkle, sky. Repos inherit their org's.
-# [orgs.elastic]
+# Repo colors: teal, pink, lime, orange, periwinkle, sky. Unset, a repo gets one from its org's name.
+# [repos."elastic/docs-builder"]
 # color = "teal"
 # issues = "all"
 

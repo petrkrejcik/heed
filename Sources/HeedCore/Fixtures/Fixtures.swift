@@ -7,7 +7,7 @@ public enum Fixtures {
     public static let names = ["main", "empty", "resume", "pr-storm", "fresh-repos"]
 
     /// What the fixtures' config would say about issues: docs-builder and the nullean org show all of them.
-    public static let issueRules = IssueRules(orgs: ["nullean": .all], repos: ["elastic/docs-builder": .all])
+    public static let issueRules = IssueRules(repos: ["elastic/docs-builder": .all])
 
     /// What the issue links of the fake world fetched: their titles and states.
     public static let issueInfo: [IssueRef: IssueInfo] = [

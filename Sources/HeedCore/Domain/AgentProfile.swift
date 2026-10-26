@@ -12,7 +12,7 @@ public enum PromptDelivery: String, Sendable, Codable, CaseIterable {
     case file
 }
 
-/// One agent as config describes it. Every agent, built-in or custom, has this same shape.
+/// The agent as config describes it (`[agents.claude]`).
 public struct AgentProfile: Identifiable, Hashable, Sendable, Codable {
     public var id: String { name }
     public var name: String
@@ -68,7 +68,7 @@ public struct AgentProfile: Identifiable, Hashable, Sendable, Codable {
         return ([command] + extraArguments.map(ShellQuote.quote) + [resume]).joined(separator: " ")
     }
 
-    /// The only built-in: Claude is the one agent with hooks. Others run as custom agents, without status.
+    /// The only agent: Claude has the hooks. Others run in a plain terminal tab, without status.
     public static let builtIn: [AgentProfile] = {
         var claude = AgentProfile(
             name: "claude", command: "claude", planArguments: "--permission-mode plan",

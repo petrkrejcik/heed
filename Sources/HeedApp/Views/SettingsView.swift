@@ -23,7 +23,7 @@ struct SettingsView: View {
             return short[key]
         }
 
-        case general = "General", agents = "Agents", colors = "Orgs & repos", worktrees = "Worktrees"
+        case general = "General", agents = "Agents", colors = "Repos", worktrees = "Worktrees"
         case keys = "Keys & modes"
 
         var id: String { rawValue }
@@ -163,15 +163,6 @@ private struct GeneralSettings: View {
         VStack(alignment: .leading, spacing: 16) {
             Text("General").font(Theme.ui(17, weight: .semibold))
             GroupLabel(title: "Sessions")
-            Field(label: "Default agent") {
-                Picker("", selection: Binding(
-                    get: { work.defaultAgent }, set: { model.setConfig(["sessions", "default_agent"], .string($0)) }
-                )) {
-                    ForEach(work.agents) { Text($0.name).tag($0.name) }
-                }
-                .labelsHidden()
-                .frame(width: 200)
-            }
             Field(
                 label: "Resume on launch",
                 detail: "Ask lists the sessions that were open; Always resumes them; Never starts empty."
@@ -219,7 +210,7 @@ private struct GeneralSettings: View {
             GroupLabel(title: "Outside the window")
             Field(
                 label: "Menu bar item",
-                detail: "How many sessions need you, those sessions, Start work and Open Heed. With it on, closing the window keeps Heed running."
+                detail: "How many sessions need you, those sessions and Open Heed. With it on, closing the window keeps Heed running."
             ) {
                 Toggle("", isOn: Binding(
                     get: { model.config.showMenuBarItem }, set: { model.setConfig(["ui", "menu_bar"], .bool($0)) }
@@ -249,7 +240,7 @@ private struct GeneralSettings: View {
             }
             Field(
                 label: "Issues",
-                detail: "For orgs and repos without their own setting: every open issue, or only yours (assigned or mentioning you)."
+                detail: "For repos without their own setting: every open issue, or only yours (assigned or mentioning you)."
             ) {
                 Picker("", selection: Binding(
                     get: { model.config.issues.fallback },
@@ -285,18 +276,13 @@ private struct GeneralSettings: View {
 
 private struct AgentSettings: View {
     @Environment(AppModel.self) private var model
-    @State private var selected = "claude"
 
     var body: some View {
         let agents = model.config.work.agents
         VStack(alignment: .leading, spacing: 16) {
             Text("Agents").font(Theme.ui(17, weight: .semibold))
-            Picker("", selection: $selected) {
-                ForEach(agents) { Text($0.name).tag($0.name) }
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            if let agent = agents.first(where: { $0.name == selected }) {
+            if let agent = agents.first {
+                GroupLabel(title: agent.name)
                 Field(label: "Command") {
                     ConfigTextField(path: ["agents", agent.name, "command"], value: agent.command)
                 }
@@ -324,7 +310,7 @@ private struct AgentSettings: View {
                     Text(stateSource(agent.name)).font(Theme.mono(12)).foregroundStyle(Theme.done)
                 }
             }
-            Text("Custom agents: add an [agents.<name>] table with a command in config.toml.")
+            Text("Other agents run in a plain terminal tab, without status.")
                 .font(Theme.ui(11.5))
                 .foregroundStyle(Theme.fg3)
         }

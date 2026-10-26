@@ -83,7 +83,7 @@ enum DockState {
 }
 
 /// The menu bar item (`[ui] menu_bar`): the mono owl, with the count beside it when sessions need you. Its menu lists
-/// those sessions (choosing one opens Heed on it), then Start work, Open Heed, Settings and Quit.
+/// those sessions (choosing one opens Heed on it), then Open Heed, Settings and Quit.
 @MainActor
 final class MenuBarItem: NSObject, NSMenuDelegate {
     static let shared = MenuBarItem()

@@ -12,8 +12,7 @@ it is the only one whose state Heed shows.
 |---|---|---|---|
 | claude | `claude` | Hooks passed with `--settings` | `--resume <id>` |
 
-Any other command line agent can still run in a session, as a [custom agent](custom-agents.md) or in a plain terminal
-tab, but without a state.
+Any other command line agent can still run in a plain terminal tab, but without a state.
 
 - [Hooks](hooks.md): what Heed passes to Claude, and why your own Claude config never changes.
-- [Custom agents](custom-agents.md): changing claude's command line, or adding your own.
+- [Configuring claude](configuring-claude.md): changing claude's command line.

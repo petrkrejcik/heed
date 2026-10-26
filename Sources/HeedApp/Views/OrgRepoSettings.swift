@@ -1,7 +1,7 @@
 import HeedCore
 import SwiftUI
 
-/// Settings › Orgs & repos: every org and repo heed knows (from the repo list, and those only named in config.toml),
+/// Settings › Repos: every repo heed knows (from the repo list, and those only named in config.toml), grouped by org,
 /// the ones that override something marked, and for the selected one each setting with its value and where that value
 /// comes from. Changing one writes the override; ↺ removes it.
 struct OrgRepoSettings: View {
@@ -12,11 +12,11 @@ struct OrgRepoSettings: View {
 
     var body: some View {
         let groups = groups()
-        let shown = selected ?? firstOverridden(groups) ?? groups.first.map { OverrideScope.org($0.org) }
+        let repos = groups.flatMap(\.repos).map(OverrideScope.repo)
+        let shown = selected ?? repos.first { count($0) > 0 } ?? repos.first
         VStack(alignment: .leading, spacing: 14) {
-            Text("Orgs & repos").font(Theme.ui(17, weight: .semibold))
-            Text("Orgs and repos can override the defaults: color and issues. A repo takes its "
-                + "org's values unless it sets its own. Marked ones override something.")
+            Text("Repos").font(Theme.ui(17, weight: .semibold))
+            Text("Repos can override the defaults: color and issues. Marked ones override something.")
                 .font(Theme.ui(12)).foregroundStyle(Theme.fg3)
                 .fixedSize(horizontal: false, vertical: true)
             HStack(alignment: .top, spacing: 0) {
@@ -47,7 +47,6 @@ struct OrgRepoSettings: View {
         var orgs = Set(repos.values.map(\.org))
         for scope in Overrides.configuredScopes(in: model.config) {
             switch scope {
-            case let .org(name): orgs.insert(name)
             case let .repo(repo):
                 orgs.insert(repo.org)
                 if repos[repo.slug] == nil { repos[repo.slug] = repo }
@@ -60,18 +59,9 @@ struct OrgRepoSettings: View {
                     (words.isEmpty || repo.slug.lowercased().contains(words))
                         && (!onlyOverridden || count(.repo(repo)) > 0)
                 }
-            let orgMatches = (words.isEmpty || org.lowercased().contains(words))
-                && (!onlyOverridden || count(.org(org)) > 0)
-            guard orgMatches || !members.isEmpty else { return nil }
+            guard !members.isEmpty else { return nil }
             return Group(org: org, repos: members, cloned: cloned)
         }
-    }
-
-    /// Where the page opens: the first repo that overrides something, else the first such org.
-    private func firstOverridden(_ groups: [Group]) -> OverrideScope? {
-        let repos = groups.flatMap(\.repos).map(OverrideScope.repo)
-        let orgs = groups.map { OverrideScope.org($0.org) }
-        return (repos + orgs).first { count($0) > 0 }
     }
 
     private func count(_ scope: OverrideScope) -> Int {
@@ -83,7 +73,12 @@ struct OrgRepoSettings: View {
             TextField("Filter", text: $query).textFieldStyle(.roundedBorder).font(Theme.ui(12))
             Toggle("Only overridden", isOn: $onlyOverridden).font(Theme.ui(12)).padding(.vertical, 6)
             ForEach(groups, id: \.org) { group in
-                row(.org(group.org), indent: 0, cloned: true, shown: shown)
+                HStack(spacing: 6) {
+                    OrgTile(org: group.org, color: Palette.shared.color(for: Repo(org: group.org, name: "")), size: 14)
+                    Text(group.org).font(Theme.ui(12.5, weight: .semibold))
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 5)
                 ForEach(group.repos, id: \.slug) { repo in
                     row(.repo(repo), indent: 16, cloned: group.cloned.contains(repo.slug), shown: shown)
                 }
@@ -97,9 +92,6 @@ struct OrgRepoSettings: View {
         let isSelected = shown == scope
         return HStack(spacing: 6) {
             switch scope {
-            case let .org(name):
-                OrgTile(org: name, color: Palette.shared.color(for: Repo(org: name, name: "")), size: 14)
-                Text(name).font(Theme.ui(12.5, weight: .semibold))
             case let .repo(repo):
                 Text(repo.name).font(Theme.mono(12)).foregroundStyle(cloned ? Theme.fg : Theme.fg3)
                 if !cloned { Text("not cloned").font(Theme.ui(10.5)).foregroundStyle(Theme.fg3) }
@@ -119,7 +111,7 @@ struct OrgRepoSettings: View {
     }
 }
 
-/// One org or repo: each setting, its value, where it comes from, and ↺ to drop an override.
+/// One repo: each setting, its value, where it comes from, and ↺ to drop an override.
 private struct ScopeDetail: View {
     @Environment(AppModel.self) private var model
     let scope: OverrideScope
@@ -157,12 +149,7 @@ private struct ScopeDetail: View {
     }
 
     private func summary(set: [String]) -> String {
-        let own = "\(set.count) override\(set.count == 1 ? "" : "s") here"
-        guard case let .repo(repo) = scope else {
-            return set.isEmpty ? "Uses the defaults; its repos take what it sets." : own + "; its repos take them."
-        }
-        let fromOrg = Overrides.setKeys(at: .org(repo.org), in: model.config).count
-        return own + (fromOrg > 0 ? " · \(fromOrg) inherited from \(repo.org)" : "")
+        set.isEmpty ? "Uses the defaults." : "\(set.count) override\(set.count == 1 ? "" : "s") here"
     }
 }
 
@@ -199,7 +186,7 @@ private struct OverrideRow: View {
             .buttonStyle(.plain)
             .foregroundStyle(own ? Theme.fg2 : Theme.fg3.opacity(0.3))
             .disabled(!own)
-            .help(own ? "Use the inherited value" : "Not overridden here")
+            .help(own ? "Use the default" : "Not overridden here")
         }
         .padding(.vertical, 4)
         .overlay(alignment: .leading) {

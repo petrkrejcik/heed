@@ -1,31 +1,25 @@
-/// What an org (`[orgs.<name>]`) or a repo (`[repos."org/name"]`) can override, read from the parsed config: which
-/// keys each sets, and for any key the value that applies and where it comes from. Settings' Orgs & repos page is
-/// built on this.
+/// What a repo (`[repos."org/name"]`) can override, read from the parsed config: which keys it sets, and for any key
+/// the value that applies and where it comes from. Settings' Repos page is built on this.
 public enum OverrideScope: Hashable, Sendable {
-    case org(String)
     case repo(Repo)
 
     /// The table in config.toml.
     public var path: [String] {
         switch self {
-        case let .org(name): ["orgs", name]
         case let .repo(repo): ["repos", repo.slug]
         }
     }
 
     public var title: String {
         switch self {
-        case let .org(name): name
         case let .repo(repo): repo.slug
         }
     }
-
-    public var isOrg: Bool { if case .org = self { true } else { false } }
 }
 
-/// Where a value comes from: heed's default, the org, the repo.
+/// Where a value comes from: heed's default, or the repo.
 public enum OverrideSource: String, Sendable {
-    case `default`, org, repo
+    case `default`, repo
 }
 
 /// A value of an override, as config.toml holds it.
@@ -54,7 +48,7 @@ public enum OverrideValue: Hashable, Sendable {
     }
 }
 
-/// One key an org or repo can set.
+/// One key a repo can set.
 public struct OverrideKey: Identifiable, Sendable {
     public enum Kind: Sendable, Equatable {
         case bool
@@ -62,7 +56,7 @@ public struct OverrideKey: Identifiable, Sendable {
         case integer(ClosedRange<Int>)
         case list
         case text
-        /// One of the org palette's names (the app draws the swatches).
+        /// One of the palette's names (the app draws the swatches).
         case color
     }
 
@@ -81,11 +75,10 @@ public enum Overrides {
     /// Every key, in the order the page lists them.
     public static let keys: [OverrideKey] = [
         OverrideKey(
-            id: "color", label: "Color", detail: "The chip color; repos take their org's.",
+            id: "color", label: "Color", detail: "The chip color; unset, one picked from the org's name.",
             kind: .color,
             read: { config, scope in
                 switch scope {
-                case let .org(name): config.orgColors[name].map(OverrideValue.text)
                 case let .repo(repo): config.repos[repo.slug]?.color.map(OverrideValue.text)
                 }
             },
@@ -96,7 +89,6 @@ public enum Overrides {
             kind: .choice(["all", "involved"]),
             read: { config, scope in
                 switch scope {
-                case let .org(name): config.issues.orgs[name].map { .text($0.rawValue) }
                 case let .repo(repo): config.issues.repos[repo.slug].map { .text($0.rawValue) }
                 }
             },
@@ -120,15 +112,11 @@ public enum Overrides {
         key.read(config, scope)
     }
 
-    /// The value that applies at a scope, and where it comes from: the repo, then its org, then the default.
+    /// The value that applies at a scope, and where it comes from: the repo, else the default.
     public static func effective(
         _ key: OverrideKey, at scope: OverrideScope, in config: HeedConfig
     ) -> (value: OverrideValue, source: OverrideSource) {
-        if let own = key.read(config, scope) {
-            if case .org = scope { return (own, .org) }
-            return (own, .repo)
-        }
-        if case let .repo(repo) = scope, let org = key.read(config, .org(repo.org)) { return (org, .org) }
+        if let own = key.read(config, scope) { return (own, .repo) }
         return (key.fallback(config), .default)
     }
 
@@ -139,11 +127,10 @@ public enum Overrides {
         return result
     }
 
-    /// Orgs and repos named in config.toml, whether or not they are cloned here.
+    /// Repos named in config.toml, whether or not they are cloned here.
     public static func configuredScopes(in config: HeedConfig) -> [OverrideScope] {
-        let orgs = Set(config.orgColors.keys).union(config.issues.orgs.keys)
         let repos = Set(config.repos.keys).union(config.issues.repos.keys)
-        return orgs.sorted().map(OverrideScope.org) + repos.sorted().compactMap { slug in
+        return repos.sorted().compactMap { slug in
             let parts = slug.split(separator: "/")
             return parts.count == 2 ? .repo(Repo(org: String(parts[0]), name: String(parts[1]))) : nil
         }

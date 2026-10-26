@@ -78,19 +78,17 @@ struct ConfigTests {
         #expect(config?.insertEscape == "<C-\\>")
     }
 
-    @Test func valuesOverrideAndCustomAgentsAppear() throws {
+    @Test func valuesOverrideTheDefaults() throws {
         let (decoded, problems) = ConfigLoader.decode("""
         [worktrees]
         root = "~/wt"
         [sessions]
-        default_agent = "mytool"
         resume_on_launch = "always"
-        [agents.mytool]
-        command = "mytool --fast"
-        prompt = "stdin"
         [agents.claude]
+        command = "claude --model opus"
+        prompt = "stdin"
         resume = ""
-        [orgs.elastic]
+        [repos."elastic/docs-builder"]
         color = "teal"
         [repos."elastic/docs-builder".tasks]
         test = "dotnet test"
@@ -105,9 +103,10 @@ struct ConfigTests {
         let config = try #require(decoded)
         #expect(config.work.worktreeRoot == "~/wt")
         #expect(config.work.resumeOnLaunch == .always)
-        #expect(config.work.agent("mytool")?.prompt == .stdin)
+        #expect(config.work.agent("claude")?.command == "claude --model opus")
+        #expect(config.work.agent("claude")?.prompt == .stdin)
         #expect(config.work.agent("claude")?.resumeArguments == nil)
-        #expect(config.orgColors["elastic"] == "teal")
+        #expect(config.repos["elastic/docs-builder"]?.color == "teal")
         #expect(config.repos["elastic/docs-builder"]?.tasks.first?.1 == "dotnet test")
         let built = config.keymaps()
         #expect(built.problems.isEmpty)
@@ -120,28 +119,35 @@ struct ConfigTests {
         let (decoded, problems) = ConfigLoader.decode("""
         [sessions]
         resume_on_launch = "sometimes"
-        default_agent = "nobody"
-        [agents.ghost]
-        prompt = "argument"
+        [agents.claude]
+        prompt = "telepathy"
         [keys.nonsense]
         "x" = "row.next"
         """)
         let config = try #require(decoded)
         #expect(config.work.resumeOnLaunch == .ask)
-        #expect(config.work.defaultAgent == "claude")
-        #expect(Set(problems.map(\.path)) == [
-            "sessions.resume_on_launch", "sessions.default_agent", "agents.ghost.command",
-            "keys.nonsense",
-        ])
+        #expect(config.work.agent("claude")?.prompt == HeedConfig.default.work.agent("claude")?.prompt)
+        #expect(Set(problems.map(\.path)) == ["sessions.resume_on_launch", "agents.claude.prompt", "keys.nonsense"])
     }
 
     @Test func sectionsOfRemovedFeaturesAreIgnored() throws {
         let (decoded, problems) = ConfigLoader.decode("""
+        [sessions]
+        default_agent = "codex"
+        [cleanup]
+        idle_days = 14
         [pilot]
         green = "auto"
         merge = "heed"
+        [updates]
+        check = true
+        [hosts.devbox]
+        ssh = "devbox"
+        [agents.codex]
+        command = "codex"
         [orgs.elastic]
         color = "teal"
+        issues = "all"
         reviewers = ["copilot"]
         [repos."elastic/docs"]
         issues = "all"
@@ -149,8 +155,9 @@ struct ConfigTests {
         """)
         let config = try #require(decoded)
         #expect(problems.isEmpty)
-        #expect(config.orgColors["elastic"] == "teal")
-        #expect(config.issues.repos["elastic/docs"] == .all)
+        #expect(config.work.agents.map(\.name) == ["claude"])
+        #expect(config.work.defaultAgent == "claude")
+        #expect(config.issues == IssueRules(repos: ["elastic/docs": .all]))
     }
 
     @Test func syntaxErrorsGiveNoConfig() {
