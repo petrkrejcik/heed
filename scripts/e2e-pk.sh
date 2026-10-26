@@ -68,6 +68,19 @@ created=$(heed new "Heed made this")
 grep -q '^status: In Progress$' "$created" || fail "the new note is not In Progress"
 wait_for "the sidebar shows the new task" has "Heed made this"
 
+step "a task made outside Heed, as the make-task skill does, shows in the sidebar"
+outside=$(pk task new "Made in the desktop app" --json --context - <<'PK_CONTEXT'
+Uploads fail with 403 for large images.
+PK_CONTEXT
+)
+outside_id=$("$python" -c 'import json, sys; print(json.load(sys.stdin)["task"]["id"])' <<<"$outside")
+pk task link "$outside_id" https://github.com/elastic/kibana/issues/299999 --json >/dev/null
+outside_note="$tmp/vault/Projects/Made in the desktop app.md"
+grep -q '^Uploads fail with 403 for large images.$' "$outside_note" || fail "the context is not in the note"
+grep -q '^issue: https://github.com/elastic/kibana/issues/299999$' "$outside_note" || fail "the issue is not linked"
+grep -q '^worktree:' "$outside_note" && fail "the task got a worktree"
+wait_for "the sidebar shows the task made outside" has "Made in the desktop app"
+
 step "a status changed outside Heed takes the task off the sidebar"
 sed -i '' 's/^status: In Progress$/status: Done/' "$created"
 wait_for "the Done task leaves the sidebar" lacks "Heed made this"
