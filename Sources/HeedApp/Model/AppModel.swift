@@ -195,18 +195,8 @@ final class AppModel {
     private(set) var hintText = ""
     private var hintThenInsert = false
     /// The Start work dialog, while open.
-    private(set) var startWork: StartWorkForm? {
-        didSet {
-            if startWork == nil, startWorkStandalone {
-                startWorkStandalone = false
-                StartWorkPanelController.shared.close()
-            }
-        }
-    }
-
-    /// The Start work dialog is showing in its own panel over other apps (`[keys] global_start_work`).
-    private(set) var startWorkStandalone = false
-    /// Why the last start failed, shown in the dialog (the standalone panel has no status bar).
+    private(set) var startWork: StartWorkForm?
+    /// Why the last start failed, shown in the dialog.
     private(set) var startWorkError: String?
     private(set) var startingWork = false
     /// Bumped when the focused terminal should take keyboard focus (entering INSERT, moving panes).
@@ -487,7 +477,6 @@ final class AppModel {
         Palette.shared.apply(decoded)
         if !isFixture {
             let shortcuts: [(GlobalHotKey.Name, String, () -> Void)] = [
-                (.startWork, decoded.globalStartWork, { [weak self] in self?.openStandaloneStartWork() }),
                 (.activate, decoded.globalActivate, { [weak self] in self?.activateHeed() }),
             ]
             for (name, notation, action) in shortcuts {
@@ -1091,7 +1080,6 @@ final class AppModel {
                 flash = "no agent \(name) (\(settings.agents.map(\.name).joined(separator: ", ")))"
             }
         case "work.start": openStartWork(prompt: command.arguments.joined(separator: " "))
-        case "work.start.panel": openStandaloneStartWork()
         case "resume": Task { await offerResume(domain: currentDomain, asked: true) }
         case "session.open": openSession(matching: command.arguments.joined(separator: " "))
         case "tab.go":
@@ -3912,27 +3900,9 @@ final class AppModel {
 
     // MARK: Start work
 
-    /// The global shortcut: Start work in a panel over whatever app is in front. Pressing it again brings the panel
-    /// back; a dialog already open in the main window moves to the panel.
-    func openStandaloneStartWork() {
-        guard confirmation == nil, importPicker == nil else { return }
-        if startWork == nil {
-            // Called from another app: what heed's cursor is on says nothing about this work.
-            openStartWork(prompt: "", fromCursor: false)
-        }
-        startWorkStandalone = true
-        StartWorkPanelController.shared.show(model: self)
-    }
-
-    /// Clicking away from the panel cancels it, like Spotlight; a start in progress keeps it open.
-    func standaloneClickedAway() {
-        guard startWorkStandalone, !startingWork else { return }
-        startWork = nil
-    }
-
-    private func openStartWork(prompt: String, fromCursor: Bool = true) {
+    private func openStartWork(prompt: String) {
         startWorkError = nil
-        let context = fromCursor ? startContext : nil
+        let context = startContext
         if view == .history { view = .sessions }
         startWork = StartWorkForm(
             repos: repos, lastWorked: StartWork.lastWorked(sessions: sessions, closed: history), context: context,

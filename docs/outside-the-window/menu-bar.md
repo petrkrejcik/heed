@@ -1,5 +1,5 @@
 ---
-description: "The menu bar owl: what needs you, and Start work from anywhere."
+description: "The menu bar owl: what needs you, from any app."
 ---
 
 # The menu bar
@@ -10,11 +10,10 @@ The owl in the menu bar shows how many sessions need you, beside it when there a
 
 Its menu lists the sessions waiting on you (choosing one opens Heed on it), how many are working, and:
 
-![The menu: the waiting sessions, Start work, Open Heed, Settings, Quit](../images/shots/outside/menu.png)
+![The menu: the waiting sessions, Open Heed, Settings, Quit](../images/shots/outside/menu.png)
 
 | Item | |
 |---|---|
-| Start work… | The [Start work panel](../start-work/from-anywhere.md), over the app you are in |
 | Open Heed | Heed to the front, reopening its window if it was closed |
 | Settings… | Settings |
 | Quit Heed | Quit; with agents running, Heed asks first |

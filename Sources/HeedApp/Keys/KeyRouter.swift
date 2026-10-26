@@ -42,10 +42,7 @@ final class KeyRouter {
             {
                 return nil
             }
-            // The main window, and the standalone Start work panel.
-            guard event.window?.identifier == AppModel.mainWindowID
-                || event.window?.identifier == StartWorkPanelController.identifier,
-                let stroke = KeyStroke(event: event)
+            guard event.window?.identifier == AppModel.mainWindowID, let stroke = KeyStroke(event: event)
             else { return event }
             let used = MainActor.assumeIsolated { self?.route(stroke) ?? false }
             return used ? nil : event

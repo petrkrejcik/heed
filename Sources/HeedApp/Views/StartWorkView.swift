@@ -5,19 +5,9 @@ import SwiftUI
 /// key router, never through a text field, so focus never leaves the window's one key path.
 struct StartWorkView: View {
     @Environment(AppModel.self) private var model
-    /// In its own panel over other apps: just the dialog, sized to its content, no backdrop.
-    var standalone = false
 
     var body: some View {
-        if standalone {
-            if let form = model.startWork {
-                let screen = NSScreen.main?.visibleFrame.height ?? 900
-                dialog(form, promptCap: max(96, min(320, screen * 0.3)))
-                    .frame(width: 780)
-                    .shotRegion(.dialog)
-                    .padding(30) // room for the shadow inside the transparent panel
-            }
-        } else if let form = model.startWork {
+        if let form = model.startWork {
             GeometryReader { geometry in
                 ZStack {
                     Color.black.opacity(0.55)

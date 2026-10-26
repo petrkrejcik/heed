@@ -9,4 +9,4 @@ Agents keep working while you are in another app. Heed lets you know when one ne
 
 - [The menu bar](menu-bar.md): an owl that counts what needs you.
 - [The Dock](dock.md): the same count, as a badge.
-- [Global shortcuts](global-shortcuts.md): Start work from any app, and Heed to the front.
+- [Global shortcuts](global-shortcuts.md): Heed to the front from any app.

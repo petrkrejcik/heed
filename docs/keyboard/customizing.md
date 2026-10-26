@@ -9,7 +9,6 @@ Key bindings live in `config.toml` (not in Settings). Each table maps keys, in v
 ```toml
 [keys]
 insert_escape = "<C-\\>"           # leaves INSERT (⇧⎋ does too)
-global_start_work = "<C-M-Space>"  # Start work from any app; "" turns it off
 global_activate = "<C-M-h>"        # brings Heed forward from any app
 
 [keys.normal]

@@ -7,8 +7,6 @@ struct Shot {
     enum Subject {
         /// The main window, with drawn window chrome.
         case window
-        /// The standalone Start work panel over a desktop backdrop.
-        case panel
         /// The menu bar item, and the menu bar around it.
         case menuBar
         /// The menu bar item's open menu.
@@ -165,7 +163,6 @@ enum ShotRunner {
         switch shot.subject {
         case .window where shot.chrome: WindowChrome { MainWindow() }
         case .window: MainWindow()
-        case .panel: PanelBackdrop { StartWorkView(standalone: true) }
         case .menuBar: MenuBarMock()
         case .menu: MenuMock()
         case .dock: DockMock()
@@ -192,20 +189,5 @@ private struct WindowChrome<Content: View>: View {
             }
             .clipShape(RoundedRectangle(cornerRadius: 10))
             .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Color.white.opacity(0.1)))
-    }
-}
-
-/// A plain desktop behind the floating panel, so it reads as "over another app".
-private struct PanelBackdrop<Content: View>: View {
-    @ViewBuilder let content: Content
-
-    var body: some View {
-        ZStack(alignment: .top) {
-            // Flat, so the PNG stays small.
-            Color(hex: 0x232A33)
-            RoundedRectangle(cornerRadius: 10).fill(Color(hex: 0x23272E)).frame(width: 900, height: 560)
-                .offset(x: -120, y: 120).opacity(0.7)
-            content.padding(.top, 60)
-        }
     }
 }

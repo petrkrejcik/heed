@@ -24,11 +24,6 @@ instead of shown. `gh auth refresh`, or authorizing the GitHub CLI for that org 
 Only Claude reports its state. Check it is started by Heed (its pane's command line includes Heed's hooks; see
 [Hooks](agents/hooks.md)). Other agents run without a state.
 
-## The Start work panel closes right away, or tiles
-
-A tiling window manager is managing it. Add a rule for the window titled `Heed Start Work`; see
-[From anywhere](start-work/from-anywhere.md).
-
 ## A key does nothing
 
 The status bar says what Heed made of it ("gq is not bound"). Check `config.toml` for a binding that was refused (the

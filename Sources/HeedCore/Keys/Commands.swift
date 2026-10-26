@@ -50,7 +50,6 @@ public enum Commands {
         .init("session.open", "go to the session matching these words", .move, arguments: "<words>"),
         .init("pin.jump", "jump to pinned session", .move, arguments: "<1-9>"),
         .init("work.start", "start work", .move),
-        .init("work.start.panel", "start work in the floating panel, as the global shortcut does", .move),
         .init("resume", "pick up where you left off: the sessions to resume, as on launch", .move),
         .init("work.again", "start work from this session's prompt", .move),
         .init("view.history", "history", .move),

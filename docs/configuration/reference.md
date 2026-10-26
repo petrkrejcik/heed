@@ -144,9 +144,6 @@ resume = "--resume {id}"
 [keys]
 # Leaves INSERT. It is also the terminal's quit signal, so pick something else if you need that.
 insert_escape = "<C-\\>"
-# Opens Start work in a floating panel over any app, wherever you are; "" turns it off. The panel's window title is
-# "Heed Start Work", for window manager rules (yabai: app="^Heed$" title="^Heed Start Work$" manage=off).
-global_start_work = "<C-M-Space>"
 # Brings Heed to the front from any app; "" turns it off.
 global_activate = "<C-M-h>"
 # Shift+Escape leaves INSERT too; a plain Escape always goes to the terminal. [keys.insert] "<S-Esc>" = "" unbinds.

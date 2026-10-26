@@ -152,6 +152,7 @@ struct OutsideWindowConfigTests {
         dock_state = false
         [keys]
         global_activate = ""
+        global_start_work = "<C-M-Space>"
         """)
         #expect(problems.isEmpty)
         #expect(config?.showMenuBarItem == false)

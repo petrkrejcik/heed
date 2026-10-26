@@ -35,6 +35,5 @@ The bottom of the dialog shows the exact command the agent pane will run.
 
 ## Other ways in
 
-- [From anywhere](from-anywhere.md): `⌃⌥Space` opens it over any app.
 - [From GitHub](from-github.md): `s` on issues or inbox items starts a session from them.
 - [Starting again](again.md): `O` starts from a previous session's prompt.

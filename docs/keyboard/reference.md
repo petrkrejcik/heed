@@ -35,7 +35,6 @@ This page is generated from the code (`mise run shots`).
 | `session.open` `<words>` |  | go to the session matching these words |
 | `pin.jump` `<1-9>` | `'1`, `'2`, `'3`, `'4`, `'5`, `'6`, `'7`, `'8`, `'9` | jump to pinned session |
 | `work.start` | `o` | start work |
-| `work.start.panel` |  | start work in the floating panel, as the global shortcut does |
 | `resume` |  | pick up where you left off: the sessions to resume, as on launch |
 | `work.again` | `O` | start work from this session's prompt |
 | `view.history` | `gh` | history |

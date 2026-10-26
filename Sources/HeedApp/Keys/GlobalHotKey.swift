@@ -3,16 +3,14 @@ import Carbon.HIToolbox
 import HeedCore
 
 /// System-wide shortcuts, registered with Carbon's hotkey API: they work whichever app is in front and need no
-/// Accessibility permission (`[keys] global_start_work`, `[keys] global_activate`).
+/// Accessibility permission (`[keys] global_activate`).
 @MainActor
 enum GlobalHotKey {
     enum Name: UInt32, CaseIterable {
-        case startWork = 1
         case activate = 2
 
         var setting: String {
             switch self {
-            case .startWork: "keys.global_start_work"
             case .activate: "keys.global_activate"
             }
         }

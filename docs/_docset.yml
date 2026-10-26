@@ -42,7 +42,6 @@ toc:
       - file: repos.md
       - file: branch-names.md
       - file: agent-and-options.md
-      - file: from-anywhere.md
       - file: from-github.md
       - file: again.md
   - folder: agents

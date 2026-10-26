@@ -6,8 +6,6 @@ import Foundation
 public struct HeedConfig: Equatable, Sendable {
     public var work: WorkSettings
     public var insertEscape: String
-    /// The system-wide shortcut that opens Start work over any app; "" turns it off.
-    public var globalStartWork = "<C-M-Space>"
     /// The system-wide shortcut that brings Heed to the front; "" turns it off.
     public var globalActivate = "<C-M-h>"
     /// `[ui]`: Heed outside its window.
@@ -54,7 +52,6 @@ public struct HeedConfig: Equatable, Sendable {
         let same = [
             lhs.work == rhs.work,
             lhs.insertEscape == rhs.insertEscape,
-            lhs.globalStartWork == rhs.globalStartWork,
             lhs.globalActivate == rhs.globalActivate,
             lhs.showMenuBarItem == rhs.showMenuBarItem,
             lhs.showDockState == rhs.showDockState,
@@ -390,14 +387,14 @@ public enum ConfigLoader {
 
         // [keys]
         if let escape = string(["keys", "insert_escape"]) { config.insertEscape = escape }
-        if let shortcut = string(["keys", "global_start_work"]) { config.globalStartWork = shortcut }
         if let shortcut = string(["keys", "global_activate"]) { config.globalActivate = shortcut }
         // [ui]
         if let flag = bool(["ui", "menu_bar"]) { config.showMenuBarItem = flag }
         if let flag = bool(["ui", "dock_state"]) { config.showDockState = flag }
 
         if let keys = root.value(at: ["keys"])?.table {
-            for name in keys.keys where !["insert_escape", "global_start_work", "global_activate"].contains(name) {
+            // Tables are modes or views; plain values are the settings above, and unknown ones are ignored.
+            for name in keys.keys where keys[name]?.table != nil {
                 let entries = pairs(["keys", name])
                 if let mode = Mode(rawValue: name) {
                     config.keys[mode] = entries
@@ -546,9 +543,6 @@ public enum ConfigLoader {
     [keys]
     # Leaves INSERT. It is also the terminal's quit signal, so pick something else if you need that.
     insert_escape = "<C-\\\\>"
-    # Opens Start work in a floating panel over any app, wherever you are; "" turns it off. The panel's window title is
-    # "Heed Start Work", for window manager rules (yabai: app="^Heed$" title="^Heed Start Work$" manage=off).
-    global_start_work = "<C-M-Space>"
     # Brings Heed to the front from any app; "" turns it off.
     global_activate = "<C-M-h>"
     # Shift+Escape leaves INSERT too; a plain Escape always goes to the terminal. [keys.insert] "<S-Esc>" = "" unbinds.

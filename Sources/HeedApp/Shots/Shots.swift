@@ -120,7 +120,6 @@ enum Shots {
         Shot(id: "start-work/repo-search", keys: "o" + prompt + "<Esc>j/mer", crop: .dialog),
         Shot(id: "start-work/branch-name", keys: "o" + prompt + "<Esc>jj", crop: .dialog),
         Shot(id: "start-work/agent-options", keys: "o" + prompt + "<Esc>jjjj", crop: .dialog),
-        Shot(id: "start-work/panel", subject: .panel, size: CGSize(width: 1100, height: 820), keys: "o" + prompt),
         Shot(id: "start-work/from-github-picked", keys: "gi<Space>j<Space>", highlight: [.list, .pickedPanel]),
         Shot(id: "start-work/from-github-dialog", keys: "gi<Space>j<Space>s", crop: .dialog),
         Shot(id: "start-work/again", keys: "ghO", crop: .dialog),
