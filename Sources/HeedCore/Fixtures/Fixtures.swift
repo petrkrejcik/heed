@@ -3,123 +3,139 @@ import Foundation
 /// Domains to start the UI in without any IO: one per design board. `HEED_FIXTURE=<name>` opens the app on one with
 /// every adapter switched off.
 public enum Fixtures {
-    /// `resume` is `main` opening on the resume dialog (the app handles that name).
-    public static let names = ["main", "empty", "resume", "pr-storm", "fresh-repos"]
+    /// `resume` is `tasks` opening on the resume dialog, `firstrun` is `empty` opening on the first-run dialog (the
+    /// app handles those names).
+    public static let names = ["tasks", "empty", "resume", "pr-storm", "firstrun"]
 
-    /// What the fixtures' config would say about issues: docs-builder and the nullean org show all of them.
-    public static let issueRules = IssueRules(repos: ["elastic/docs-builder": .all])
+    /// The home folder of the fixtures' world; the app points `Paths.home` here so `~/www/kibana` is the main checkout.
+    public static let home = "/Users/you"
+
+    static let kibana = Kibana.repo
+    static let eui = Repo(org: "elastic", name: "eui")
+    static let worktrees = "\(home)/www/kibana.worktrees"
+    static let notes = "\(home)/notes/Projects"
+
+    static func issueURL(_ number: Int) -> String { "https://github.com/elastic/kibana/issues/\(number)" }
+    static func pullURL(_ number: Int) -> String { PullRef(repo: kibana, number: number).url }
 
     /// What the issue links of the fake world fetched: their titles and states.
     public static let issueInfo: [IssueRef: IssueInfo] = [
-        IssueRef(repo: docsContent, number: 88): IssueInfo(
-            title: "Old links to moved pages 404", closed: false,
-            body: "Pages moved in the reorg are linked from outside; their old URLs now 404.", labels: ["bug"],
-            author: "reader", updatedAt: Clock.now.addingTimeInterval(-86400)
+        IssueRef(repo: kibana, number: 299_433): IssueInfo(
+            title: "Image upload returns 403 behind a proxy", closed: false,
+            body: "Uploading an image in the chat fails with 403 when Kibana runs behind a reverse proxy.",
+            labels: ["bug", "Team:AI Infra"], author: "reporter", updatedAt: Clock.now.addingTimeInterval(-86400)
         ),
-        IssueRef(repo: docsBuilder, number: 2830): IssueInfo(title: "Anchors lost when a page is moved", closed: false),
     ]
 
     public static func named(_ name: String) -> Domain? {
         switch name {
-        case "main": main
+        case "tasks": tasks
         case "empty": .empty
         case "pr-storm": prStorm
-        case "fresh-repos": freshRepos
         default: nil
         }
     }
 
-    static let docsBuilder = Repo(org: "elastic", name: "docs-builder")
-    static let docsContent = Repo(org: "elastic", name: "docs-content")
-    static let mermaider = Repo(org: "nullean", name: "mermaider")
-    static let editorconfig = Repo(org: "editorconfig", name: "editorconfig")
-    static let ingest = Repo(org: "mpdreamz", name: "ingest")
+    /// design/screens/Main.png: the plan's task list. Six tasks show; the Done and To Do ones do not.
+    public static let tasks: Domain = {
+        let now = Clock.now
+        func ago(_ minutes: Double) -> Date { now.addingTimeInterval(-minutes * 60) }
+        let main = "\(home)/www/kibana"
+        let upload = "\(worktrees)/299433-fix-image-upload-403"
+        let review = "\(worktrees)/review-299044-timeline-freeze"
+        let undo = "\(worktrees)/298812-chat-input-cmd-z"
+        let list = [
+            WorkTask(
+                id: "t1", title: "Kibana main", status: .inProgress, pinned: true, branch: "main",
+                notePath: "\(notes)/Kibana main.md", port: 5601, running: true, lastActivity: ago(40)
+            ),
+            WorkTask(
+                id: "t2", title: "Fix image upload 403", status: .inProgress, issue: issueURL(299_433),
+                pr: pullURL(299_455),
+                worktree: upload, branch: "299433-fix-image-upload-403",
+                notePath: "\(notes)/Fix image upload 403.md", port: 5602, running: true, epic: "Chat attachments",
+                lastActivity: ago(2)
+            ),
+            WorkTask(
+                id: "t3", title: "Review PR 299044 - Timeline freeze", status: .inProgress, kind: "review",
+                pr: pullURL(299_044), worktree: review, branch: "review-299044-timeline-freeze",
+                notePath: "\(notes)/Review PR 299044 - Timeline freeze.md", port: 5603, running: false,
+                lastActivity: ago(95)
+            ),
+            WorkTask(
+                id: "t4", title: "Chat input cmd+z breaks after paste", status: .blocked, issue: issueURL(298_812),
+                worktree: undo, branch: "298812-chat-input-cmd-z",
+                notePath: "\(notes)/Chat input cmd+z breaks after paste.md", port: 5604, running: false,
+                lastActivity: ago(60 * 26)
+            ),
+            WorkTask(
+                id: "t5", title: "Investigate SSE batching", status: .inProgress,
+                notePath: "\(notes)/Investigate SSE batching.md", lastActivity: ago(6)
+            ),
+            WorkTask(
+                id: "t6", title: "Upgrade the chat to EUI 101", status: .done, pr: pullURL(298_140),
+                notePath: "\(notes)/Upgrade the chat to EUI 101.md", lastActivity: ago(60 * 50)
+            ),
+            WorkTask(
+                id: "t7", title: "Document the chat API", status: .toDo,
+                notePath: "\(notes)/Document the chat API.md", lastActivity: ago(60 * 70)
+            ),
+        ].map { task in
+            var task = task
+            task.record("started · claude in \(Paths.abbreviate(task.directory))", at: ago(60 * 3))
+            return task
+        }
+        var tasks = list
+        tasks[1].record("opened PR #299455", at: ago(50))
+        tasks[1].record("asked: allow Bash(yarn test:jest)?", at: ago(9))
+        tasks[1].record("running jest · 2m", at: ago(2))
 
-    /// design/screens/Main.png.
-    public static let main: Domain = {
-        let root = "/Users/you/code"
-        let repos = [docsBuilder, docsContent, mermaider, editorconfig, ingest].map {
-            RepoRecord(repo: $0, path: "\(root)/\($0.name)", defaultBranch: "main")
+        let layouts: [String: TaskLayout] = [
+            "t1": TaskLayout(tabs: [
+                agentTab("t1", main, split: true),
+                PaneTab(id: "t1-t2", title: "kibana", tree: .leaf(PaneSpec(
+                    id: "t1-kibana", role: .shell, title: "yarn start", directory: main, command: "yarn start"
+                ))),
+            ]),
+            "t2": TaskLayout(tabs: [
+                agentTab("t2", upload, split: true),
+                agentTab("t2", upload, second: true),
+                PaneTab(id: "t2-t3", title: "jest", tree: .leaf(PaneSpec(
+                    id: "t2-jest", role: .command, title: "jest", directory: upload, command: "yarn test:jest"
+                ))),
+            ]),
+            "t3": TaskLayout(tabs: [agentTab("t3", review)]),
+            "t4": TaskLayout(tabs: [agentTab("t4", undo)]),
+            "t5": TaskLayout(tabs: [agentTab("t5", main)]),
+        ]
+        func agent(_ state: AgentState, _ activity: String, reason: String? = nil, id: String) -> AgentTab {
+            AgentTab(state: ObservedState(state, reason: reason), activity: activity, claudeSessionID: id)
         }
-        let sessions = [
-            Session(
-                id: "s1", title: "Fix broken anchors in redirects",
-                prompt: "Fix broken anchors in redirects.yml. Every redirect target must resolve to a real heading."
-                    + "\n\nFixes elastic/docs-content#88",
-                repos: [docsBuilder, docsContent], branch: "fix-anchors-redirects", agent: "claude",
-                agentSessionID: "7f3a9c1e-52b4-4e0d-9a61-0c8d3e1f2b77",
-                state: ObservedState(.working), activity: "running tests · 14m", trackedPRs: [
-                    PullRef(repo: docsBuilder, number: 2841),
-                    PullRef(repo: docsContent, number: 1920),
-                    PullRef(repo: docsBuilder, number: 2836),
-                ], pinned: true
-            ),
-            Session(
-                id: "s2", title: "Cross-link validator for assemblies", repos: [docsBuilder],
-                branch: "cross-link-validator", agent: "claude", agentSessionID: "2c81d6aa-9e17-4b3f-8d05-6a4e7b9c0d12",
-                state: ObservedState(.blocked, reason: "Bash(dotnet publish)"),
-                activity: "wants to run dotnet publish", trackedPRs: [PullRef(repo: docsBuilder, number: 2838)],
-                pinned: true
-            ),
-            Session(
-                id: "s3", title: "Backpressure in ingest stage", repos: [ingest], branch: "ingest-backpressure",
-                agent: "claude", agentSessionID: "91be40d2-7a35-4c68-b2f9-13e5a8d07c46",
-                state: ObservedState(.asking, reason: "3 questions"), activity: "3 questions waiting",
-                trackedPRs: [PullRef(repo: ingest, number: 31)]
-            ),
-            Session(
-                id: "s4", title: "Sequence diagram arrowheads", repos: [mermaider], branch: "sequence-arrowheads",
-                agent: "claude", agentSessionID: "e0457f3b-18c2-4d9a-a6b1-5f2d9c8e3a04", state: ObservedState(.working),
-                activity: "editing · 3m", trackedPRs: [PullRef(repo: mermaider, number: 418)]
-            ),
-            Session(
-                id: "s5", title: "Bump spec tests to 0.17", repos: [editorconfig], branch: "bump-spec-tests",
-                agent: "claude", state: ObservedState(.done), activity: "done · PR approved", trackedPRs: [PullRef(
-                    repo: editorconfig,
-                    number: 412
-                )]
-            ),
-            Session(
-                id: "s6", title: "Docs nav spike", repos: [docsBuilder], branch: "docs-nav-spike", agent: "claude",
-                agentSessionID: "b36c9d71-04fa-42e8-8a3d-7e1c5b2f9d60",
-                state: ObservedState(.idle), activity: "idle 2h", trackedPRs: [PullRef(repo: docsBuilder, number: 2852)]
+        let agents: [String: AgentTab] = [
+            "t1-agent": agent(.idle, "idle 40m", id: "4d0c2a5e-1f6b-4c8e-9a37-2b5e8d1f0c64"),
+            "t2-agent": agent(.working, "running jest · 2m", id: "7f3a9c1e-52b4-4e0d-9a61-0c8d3e1f2b77"),
+            "t2-agent2": agent(.idle, "idle 18m", id: "2c81d6aa-9e17-4b3f-8d05-6a4e7b9c0d12"),
+            "t3-agent": agent(.idle, "idle 1h", id: "91be40d2-7a35-4c68-b2f9-13e5a8d07c46"),
+            "t4-agent": agent(.idle, "idle 1d", id: "e0457f3b-18c2-4d9a-a6b1-5f2d9c8e3a04"),
+            "t5-agent": agent(
+                .asking,
+                "2 questions waiting",
+                reason: "2 questions",
+                id: "b36c9d71-04fa-42e8-8a3d-7e1c5b2f9d60"
             ),
         ]
-        var worktrees: [Worktree] = []
-        var layouts: [String: SessionLayout] = [:]
-        for session in sessions {
-            for repo in session.repos {
-                worktrees.append(Worktree(
-                    repo: repo, path: "\(root)/wt/\(repo.name)/\(session.branch)", branch: session.branch,
-                    head: "0000000", isMain: false, status: WorktreeStatus(upstream: "origin/\(session.branch)")
-                ))
-            }
-            layouts[session.id] = SessionLayout(tabs: tabs(for: session, root: root))
-        }
-        // Worktrees made outside Heed, with no session yet: what `I` in Sessions imports.
-        worktrees += [
-            Worktree(
-                repo: docsBuilder, path: "\(root)/wt/docs-builder/toc-ordering", branch: "toc-ordering",
-                head: "0000000", isMain: false, status: WorktreeStatus(upstream: "origin/toc-ordering")
-            ),
-            Worktree(
-                repo: mermaider, path: "\(root)/wt/mermaider/gantt-labels", branch: "gantt-labels", head: "0000000",
-                isMain: false, status: WorktreeStatus(upstream: nil)
-            ),
-            Worktree(repo: ingest, path: "\(root)/ingest", branch: "main", head: "0000000", isMain: true),
-        ]
-        let detail = pullDetail
         return Domain(
-            repos: repos, worktrees: worktrees, sessions: sessions, layouts: layouts,
-            history: history, github: github,
-            pullDetails: Dictionary(([detail] + otherDetails).map { ($0.ref.description, $0) }) { first, _ in first }
+            tasks: tasks, layouts: layouts, agents: agents, github: github,
+            pullDetails: Dictionary(([pullDetail] + otherDetails).map { ($0.ref.description, $0) }) { first, _ in
+                first
+            }
         )
     }()
 
-    /// A PR storm: #2841, with its review comments and failing check, is the PR updated last, while the session that
+    /// A PR storm: #299455, with its review comments and failing check, is the PR updated last, while the task that
     /// owns it is busy working.
     public static let prStorm: Domain = {
-        var domain = main
+        var domain = tasks
         if let index = domain.github.pulls.firstIndex(where: { $0.ref == pullDetail.ref }) {
             var pull = domain.github.pulls.remove(at: index)
             pull.updatedAt = Clock.now
@@ -128,96 +144,92 @@ public enum Fixtures {
         return domain
     }()
 
-    /// Fresh repos: every repo and worktree, no sessions or history yet.
-    public static let freshRepos: Domain = {
-        var domain = main
-        domain.sessions = []
-        domain.layouts = [:]
-        domain.history = []
-        return domain
-    }()
-
     /// design/screens/Diff.png.
     public static let diffCommits = [
-        CommitSummary(sha: "4f2a1c0", subject: "Validate anchors against headings"),
-        CommitSummary(sha: "a91e3d0", subject: "Fix lint in redirects.md"),
-        CommitSummary(sha: "0be7d20", subject: "Add moved-page redirect fixtures"),
+        CommitSummary(sha: "4f2a1c0", subject: "Send the upload through the Kibana base path"),
+        CommitSummary(sha: "a91e3d0", subject: "Fix lint in upload_image.ts"),
+        CommitSummary(sha: "0be7d20", subject: "Add a test for uploads behind a proxy"),
     ]
 
     public static let diff: [FileDiff] = {
         let text = """
-        diff --git a/src/Elastic.Markdown/Redirects/RedirectFile.cs b/src/Elastic.Markdown/Redirects/RedirectFile.cs
-        --- a/src/Elastic.Markdown/Redirects/RedirectFile.cs
-        +++ b/src/Elastic.Markdown/Redirects/RedirectFile.cs
-        @@ -76,9 +76,11 @@ public sealed class RedirectFile
-             public bool TryResolve(string page, string fragment)
-             {
-        -        var anchors = _anchors.GetValueOrDefault(page);
-        +        var anchors = _anchors.GetValueOrDefault(page, EmptyAnchors);
-        +        var slug = Slugify(fragment);
-                 // headings are lowercased by the slugifier
-        -        if (!anchors.Contains(fragment))
-        +        if (!anchors.Contains(slug, StringComparer.Ordinal))
-                     return false;
-        +        _resolved[page] = new Resolved(page, slug);
-                 return true;
-             }
-        @@ -131,6 +133,8 @@ public sealed class RedirectFile
-             private static IReadOnlySet<string> EmptyAnchors
-        +        = new HashSet<string>(StringComparer.Ordinal);
+        diff --git a/x-pack/platform/plugins/shared/onechat/public/upload_image.ts b/x-pack/platform/plugins/shared/onechat/public/upload_image.ts
+        --- a/x-pack/platform/plugins/shared/onechat/public/upload_image.ts
+        +++ b/x-pack/platform/plugins/shared/onechat/public/upload_image.ts
+        @@ -18,9 +18,11 @@ export const uploadImage = async (
+           http: HttpSetup,
+           file: File
+         ) => {
+        -  const url = '/api/chat/attachments';
+        +  const url = http.basePath.prepend('/api/chat/attachments');
+        +  const headers = { 'kbn-xsrf': 'true' };
+           // the proxy strips cookies on cross-origin requests
+        -  const response = await fetch(url, { method: 'POST', body: file });
+        +  const response = await fetch(url, { method: 'POST', body: file, headers, credentials: 'same-origin' });
+           if (!response.ok) {
+        +    throw new UploadError(response.status);
+           }
+        @@ -61,6 +63,8 @@ export const uploadImage = async (
+         export class UploadError extends Error {
+        +  constructor(public readonly status: number) {
+        +    super(`upload failed: ${status}`);
          }
-        diff --git a/tests/Redirects/AnchorTests.cs b/tests/Redirects/AnchorTests.cs
+        diff --git a/x-pack/platform/plugins/shared/onechat/public/upload_image.test.ts b/x-pack/platform/plugins/shared/onechat/public/upload_image.test.ts
         new file mode 100644
         --- /dev/null
-        +++ b/tests/Redirects/AnchorTests.cs
+        +++ b/x-pack/platform/plugins/shared/onechat/public/upload_image.test.ts
         @@ -0,0 +1,3 @@
-        +public class AnchorTests
-        +{
-        +}
-        diff --git a/docs/redirects.md b/docs/redirects.md
-        --- a/docs/redirects.md
-        +++ b/docs/redirects.md
+        +describe('uploadImage', () => {
+        +  it('prepends the base path', () => {});
+        +});
+        diff --git a/x-pack/platform/plugins/shared/onechat/README.md b/x-pack/platform/plugins/shared/onechat/README.md
+        --- a/x-pack/platform/plugins/shared/onechat/README.md
+        +++ b/x-pack/platform/plugins/shared/onechat/README.md
         @@ -40,2 +40,3 @@
-         Redirects keep anchors.
+         Attachments go through the Kibana base path.
         -A very long line that the linter rejects because it goes on and on.
         +A shorter line.
         +Another line.
 
         """
-        return DiffParser.parse(text, repo: docsBuilder, staged: ["src/Elastic.Markdown/Redirects/RedirectFile.cs"])
+        return DiffParser.parse(
+            text, repo: kibana, staged: ["x-pack/platform/plugins/shared/onechat/public/upload_image.ts"]
+        )
     }()
 
     /// design/screens/Reader.png.
     static let pullDetail: PullDetail = {
         var detail = PullDetail(
-            ref: PullRef(repo: docsBuilder, number: 2841), title: "Fix broken anchors in redirects",
-            body: "Validates redirect targets against real headings, so moved pages no longer lose their anchors.\nCloses #2830. Companion change in docs-content #1920.",
-            author: "you", baseBranch: "main", headBranch: "fix-anchors-redirects", additions: 82, deletions: 4,
+            ref: PullRef(repo: kibana, number: 299_455), title: "[Agent Builder] Fix image upload 403 behind a proxy",
+            body: "Sends chat image uploads through the Kibana base path with the xsrf header, so they work behind a reverse proxy.\nCloses #299433.",
+            author: "you", baseBranch: "main", headBranch: "299433-fix-image-upload-403", additions: 82, deletions: 4,
             commitCount: 3, headSHA: "a91e3d0",
             reviews: [PullDetail.Review(author: "reviewer", state: "CHANGES_REQUESTED")],
             threads: [
                 ReviewThread(
-                    id: "T1", isResolved: false, path: "src/Redirects/RedirectFile.cs", line: 88, author: "reviewer",
-                    body: "Anchor lookup is case sensitive. Heading slugs are lowercased, so this misses valid targets.",
+                    id: "T1", isResolved: false, path: "x-pack/platform/plugins/shared/onechat/public/upload_image.ts",
+                    line: 24, author: "reviewer",
+                    body: "`credentials: 'same-origin'` is the default for fetch. Do we need it here?",
                     diff: [
-                        "     var slug = Slugify(heading);",
-                        "-    var exists = anchors.Contains(target);",
-                        "+    var exists = anchors.Contains(target, StringComparer.Ordinal);",
+                        "   // the proxy strips cookies on cross-origin requests",
+                        "-  const response = await fetch(url, { method: 'POST', body: file });",
+                        "+  const response = await fetch(url, { method: 'POST', body: file, headers, credentials: 'same-origin' });",
                     ],
                     replies: 0, url: nil
                 ),
                 ReviewThread(
-                    id: "T2", isResolved: false, path: "tests/Redirects/AnchorTests.cs", line: 12, author: "reviewer",
-                    body: "Please cover the moved-page case.", diff: [], replies: 0, url: nil
+                    id: "T2", isResolved: false,
+                    path: "x-pack/platform/plugins/shared/onechat/public/upload_image.test.ts", line: 2,
+                    author: "reviewer", body: "Please cover a 403 from the proxy too.", diff: [], replies: 0, url: nil
                 ),
             ],
             failingChecks: [PullDetail.FailingCheck(
                 name: "lint",
-                summary: "docs/redirects.md:41 line too long",
+                summary: "x-pack/platform/plugins/shared/onechat/README.md:41 line too long",
                 url: nil
             )],
             checks: CheckSummary(passed: 3, failed: 1, pending: 1, failedNames: ["lint"]),
-            closes: [PullRef(repo: docsBuilder, number: 2830)], fetchedAt: Clock.now
+            closes: [PullRef(repo: kibana, number: 299_433)], fetchedAt: Clock.now
         )
         detail.state = "OPEN"
         detail.isDraft = false
@@ -225,29 +237,25 @@ public enum Fixtures {
         detail.mergeState = "BLOCKED"
         detail.reviewDecision = "CHANGES_REQUESTED"
         detail.requiredChecks = ["build", "lint"]
-        // The companion change links here (yours, tracked); someone's docs PR mentions it (suggested, not tracked).
         detail.references = [
             PullDetail.Reference(
-                ref: PullRef(repo: docsContent, number: 1920), title: "Redirects for moved pages", author: "you",
-                state: "OPEN", createdAt: Clock.now.addingTimeInterval(-3 * 3600)
-            ),
-            PullDetail.Reference(
-                ref: PullRef(repo: docsContent, number: 1934), title: "Document anchor redirects",
-                author: "docs-writer", state: "OPEN", createdAt: Clock.now.addingTimeInterval(-50 * 60)
+                ref: PullRef(repo: kibana, number: 299_470), title: "[Agent Builder] Attachment size limits",
+                author: "teammate", state: "OPEN", createdAt: Clock.now.addingTimeInterval(-50 * 60)
             ),
         ]
         return detail
     }()
 
-    /// The other PRs' details, one per green verdict: docs-content#1920 green, editorconfig#412 conflicting.
+    /// The other PRs' details: the one under review is green, an older one of yours conflicts.
     static let otherDetails: [PullDetail] = {
         func detail(
-            _ repo: Repo, _ number: Int, _ title: String, _ branch: String, mergeable: String, state: String,
+            _ number: Int, _ title: String, _ branch: String, author: String, mergeable: String, state: String,
             checks: CheckSummary, review: String?
         ) -> PullDetail {
             var detail = PullDetail(
-                ref: PullRef(repo: repo, number: number), title: title, body: "", author: "you", baseBranch: "main",
-                headBranch: branch, additions: 20, deletions: 3, commitCount: 1, headSHA: "b\(number)",
+                ref: PullRef(repo: kibana, number: number), title: title, body: "", author: author,
+                baseBranch: "main", headBranch: branch, additions: 20, deletions: 3, commitCount: 1,
+                headSHA: "b\(number)",
                 reviews: review.map { [PullDetail.Review(author: "reviewer", state: $0)] } ?? [], threads: [],
                 failingChecks: [], checks: checks, closes: [], fetchedAt: Clock.now
             )
@@ -261,23 +269,13 @@ public enum Fixtures {
         }
         return [
             detail(
-                docsContent,
-                1920,
-                "Redirects for moved pages",
-                "fix-anchors-redirects",
-                mergeable: "MERGEABLE",
-                state: "CLEAN",
-                checks: CheckSummary(passed: 4),
+                299_044, "[Agent Builder] Timeline freezes on long conversations", "timeline-freeze",
+                author: "teammate", mergeable: "MERGEABLE", state: "CLEAN", checks: CheckSummary(passed: 4),
                 review: nil
             ),
             detail(
-                editorconfig,
-                412,
-                "Bump spec tests to 0.17",
-                "bump-spec-tests",
-                mergeable: "CONFLICTING",
-                state: "DIRTY",
-                checks: CheckSummary(passed: 3),
+                298_901, "[Agent Builder] Keep scroll position on new messages", "298760-keep-scroll",
+                author: "you", mergeable: "CONFLICTING", state: "DIRTY", checks: CheckSummary(passed: 3),
                 review: "APPROVED"
             ),
         ]
@@ -288,8 +286,8 @@ public enum Fixtures {
         let now = Clock.now
         func ago(_ minutes: Double) -> Date { now.addingTimeInterval(-minutes * 60) }
         func pull(
-            _ repo: Repo, _ number: Int, _ title: String, _ branch: String, _ checks: CheckSummary,
-            _ review: ReviewDecision?, threads: Int = 0
+            _ number: Int, _ title: String, _ branch: String, _ checks: CheckSummary, _ review: ReviewDecision?,
+            threads: Int = 0, repo: Repo = kibana
         ) -> PullRequest {
             PullRequest(
                 ref: PullRef(repo: repo, number: number), title: title, url: PullRef(repo: repo, number: number).url,
@@ -297,232 +295,92 @@ public enum Fixtures {
                 unresolvedThreads: threads, updatedAt: ago(Double(number % 60))
             )
         }
+        func item(
+            _ id: String, _ kind: InboxItem.Kind, _ number: Int?, _ title: String, _ reason: String, _ minutes: Double,
+            repo: Repo = kibana
+        ) -> InboxItem {
+            InboxItem(
+                id: id, kind: kind, repo: repo, number: number, title: title, reason: reason, unread: true,
+                updatedAt: ago(minutes), url: nil
+            )
+        }
         let inbox = [
-            InboxItem(
-                id: "n1",
-                kind: .pr,
-                repo: docsBuilder,
-                number: 2845,
-                title: "Add link validation to assembler",
-                reason: "review_requested",
-                unread: true,
-                updatedAt: ago(4),
-                url: nil
-            ),
-            InboxItem(
-                id: "n2",
-                kind: .ci,
-                repo: docsBuilder,
-                number: nil,
-                title: "lint failed on #2841",
-                reason: "ci_activity",
-                unread: true,
-                updatedAt: ago(9),
-                url: nil
-            ),
-            InboxItem(
-                id: "n3",
-                kind: .pr,
-                repo: docsContent,
-                number: 1920,
-                title: "2 new review comments",
-                reason: "comment",
-                unread: true,
-                updatedAt: ago(12),
-                url: nil
-            ),
-            InboxItem(
-                id: "n4",
-                kind: .issue,
-                repo: docsBuilder,
-                number: 2830,
-                title: "Anchors lost when a page is moved",
-                reason: "assign",
-                unread: true,
-                updatedAt: ago(60),
-                url: nil
-            ),
-            InboxItem(
-                id: "n5",
-                kind: .issue,
-                repo: docsBuilder,
-                number: 2833,
-                title: "Redirect loop on /reference",
-                reason: "mention",
-                unread: true,
-                updatedAt: ago(120),
-                url: nil
-            ),
-            InboxItem(
-                id: "n6",
-                kind: .pr,
-                repo: mermaider,
-                number: 187,
-                title: "Arrowhead markers on sequence diagrams",
-                reason: "review_requested",
-                unread: true,
-                updatedAt: ago(180),
-                url: nil
-            ),
-            InboxItem(
-                id: "n7",
-                kind: .issue,
-                repo: ingest,
-                number: 94,
-                title: "Backpressure drops events under burst",
-                reason: "assign",
-                unread: true,
-                updatedAt: ago(300),
-                url: nil
-            ),
+            item("n1", .pr, 299_044, "[Agent Builder] Timeline freezes on long conversations", "review_requested", 4),
+            item("n2", .ci, nil, "lint failed on #299455", "ci_activity", 9),
+            item("n3", .pr, 299_455, "2 new review comments", "comment", 12),
+            item("n4", .issue, 299_433, "Image upload returns 403 behind a proxy", "assign", 60),
+            item("n5", .issue, 299_120, "Conversation list flickers when renaming", "mention", 120),
+            item("n6", .pr, 8412, "EuiMarkdownEditor: paste keeps the undo stack", "review_requested", 180, repo: eui),
+            item("n7", .issue, 298_812, "Chat input cmd+z breaks after paste", "assign", 300),
         ]
+        func issue(
+            _ number: Int, _ title: String, _ body: String, _ labels: [String], _ minutes: Double,
+            assigned: Bool = false, mentioned: Bool = false
+        ) -> Issue {
+            Issue(
+                repo: kibana, number: number, title: title, url: "", body: body, labels: labels, author: "reporter",
+                updatedAt: ago(minutes), assigned: assigned, mentioned: mentioned
+            )
+        }
         let issues = [
-            Issue(
-                repo: docsBuilder,
-                number: 2830,
-                title: "Anchors lost when a page is moved",
-                url: "",
-                body: "Moving a page drops its heading anchors from redirects.",
-                labels: ["bug"],
-                author: "reviewer",
-                updatedAt: ago(60),
-                assigned: true
+            issue(
+                299_433, "Image upload returns 403 behind a proxy",
+                "Uploading an image in the chat fails with 403 when Kibana runs behind a reverse proxy.",
+                ["bug", "Team:AI Infra"], 60, assigned: true
             ),
-            Issue(
-                repo: docsBuilder,
-                number: 2833,
-                title: "Redirect loop on /reference",
-                url: "",
-                body: "/reference redirects to itself after the nav change.",
-                labels: ["bug", "redirects"],
-                author: "reviewer",
-                updatedAt: ago(120),
-                mentioned: true
+            issue(
+                299_120, "Conversation list flickers when renaming", "Renaming a conversation re-renders the list.",
+                ["bug"], 120, mentioned: true
             ),
-            Issue(
-                repo: ingest,
-                number: 94,
-                title: "Backpressure drops events under burst",
-                url: "",
-                body: "Under burst load the stage drops events instead of slowing producers.",
-                labels: [],
-                author: nil,
-                updatedAt: ago(300),
-                assigned: true
-            ),
-            // Shown because docs-builder shows all issues, not because it involves you.
-            Issue(
-                repo: docsBuilder,
-                number: 2851,
-                title: "Support nested includes in snippets",
-                url: "",
-                body: "Snippets cannot include other snippets yet.",
-                labels: ["enhancement"],
-                author: "contributor",
-                updatedAt: ago(400)
-            ),
-            Issue(
-                repo: mermaider,
-                number: 12,
-                title: "Arrow heads render detached at small zoom",
-                url: "",
-                body: "",
-                labels: ["bug"],
-                author: "someone",
-                updatedAt: ago(900)
+            issue(
+                298_812, "Chat input cmd+z breaks after paste", "After pasting, cmd+z clears the whole input.",
+                ["bug"], 300, assigned: true
             ),
         ]
         let pulls = [
             pull(
-                docsBuilder,
-                2841,
-                "Fix broken anchors in redirects",
-                "fix-anchors-redirects",
-                CheckSummary(passed: 3, failed: 1, pending: 1, failedNames: ["lint"]),
-                .changesRequested,
-                threads: 2
+                299_455, "[Agent Builder] Fix image upload 403 behind a proxy", "299433-fix-image-upload-403",
+                CheckSummary(passed: 3, failed: 1, pending: 1, failedNames: ["lint"]), .changesRequested, threads: 2
             ),
-            pull(docsContent, 1920, "Redirects for moved pages", "fix-anchors-redirects", CheckSummary(passed: 4), nil),
-            // Merged earlier on the same branch: done, its checks as they finished.
+            pull(
+                299_044,
+                "[Agent Builder] Timeline freezes on long conversations",
+                "timeline-freeze",
+                CheckSummary(passed: 4),
+                nil
+            ),
+            pull(
+                298_901,
+                "[Agent Builder] Keep scroll position on new messages",
+                "298760-keep-scroll",
+                CheckSummary(passed: 3),
+                .approved
+            ),
             {
                 var merged = pull(
-                    docsBuilder, 2836, "Redirect checker: first pass", "fix-anchors-redirects",
-                    CheckSummary(passed: 4), .approved
+                    298_140, "[Agent Builder] Upgrade the chat to EUI 101", "eui-101", CheckSummary(passed: 4),
+                    .approved
                 )
                 merged.state = .merged
                 return merged
             }(),
-            pull(
-                docsBuilder,
-                2838,
-                "Cross-link validator for assembler",
-                "cross-link-validator",
-                CheckSummary(passed: 2, pending: 3),
-                nil
-            ),
-            pull(editorconfig, 412, "Bump spec tests to 0.17", "bump-spec-tests", CheckSummary(passed: 3), .approved),
-            pull(ingest, 31, "Backpressure for the ingest stage", "ingest-backpressure", CheckSummary(passed: 2), nil),
-            pull(
-                mermaider, 418, "Arrowheads at small zoom", "sequence-arrowheads", CheckSummary(passed: 5), nil,
-                threads: 1
-            ),
-            pull(docsBuilder, 2852, "Docs nav spike", "docs-nav-spike", CheckSummary(passed: 1, pending: 2), nil),
         ]
         return GitHubState(viewer: "you", inbox: inbox, issues: issues, pulls: pulls, syncedAt: ago(0.3), status: .ok)
     }()
 
-    /// design/screens/History.png: closed sessions over the last week.
-    static let history: [HistoryEntry] = {
-        let now = Clock.now
-        func entry(
-            _ title: String, _ repo: Repo, _ agent: String, hoursAgo: Double, minutes: Double, _ outcome: Outcome,
-            pr: Int? = nil
-        ) -> HistoryEntry {
-            let closed = now.addingTimeInterval(-hoursAgo * 3600)
-            let started = closed.addingTimeInterval(-minutes * 60)
-            var session = Session(
-                id: "h-\(StartWork.name(for: title))", title: title,
-                prompt: "\(title). Keep the change small and add a test.",
-                repos: [repo], branch: StartWork.name(for: title), agent: agent,
-                agentSessionID: "b36c9d71-04fa-42e8-8a3d-7e1c5b2f9d60", state: ObservedState(.done),
-                trackedPRs: pr.map { [PullRef(repo: repo, number: $0)] } ?? [], lastActivity: closed, createdAt: started
-            )
-            session.record("started · \(agent) · 2 panes", at: started)
-            if let pr { session.record("opened PR #\(pr)", at: started.addingTimeInterval(minutes * 30)) }
-            session.record("ended after \(Int(minutes / 60))h \(Int(minutes) % 60)m", at: closed)
-            return HistoryEntry(session: session, closedAt: closed, outcome: outcome)
+    /// An agent tab (`<task>-agent`, or `<task>-agent2` when `second`), with a shell split beside it when `split`.
+    private static func agentTab(_ task: String, _ directory: String, split: Bool = false, second: Bool = false)
+        -> PaneTab
+    {
+        let id = second ? "\(task)-agent2" : "\(task)-agent"
+        let agent = PaneSpec(id: id, role: .agent, title: "claude", directory: directory, command: "claude")
+        var tab = PaneTab(id: second ? "\(task)-t1b" : "\(task)-t1", title: "agent", tree: .leaf(agent))
+        if split {
+            tab.split(.horizontal, with: PaneSpec(
+                id: "\(task)-shell", role: .shell, title: "zsh", directory: directory
+            ))
+            tab.focused = agent.id
         }
-        return [
-            entry("Fix toc ordering", docsBuilder, "claude", hoursAgo: 1, minutes: 130, .merged, pr: 2810),
-            entry("Fix redirect typos", docsContent, "claude", hoursAgo: 3, minutes: 41, .merged, pr: 1912),
-            entry("Bump spec tests to 0.17", editorconfig, "claude", hoursAgo: 26, minutes: 65, .merged, pr: 412),
-            entry("Flowchart label wrapping", mermaider, "claude", hoursAgo: 28, minutes: 26, .abandoned),
-            entry("Docs nav spike v1", docsBuilder, "claude", hoursAgo: 30, minutes: 220, .closed, pr: 2790),
-            entry("Snippet include performance", docsBuilder, "claude", hoursAgo: 120, minutes: 175, .merged, pr: 2781),
-            entry("Parser fuzzing harness", mermaider, "claude", hoursAgo: 130, minutes: 90, .cleanedUp),
-        ]
-    }()
-
-    private static func tabs(for session: Session, root: String) -> [PaneTab] {
-        let directory = "\(root)/wt/\(session.repos[0].name)/\(session.branch)"
-        let agent = PaneSpec(
-            id: "\(session.id)-agent", role: .agent, title: session.agent, directory: directory, command: session.agent
-        )
-        let shell = PaneSpec(
-            id: "\(session.id)-shell", role: .shell, title: "zsh \(session.branch)", directory: directory
-        )
-        var main = PaneTab(id: "\(session.id)-t1", title: "agent", tree: .leaf(agent))
-        main.split(.horizontal, with: shell)
-        main.focused = agent.id
-        let tests = PaneSpec(
-            id: "\(session.id)-tests", role: .task, title: "tests", directory: directory, command: "dotnet watch test"
-        )
-        return [
-            main,
-            PaneTab(id: "\(session.id)-t2", title: "shell", tree: .leaf(PaneSpec(
-                id: "\(session.id)-zsh", role: .shell, title: "zsh", directory: directory
-            ))),
-            PaneTab(id: "\(session.id)-t3", title: "tests", tree: .leaf(tests)),
-        ]
+        return tab
     }
 }

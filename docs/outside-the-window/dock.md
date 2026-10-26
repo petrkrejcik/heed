@@ -1,13 +1,13 @@
 ---
-description: "The Dock icon's badge: how many sessions need you."
+description: "The Dock icon's badge: how many tasks need you."
 ---
 
 # The Dock
 
-When sessions need you, Heed's Dock icon gets a badge with how many. Its colour is the state's: amber when one is
+When tasks need you, Heed's Dock icon gets a badge with how many. Its colour is the state's: amber when one is
 blocked, violet when they are only asking.
 
-![The Dock icon with a badge: 2 sessions need you, one of them blocked](../images/shots/outside/dock.png)
+![The Dock icon with a badge: 2 tasks need you, one of them blocked](../images/shots/outside/dock.png)
 
 ```toml
 [ui]

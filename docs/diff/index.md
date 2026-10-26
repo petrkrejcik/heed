@@ -5,7 +5,7 @@ description: "The diff overlay: what the agent changed, by scope, file and hunk.
 
 # Diff
 
-`gd` opens the diff overlay for the session's worktree: what changed, file by file, hunk by hunk, with word-level
+`gd` opens the diff overlay for the task's checkout: what changed, file by file, hunk by hunk, with word-level
 highlights.
 
 ![The diff overlay: files on the left, the hunks of the current file on the right](../images/shots/diff/overlay.png)

@@ -119,23 +119,6 @@ struct Highlighted: View {
     }
 }
 
-/// A worktree's path, small: its root dimmed, the part below it (what filters match) brighter and highlighted.
-struct WorktreePath: View {
-    let path: String
-    let roots: [String]
-    var query = ""
-
-    var body: some View {
-        let split = Paths.split(path, roots: roots)
-        let root = Text(split.root).foregroundColor(Theme.fg3)
-        let relative = Highlighted.text(split.relative, query: query, base: Theme.fg2)
-        return Text("\(root)\(relative)")
-            .font(Theme.mono(11))
-            .lineLimit(1)
-            .truncationMode(.head)
-    }
-}
-
 /// Section header: small caps, tracked.
 struct SectionHeader: View {
     let title: String

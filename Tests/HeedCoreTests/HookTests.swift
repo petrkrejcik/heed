@@ -58,12 +58,28 @@ struct ClaudeHookTests {
         #expect(Set(hooks.keys) == Set(AgentIntegration.claudeEvents.map(\.event)))
     }
 
-    @Test func claudeLaunchesWithSettingsAndAPreassignedSession() {
+    @Test func claudeLaunchesWithSettingsAndItsOwnSessionID() {
         let files = IntegrationFiles(directory: URL(fileURLWithPath: "/tmp/Heed Support"))
-        let plan = StartWorkPlan(
-            prompt: "go", repos: [], name: "n", agent: AgentProfile.builtIn[0], sessionID: "S1", integration: files
+        let claude = AgentProfile.builtIn[0]
+        let extra = AgentIntegration.launchArguments(agent: claude, claudeSessionID: "S1", files: files)
+        #expect(claude.launchCommand(prompt: "go", extraArguments: extra)
+            == "claude --settings '/tmp/Heed Support/claude-hooks.json' --session-id S1 go")
+        // Resuming keeps the session it had: no new id.
+        let resumed = AgentIntegration.launchArguments(
+            agent: claude,
+            claudeSessionID: "S1",
+            files: files,
+            resuming: true
         )
-        #expect(plan.command == "claude --settings '/tmp/Heed Support/claude-hooks.json' --session-id S1 go")
+        #expect(claude.resumeCommand(id: "S1", extraArguments: resumed)
+            == "claude --settings '/tmp/Heed Support/claude-hooks.json' --resume S1")
+    }
+
+    @Test func pinnedCommandsReportTheirExitCode() throws {
+        #expect(try HookCommandLine.parse(["command-exit", "1"]) == [.commandExit(code: 1)])
+        #expect(throws: HookCommandLine.UsageError.self) { try HookCommandLine.parse(["command-exit", "x"]) }
+        #expect(throws: HookCommandLine.UsageError.self) { try HookCommandLine.parse(["title", "Renamed"]) }
+        #expect(throws: HookCommandLine.UsageError.self) { try HookCommandLine.parse(["task-exit", "0"]) }
     }
 
     @Test func pullRefsFromURLs() {
@@ -81,8 +97,9 @@ struct HookServerTests {
         try server.start()
         defer { server.stop() }
 
-        let first = try HookMessage(session: "s1", kind: .state(.blocked, reason: "Bash")).encodedLine()
-        let second = try HookMessage(session: "s1", kind: .title("Renamed")).encodedLine()
+        let first = try HookMessage(session: "t1", pane: "t1-agent", kind: .state(.blocked, reason: "Bash"))
+            .encodedLine()
+        let second = try HookMessage(session: "t1", pane: "t1-agent2", kind: .commandExit(code: 2)).encodedLine()
         let fd = socket(AF_UNIX, SOCK_STREAM, 0)
         var address = HookServer.address(path)
         let connected = withUnsafePointer(to: &address) {
@@ -97,12 +114,14 @@ struct HookServerTests {
         _ = payload.withUnsafeBytes { write(fd, $0.baseAddress, $0.count) }
         close(fd)
 
-        var received: [HookMessage.Kind] = []
+        var received: [HookMessage] = []
         for await message in server.messages {
-            received.append(message.kind)
+            received.append(message)
             if received.count == 2 { break }
         }
-        #expect(received == [.state(.blocked, reason: "Bash"), .title("Renamed")])
+        #expect(received.map(\.kind) == [.state(.blocked, reason: "Bash"), .commandExit(code: 2)])
+        // Each message names its pane, so a task's two agent tabs report apart.
+        #expect(received.map(\.pane) == ["t1-agent", "t1-agent2"])
         #expect(throws: HookServerError.self) { try HookServer(path: path).start() }
     }
 }
@@ -110,8 +129,9 @@ struct HookServerTests {
 struct AgentIntegrationTests {
     private let files = IntegrationFiles(directory: URL(fileURLWithPath: "/s"))
 
-    private func plan(_ agent: AgentProfile?, prompt: String = "go") -> String? {
-        StartWorkPlan(prompt: prompt, repos: [], name: "n", agent: agent, sessionID: "S1", integration: files).command
+    private func plan(_ agent: AgentProfile, prompt: String = "go") -> String {
+        let extra = AgentIntegration.launchArguments(agent: agent, claudeSessionID: "S1", files: files)
+        return agent.launchCommand(prompt: prompt, extraArguments: extra)
     }
 
     @Test func onlyClaudeGetsHookWiring() {

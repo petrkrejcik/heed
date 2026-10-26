@@ -16,7 +16,7 @@ public enum AgentState: String, CaseIterable, Sendable, Codable {
     /// The agent process ended; the shell lives on. Hollow square.
     case exited
 
-    /// Blocked and asking sessions are the ones `ga` cycles through and the title bar counts.
+    /// Blocked and asking agents are the ones `ga` cycles through and the title bar counts.
     public var needsYou: Bool { self == .blocked || self == .asking }
 
     public var summary: String {
@@ -36,7 +36,7 @@ public enum AgentState: String, CaseIterable, Sendable, Codable {
 public enum StateSource: String, Sendable, Codable {
     /// The agent's hook reported it.
     case reported
-    /// Assumed by Heed until the first hook arrives (a session just started, imported or resuming).
+    /// Assumed by Heed until the first hook arrives (an agent tab just started or resuming).
     case guessed
 }
 

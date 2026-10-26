@@ -7,17 +7,14 @@ description: Selecting several rows, then acting on all of them.
 `v` starts VISUAL: move to extend the selection from where you started, `space` to add or drop single rows, then act
 on all of them at once.
 
-![Three worktrees selected in Repos](../images/shots/keyboard/visual.png)
+![Two notifications selected in the Inbox](../images/shots/keyboard/visual.png)
 
 | Key | |
 |---|---|
 | `j` `k` `gg` `G` | Extend the selection |
 | `space` | Add or drop the row under the cursor |
-| `d` | Remove the selected (asks first) |
-| `m` | Pin the selected |
-| `y` | Copy their paths |
-| `o` | Open them (in Repos: their sessions, importing those without one) |
+| `s` | [New task](../tasks/new-task.md#from-github) from the selected (Inbox and Issues) |
+| `x` | Mark the selected read (Inbox) |
 | `⎋` | Back to NORMAL |
 
-In the Inbox and Issues, `space` picks items without VISUAL, for [starting a session](../start-work/from-github.md)
-from several at once.
+In the Inbox and Issues, `space` picks items without VISUAL too, for a new task from several at once.

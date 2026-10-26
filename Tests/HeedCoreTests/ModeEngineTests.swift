@@ -145,7 +145,6 @@ struct ContinuationTests {
         let rows = Dictionary(uniqueKeysWithValues: engine.continuations
             .map { (KeyNotation.format($0.rest), $0.command) })
         #expect(rows["f"] == "diff.file.next")
-        #expect(rows["p"] == "pr.next")
     }
 }
 
@@ -153,30 +152,34 @@ struct ScopedKeyTests {
     @Test func scopedBindingsApplyOnlyInTheirView() {
         var engine = engine()
         #expect(press(&engine, "r") == [.unbound([KeyStroke("r")])])
-        #expect(press(&engine, "o") == [.run(CommandInvocation(name: "work.start"))])
-        engine.scope = "repos"
-        #expect(press(&engine, "r") == [.run(CommandInvocation(name: "repo.scan"))])
-        // o still starts work, in the repo under the cursor.
-        #expect(press(&engine, "o") == [.run(CommandInvocation(name: "worktree.new"))])
+        #expect(press(&engine, "o") == [.run(CommandInvocation(name: "task.new"))])
+        engine.scope = "inbox"
+        #expect(press(&engine, "r") == [.run(CommandInvocation(name: "github.sync"))])
+        // o still makes a new task.
+        #expect(press(&engine, "o") == [.run(CommandInvocation(name: "task.new"))])
         #expect(press(&engine, "j") == [.run(CommandInvocation(name: "row.next"))])
     }
 
     @Test func oneKeyOneMeaning() {
-        // x is "done with it" wherever it is bound, o is always starting work, and the GitHub views read with ↩.
-        #expect(DefaultKeys.normal.contains { $0 == ("x", "session.close") })
-        #expect(DefaultKeys.scoped["inbox"]?.contains { $0 == ("x", "items.read") } == true)
+        // o is always a new task, s starts one from what you picked, and m pins.
+        #expect(DefaultKeys.normal.contains { $0 == ("o", "task.new") })
+        #expect(DefaultKeys.normal.contains { $0 == ("m", "task.pin") })
         for (scope, table) in DefaultKeys.scoped {
-            for (keys, command) in table where keys == "o" {
-                #expect(command == "worktree.new", "o in \(scope) is \(command)")
+            for (keys, command) in table {
+                #expect(keys != "o", "o in \(scope) is \(command)")
+                if keys == "s" { #expect(command == "items.start", "s in \(scope) is \(command)") }
             }
         }
-        #expect(DefaultKeys.normal.contains { $0 == ("m", "session.pin") })
     }
 
-    @Test func commandsOutliveTheirKeys() {
-        // Unbinding a key keeps its command: : runs it, and config can bind it again.
-        for name in ["repo.add"] {
-            #expect(Commands.spec(name) != nil, "\(name)")
+    @Test func removedKeysAreGone() {
+        // History (x, dd), Start work (O), Repos and import went with their views.
+        let normal = Set(DefaultKeys.normal.map(\.0))
+        for keys in ["x", "dd", "O", "gh", "gr", "zz", "]p", "[p", "gU"] {
+            #expect(!normal.contains(keys), "\(keys) is still bound")
+        }
+        for scope in ["sessions", "repos", "history"] {
+            #expect(DefaultKeys.scoped[scope] == nil, "\(scope) still has keys")
         }
     }
 }
@@ -226,17 +229,22 @@ struct HookCommandLineTests {
             == [.state(.blocked, reason: "Bash(dotnet publish)")])
         #expect(try HookCommandLine.parse(["pr", "add", "https://github.com/o/r/pull/1"])
             == [.prAdd(url: "https://github.com/o/r/pull/1")])
-        #expect(try HookCommandLine.parse(["title", "Fix anchors"]) == [.title("Fix anchors")])
+        #expect(try HookCommandLine.parse(["command-exit", "0"]) == [.commandExit(code: 0)])
+        #expect(try HookCommandLine.parse(["agent-session", "claude", "abc"]) == [.agentSession(
+            id: "abc",
+            agent: "claude"
+        )])
         #expect(throws: HookCommandLine.UsageError.self) { try HookCommandLine.parse(["state", "sleepy"]) }
     }
 
     @Test func messagesRoundTripAsOneLine() throws {
-        let message = HookMessage(session: "s1", kind: .state(.asking, reason: "3 questions"))
+        let message = HookMessage(session: "t1", pane: "t1-agent", kind: .state(.asking, reason: "3 questions"))
         let line = try message.encodedLine()
         #expect(line.last == 0x0A)
         #expect(line.dropLast().contains(0x0A) == false)
         let decoded = try HookMessage.decode(line: line.dropLast())
         #expect(decoded.kind == message.kind)
+        #expect(decoded.pane == "t1-agent")
     }
 }
 
@@ -252,45 +260,26 @@ struct InsertEscapeTests {
     }
 }
 
-struct DeleteKeyTests {
-    @Test func ddDeletesInSessionsAndRemovesInRepos() {
-        let built = Keymaps.build()
-        #expect(built.problems.isEmpty)
-        let dd = [KeyStroke("d"), KeyStroke("d")]
-        #expect(built.scoped["sessions"]?.lookup(dd) == .command("session.delete"))
-        #expect(built.scoped["repos"]?.lookup(dd) == .command("select.remove"))
-        // Nowhere else: dd in Inbox must not delete the session you are not looking at.
-        #expect(built.keymaps[.normal]?.lookup(dd) == Keymap.Lookup.none)
-    }
-}
-
 struct ViewBindingClashTests {
     @Test func defaultsHaveNoClashes() {
         #expect(Keymaps.build().problems.isEmpty)
     }
 
+    @Test func visualActsOnTheSelectedItems() {
+        let built = Keymaps.build()
+        var engine = ModeEngine(keymaps: built.keymaps, scoped: built.scoped)
+        engine.scope = "inbox"
+        engine.enter(.visual)
+        #expect(engine.handle(KeyStroke("s")) == .run(CommandInvocation(name: "items.start")))
+        #expect(engine.handle(KeyStroke("x")) == .run(CommandInvocation(name: "items.read")))
+    }
+
     @Test func aViewBindingMayNotHideANormalKey() {
-        let built = Keymaps.build(scopedOverrides: ["sessions": [("iw", "session.import"), ("g", "session.import")]])
+        let built = Keymaps.build(scopedOverrides: ["inbox": [("iw", "items.read"), ("g", "items.read")]])
         let messages = built.problems.map(\.message)
         #expect(messages.contains { $0.contains("starts with i, which is mode.insert") })
         #expect(messages.contains { $0.contains("would hide") })
         // Neither was bound: i stays immediate, g still leads.
-        #expect(built.scoped["sessions"]?.lookup([KeyStroke("i")]) == Keymap.Lookup.none)
-    }
-
-    @Test func importKeysAreIwAndIp() {
-        let built = Keymaps.build()
-        #expect(built.scoped["sessions"]?.lookup([KeyStroke("I"), KeyStroke("w")]) == .command("session.import"))
-        #expect(built.scoped["sessions"]?.lookup([KeyStroke("I"), KeyStroke("p")]) == .command("session.import.path"))
-    }
-}
-
-struct VisualKeysTests {
-    @Test func visualDRemovesAtOnceInAViewThatBindsDD() {
-        let built = Keymaps.build()
-        var engine = ModeEngine(keymaps: built.keymaps, scoped: built.scoped)
-        engine.scope = "repos"
-        engine.enter(.visual)
-        #expect(engine.handle(KeyStroke("d")) == .run(CommandInvocation(name: "select.remove")))
+        #expect(built.scoped["inbox"]?.lookup([KeyStroke("i")]) == Keymap.Lookup.none)
     }
 }

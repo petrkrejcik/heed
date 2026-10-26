@@ -3,11 +3,11 @@ import Foundation
 /// What runs in a pane. The terminal itself lives in the app; this is the record that survives a relaunch.
 public struct PaneSpec: Hashable, Sendable, Codable, Identifiable {
     public enum Role: String, Sendable, Codable {
-        /// The shell the agent runs in; the session survives the agent exiting.
+        /// The shell the agent runs in; the tab survives the agent exiting.
         case agent
         case shell
-        /// A repo's pinned task (test, build, docs preview); its exit code sets the tab's glyph.
-        case task
+        /// A pinned command (`[commands]`: test, build); its exit code sets the tab's glyph.
+        case command
 
         /// A role this build no longer has (a cached `helper` pane) comes back as a shell.
         public init(from decoder: Decoder) throws {
@@ -19,7 +19,7 @@ public struct PaneSpec: Hashable, Sendable, Codable, Identifiable {
     public var role: Role
     public var title: String
     public var directory: String
-    /// Typed into the shell once it starts (the agent command, a task's command). Nil for a plain shell.
+    /// Typed into the shell once it starts (the agent command, a pinned command). Nil for a plain shell.
     public var command: String?
 
     public init(
@@ -121,7 +121,7 @@ public indirect enum PaneTree: Hashable, Sendable, Codable {
     }
 }
 
-/// A tab in a session: a name and its pane tree.
+/// A tab in a task: a name and its pane tree.
 public struct PaneTab: Hashable, Sendable, Codable, Identifiable {
     public var id: String
     public var title: String

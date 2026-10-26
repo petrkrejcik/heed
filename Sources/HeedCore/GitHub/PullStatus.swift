@@ -16,7 +16,7 @@ public enum PullStatus: Hashable, Sendable {
     case passing
     case closed(merged: Bool)
 
-    /// Lower is more urgent: a session shows its most urgent PR.
+    /// Lower is more urgent.
     public var urgency: Int {
         switch self {
         case .conflicted, .failing: 0

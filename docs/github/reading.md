@@ -10,7 +10,7 @@ description: Reading pull requests and issues without leaving Heed.
 
 The reader shows the description, the unresolved review threads with the code they are on, and the failing checks;
 beside them its reviewers, checks and [green rules](pr-overlay.md#green). It is the [PR overlay](pr-overlay.md)'s view,
-for any PR: `S` starts a session from it, `gS` jumps to the session working on it.
+for any PR: `S` makes a new task from it, `gS` jumps to the task working on it.
 
 ![The pull request reader](../images/shots/github/reader-pr.png)
 
@@ -20,8 +20,7 @@ The issue reader shows the title, labels, author and body. From it:
 
 | Key | |
 |---|---|
-| `s` | [Start a session](../start-work/from-github.md) from it |
-| `a` | Add it to the current session |
+| `s` | [New task](../tasks/new-task.md#from-github) from it |
 | `gB` | Open it on GitHub |
 
 ![The issue reader](../images/shots/github/reader-issue.png)

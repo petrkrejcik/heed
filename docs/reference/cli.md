@@ -12,14 +12,13 @@ after three seconds.
 | Command | |
 |---|---|
 | `heed state <state> [--reason "…"]` | Report a state: working, idle, blocked, asking, done, limited, exited |
-| `heed notify "<message>"` | Show a message in the status bar, prefixed with the session |
-| `heed pr add <url>` | Track a pull request in this session |
-| `heed issue add <url>` | Link an issue to this session |
-| `heed title "<title>"` | Rename the session |
-| `heed agent-session <agent> <id>` | Record the agent's own session id, for resuming |
-| `heed task-exit <code>` | Report a task tab's exit code |
+| `heed notify "<message>"` | Show a message in the status bar, prefixed with the task |
+| `heed pr add <url>` | Set the task's PR, when it has none |
+| `heed issue add <url>` | Set the task's issue, when it has none |
+| `heed agent-session <agent> <id>` | Record this agent tab's own Claude session id, for resuming |
+| `heed command-exit <code>` | Report a pinned command's exit code |
 | `heed hook <agent> <event>` | An agent's hook: reads its JSON on stdin |
 | `heed tools` | Where `git` and `gh` are found (see [Finding git and gh](../configuration/tools.md)) |
 
-It reads `HEED_SESSION_ID` and `HEED_SOCKET` from the environment, which every Heed pane sets; run elsewhere, it does
-nothing.
+It reads `HEED_SESSION_ID` (the task id), `HEED_PANE_ID` and `HEED_SOCKET` from the environment, which every Heed pane
+sets; run elsewhere, it does nothing. The pane id is how a task's agent tabs report apart.

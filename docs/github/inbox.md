@@ -1,5 +1,5 @@
 ---
-description: Your GitHub notifications in Heed, filtered, read and turned into sessions.
+description: Your GitHub notifications in Heed, filtered, read and turned into tasks.
 ---
 
 # Inbox
@@ -10,7 +10,7 @@ description: Your GitHub notifications in Heed, filtered, read and turned into s
 
 ## Filters
 
-`t` cycles the chips; `/` [filters](../sessions/filtering.md) by text on top of them.
+`t` cycles the chips; `/` [filters](../tasks/filtering.md) by text on top of them.
 
 | Chip | Shows |
 |---|---|
@@ -27,10 +27,9 @@ description: Your GitHub notifications in Heed, filtered, read and turned into s
 | Key | |
 |---|---|
 | `space` | Pick an item; `v` picks a range |
-| `s` | [Start a session](../start-work/from-github.md) from the picked items |
-| `a` | Add them to the current session |
+| `s` | [New task](../tasks/new-task.md#from-github) from the picked items |
 | `go`, `↩` | [Read](reading.md) the item in the app |
-| `x` | Mark read: done with it, as `x` is everywhere |
+| `x` | Mark read: done with it |
 | `gB` | Open in the browser |
 
 ![Inbox rows: kind, repo, title, why it is in your inbox, and when](../images/shots/github/inbox-rows.png)

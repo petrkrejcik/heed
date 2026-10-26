@@ -6,7 +6,7 @@ description: Jumping to anything on screen by label with f.
 
 `f` labels everything you can jump to in the current view; type a label to go there.
 
-![Hints in Sessions: a label on every session and pane](../images/shots/keyboard/hints-sessions.png)
+![Hints in Tasks: a label on every task and pane](../images/shots/keyboard/hints-tasks.png)
 
 | Key | |
 |---|---|
@@ -14,6 +14,6 @@ description: Jumping to anything on screen by label with f.
 | `F` | Jump and act: a pane enters INSERT, a list row opens |
 | `⎋` | Cancel |
 
-In Sessions the labels go on sessions and panes; in Inbox, Issues, PRs, Repos and History they go on the list's rows.
+In Tasks the labels go on tasks and panes; in Inbox, Issues and PRs they go on the list's rows.
 
 ![Hints on the Issues list](../images/shots/keyboard/hints-list.png)

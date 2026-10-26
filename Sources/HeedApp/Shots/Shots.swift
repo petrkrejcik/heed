@@ -5,8 +5,8 @@ import SwiftUI
 /// docs/images/shots; pages reference them as `../images/shots/<id>.png`.
 @MainActor
 enum Shots {
-    static let all: [Shot] = landing + home + gettingStarted + concepts + sessions + startWork + github +
-        worktrees + diff + history + keyboard + outside + configuration
+    static let all: [Shot] = landing + home + gettingStarted + concepts + tasks + github + diff + keyboard + outside
+        + configuration
 
     /// Types a sentence (spaces become <Space>).
     static func typed(_ text: String) -> String {
@@ -42,85 +42,62 @@ enum Shots {
 
     static let gettingStarted: [Shot] = [
         Shot(id: "getting-started/first-run", crop: .dialog, prepare: { $0.showFirstRun(report: firstRunReport) }),
-        // Every terminal of a session exited: delete it, close it, or keep it.
-        Shot(id: "sessions/all-closed", crop: .confirm, prepare: { model in
-            model.panesEnded(Set(model.currentTabs.flatMap(\.tree.panes).map(\.id)))
-        }),
-        Shot(
-            id: "getting-started/first-session-1-start",
-            keys: "o" + typed("Fix broken anchors in the redirect pages"),
-            crop: .dialog
-        ),
-        Shot(id: "getting-started/first-session-2-working", highlight: [.panes]),
-        Shot(id: "getting-started/first-session-3-blocked", keys: "j", highlight: [.sidebar, .panes]),
-        Shot(id: "getting-started/first-session-4-insert", keys: "ji", highlight: [.panes]),
-        Shot(id: "getting-started/first-session-5-pr", keys: "go"),
-        Shot(id: "getting-started/first-session-6-history", keys: "gh", highlight: [.historyList]),
+        Shot(id: "getting-started/first-task-1-new", keys: "o" + typed("Fix image upload 403"), crop: .dialog),
+        Shot(id: "getting-started/first-task-2-working", keys: "2j", highlight: [.panes]),
+        Shot(id: "getting-started/first-task-3-asking", keys: "j", highlight: [.sidebar, .panes]),
+        Shot(id: "getting-started/first-task-4-insert", keys: "ji", highlight: [.panes]),
+        Shot(id: "getting-started/first-task-5-pr", keys: "2jgo"),
     ]
 
     static let concepts: [Shot] = [
-        Shot(id: "concepts/session", highlight: [.tabStrip, .panes, .inspector]),
+        Shot(id: "concepts/task", keys: "2j", highlight: [.tabStrip, .panes, .inspector]),
         Shot(id: "concepts/states", size: CGSize(width: 1440, height: 640), crop: .sidebar),
-        Shot(id: "concepts/worktrees", keys: "gr", crop: .worktreeTable),
         Shot(id: "concepts/mode-normal", crop: .statusBar, cropPadding: 0),
         Shot(id: "concepts/mode-insert", keys: "i", crop: .statusBar, cropPadding: 0),
-        Shot(id: "concepts/mode-visual", keys: "gsv", crop: .statusBar, cropPadding: 0),
+        Shot(id: "concepts/mode-visual", keys: "gmv", crop: .statusBar, cropPadding: 0),
         Shot(id: "concepts/mode-command", keys: ":", crop: .statusBar, cropPadding: 0),
         Shot(id: "concepts/mode-hint", keys: "f", crop: .statusBar, cropPadding: 0),
     ]
 
     /// The landing page (docs/heed-landing.html), which draws its own window frames: no chrome here.
     static let landing: [Shot] = [
-        Shot(id: "landing/main", chrome: false),
-        Shot(id: "landing/states", chrome: false, keys: "2j"),
-        Shot(id: "landing/start-work", chrome: false, keys: "o" + typed("Fix broken anchors in the redirect pages")),
+        Shot(id: "landing/main", chrome: false, keys: "2j"),
+        Shot(id: "landing/states", chrome: false, keys: "j"),
+        Shot(id: "landing/new-task", chrome: false, keys: "o" + typed("Fix image upload 403")),
         Shot(id: "landing/agents", subject: .settings(.agents), size: CGSize(width: 1100, height: 700)),
         Shot(id: "landing/keys", chrome: false, keys: "?"),
         Shot(id: "landing/prs", chrome: false, keys: "gp"),
-        Shot(id: "landing/pr", chrome: false, keys: "go"),
-        Shot(id: "landing/worktrees", chrome: false, keys: "gr4jvj"),
+        Shot(id: "landing/pr", chrome: false, keys: "2jgo"),
         Shot(id: "landing/resume", chrome: false, prepare: { $0.showResumeForFixture() }),
-        Shot(id: "landing/diff", chrome: false, keys: "gd"),
+        Shot(id: "landing/diff", chrome: false, keys: "2jgd"),
         Shot(id: "landing/inbox", chrome: false, keys: "gm<Space>j<Space>"),
     ]
 
     /// The docs' home page.
     static let home: [Shot] = [
-        Shot(id: "home/sessions"),
+        Shot(id: "home/tasks", keys: "2j"),
     ]
 
-    static let sessions: [Shot] = [
-        Shot(id: "sessions/anatomy", highlight: [.sidebar, .center, .inspector]),
-        Shot(id: "sessions/sidebar", size: CGSize(width: 1440, height: 640), crop: .sidebar),
-        Shot(id: "sessions/rail", size: CGSize(width: 1440, height: 640), keys: "zs", crop: .rail),
-        Shot(id: "sessions/moving", size: CGSize(width: 1440, height: 640), keys: "2j", crop: .sidebar),
-        Shot(id: "sessions/attention", size: CGSize(width: 1440, height: 640), keys: "ga", crop: .sidebar),
-        Shot(id: "sessions/insert-before", crop: .panes),
-        Shot(id: "sessions/insert-after", keys: "i", crop: .panes),
-        Shot(id: "sessions/split", keys: "<C-w>v", highlight: [.panes]),
-        Shot(id: "sessions/tab-strip", crop: .tabStrip, cropPadding: 6),
-        Shot(id: "sessions/tab-strip-insert", keys: "i", crop: .tabStrip, cropPadding: 6),
-        Shot(id: "sessions/zoom", keys: "<C-w>z", highlight: [.panes]),
-        Shot(id: "sessions/inspector", crop: .inspector, cropPadding: 0),
-        Shot(id: "sessions/links-picker", keys: "gB", crop: .picker),
-        Shot(id: "sessions/close-confirm", keys: "x", crop: .confirm),
-        Shot(id: "sessions/delete-confirm", keys: "dd", crop: .confirm),
-        Shot(id: "sessions/resume", crop: .dialog, prepare: { $0.showResumeForFixture() }),
-        Shot(id: "sessions/filter-typing", keys: "/docs", crop: .statusBar, cropPadding: 0),
-        Shot(id: "sessions/filter-kept", size: CGSize(width: 1440, height: 640), keys: "/docs<CR>", crop: .sidebar),
-    ]
-
-    static let prompt = typed("Fix broken anchors in the redirect pages")
-
-    static let startWork: [Shot] = [
-        Shot(id: "start-work/dialog", keys: "o" + prompt, crop: .dialog),
-        Shot(id: "start-work/repos", keys: "o" + prompt + "<Esc>j", crop: .dialog),
-        Shot(id: "start-work/repo-search", keys: "o" + prompt + "<Esc>j/mer", crop: .dialog),
-        Shot(id: "start-work/branch-name", keys: "o" + prompt + "<Esc>jj", crop: .dialog),
-        Shot(id: "start-work/agent-options", keys: "o" + prompt + "<Esc>jjjj", crop: .dialog),
-        Shot(id: "start-work/from-github-picked", keys: "gi<Space>j<Space>", highlight: [.list, .pickedPanel]),
-        Shot(id: "start-work/from-github-dialog", keys: "gi<Space>j<Space>s", crop: .dialog),
-        Shot(id: "start-work/again", keys: "ghO", crop: .dialog),
+    static let tasks: [Shot] = [
+        Shot(id: "tasks/anatomy", keys: "2j", highlight: [.sidebar, .center, .inspector]),
+        Shot(id: "tasks/sidebar", size: CGSize(width: 1440, height: 640), crop: .sidebar),
+        Shot(id: "tasks/rail", size: CGSize(width: 1440, height: 640), keys: "zs", crop: .rail),
+        Shot(id: "tasks/moving", size: CGSize(width: 1440, height: 640), keys: "2j", crop: .sidebar),
+        Shot(id: "tasks/attention", size: CGSize(width: 1440, height: 640), keys: "ga", crop: .sidebar),
+        Shot(id: "tasks/insert-before", keys: "2j", crop: .panes),
+        Shot(id: "tasks/insert-after", keys: "2ji", crop: .panes),
+        Shot(id: "tasks/split", keys: "2j<C-w>v", highlight: [.panes]),
+        Shot(id: "tasks/tab-strip", keys: "2j", crop: .tabStrip, cropPadding: 6),
+        Shot(id: "tasks/tab-strip-insert", keys: "2ji", crop: .tabStrip, cropPadding: 6),
+        Shot(id: "tasks/zoom", keys: "2j<C-w>z", highlight: [.panes]),
+        Shot(id: "tasks/inspector", keys: "2j", crop: .inspector, cropPadding: 0),
+        Shot(id: "tasks/links-picker", keys: "2jgB", crop: .picker),
+        Shot(id: "tasks/resume", crop: .dialog, prepare: { $0.showResumeForFixture() }),
+        Shot(id: "tasks/filter-typing", keys: "/upload", crop: .statusBar, cropPadding: 0),
+        Shot(id: "tasks/filter-kept", size: CGSize(width: 1440, height: 640), keys: "/upload<CR>", crop: .sidebar),
+        Shot(id: "tasks/new-task", keys: "o" + typed("Fix image upload 403"), crop: .dialog),
+        Shot(id: "tasks/new-task-picked", keys: "gi<Space>j<Space>", highlight: [.list, .pickedPanel]),
+        Shot(id: "tasks/new-task-from-github", keys: "gis", crop: .dialog),
     ]
 
     static let short = CGSize(width: 1440, height: 640)
@@ -138,37 +115,21 @@ enum Shots {
         Shot(id: "github/prs", keys: "gp"),
         Shot(id: "github/reader-pr", keys: "gpgo"),
         Shot(id: "github/reader-issue", size: CGSize(width: 1200, height: 420), keys: "gigo", crop: .reader),
-        Shot(id: "github/pr-overlay", keys: "go"),
-    ]
-
-    static let worktrees: [Shot] = [
-        Shot(id: "worktrees/repos", keys: "gr", highlight: [.repoColumn, .worktreeTable]),
-        Shot(id: "worktrees/repos-filtered", keys: "gr/fix<CR>", crop: .worktreeTable),
-        Shot(id: "worktrees/repo-column", size: short, keys: "gr", crop: .repoColumn),
-        Shot(id: "worktrees/import-worktree", keys: "Iw", crop: .picker),
-        // Typing narrows by repo, branch or the path below its root, and marks what matched.
-        Shot(id: "worktrees/import-worktree-filtered", keys: "Iwgantt", crop: .picker),
-        Shot(id: "worktrees/import-path", keys: "Ip" + "code/wt/docs-builder/toc", crop: .picker),
-        Shot(id: "worktrees/remove", keys: "gr4jvjd", crop: .confirm),
+        Shot(id: "github/pr-overlay", keys: "2jgo"),
     ]
 
     static let diff: [Shot] = [
-        Shot(id: "diff/overlay", keys: "gd"),
-        Shot(id: "diff/split", keys: "gdt"),
-    ]
-
-    static let history: [Shot] = [
-        Shot(id: "history/history", keys: "gh"),
-        Shot(id: "history/detail", keys: "gh", crop: .historyDetail),
+        Shot(id: "diff/overlay", keys: "2jgd"),
+        Shot(id: "diff/split", keys: "2jgdt"),
     ]
 
     static let keyboard: [Shot] = [
         Shot(id: "keyboard/leader", keys: "g", crop: .leaderHints),
         Shot(id: "keyboard/view-tabs", crop: .viewTabs, cropPadding: 8),
-        Shot(id: "keyboard/hints-sessions", keys: "f"),
+        Shot(id: "keyboard/hints-tasks", keys: "f"),
         Shot(id: "keyboard/hints-list", size: short, keys: "gif", crop: .list),
         Shot(id: "keyboard/command-line", keys: ":vie", crop: .commandLine),
-        Shot(id: "keyboard/visual", size: short, keys: "grvjj", crop: .worktreeTable),
+        Shot(id: "keyboard/visual", size: short, keys: "gmvj", crop: .list),
     ]
 
     static let configuration: [Shot] = [
@@ -176,7 +137,6 @@ enum Shots {
             model.applyConfig(source: "[sessions]\nresume_on_launch = \"sometimes\"\n")
         }),
         Shot(id: "configuration/settings", subject: .settings(), size: CGSize(width: 900, height: 1180)),
-        Shot(id: "configuration/orgs-repos", subject: .settings(.colors), size: CGSize(width: 1180, height: 1400)),
     ]
 
     static let outside: [Shot] = [

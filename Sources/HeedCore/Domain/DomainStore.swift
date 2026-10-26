@@ -22,8 +22,9 @@ public actor DomainStore {
             .appendingPathComponent("Heed/domain.json")
     }
 
-    /// Reads the cached domain. A missing cache starts empty; it never blocks startup. But sessions live only here,
-    /// so nothing is thrown away: a cache that reads keeps a copy as `domain.previous.json` (the last launch's, for
+    /// Reads the cached domain. A missing cache starts empty; it never blocks startup. But tabs and agent sessions
+    /// live only here, so nothing is thrown away: a cache that reads keeps a copy as `domain.previous.json` (the last
+    /// launch's, for
     /// putting back by hand), and one that does not read is moved aside as `domain.unreadable-<time>.json` with the
     /// reason logged, instead of being overwritten by the first write.
     public static func load(from file: URL) async -> Domain {
@@ -108,7 +109,8 @@ public actor DomainStore {
 
 /// The cache file: the domain plus a version, so a format change starts fresh instead of failing to decode.
 struct CachedDomain: Codable {
-    static let currentVersion = 6
+    /// 7: sessions became tasks (from pk); the old cache is discarded.
+    static let currentVersion = 7
     var version: Int
     var domain: Domain
 }

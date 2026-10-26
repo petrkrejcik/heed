@@ -36,12 +36,13 @@ private struct TabStrip: View {
             ForEach(Array(model.currentTabs.enumerated()), id: \.element.id) { index, tab in
                 let on = index == model.currentTabIndex
                 HStack(spacing: 8) {
-                    if index == 0, let session = model.currentSession {
-                        StateGlyph(state: session.state.state, guessed: session.state.source == .guessed, size: 11)
-                    } else if let task = tab.tree.panes.first(where: { $0.role == .task }),
-                              let code = model.taskResults[task.id]
+                    if let agent = tab.tree.panes.first(where: { $0.role == .agent }) {
+                        let state = (model.agents[agent.id] ?? AgentTab()).state
+                        StateGlyph(state: state.state, guessed: state.source == .guessed, size: 11)
+                    } else if let command = tab.tree.panes.first(where: { $0.role == .command }),
+                              let code = model.commandResults[command.id]
                     {
-                        // A pinned task's last run: done when it passed, a red square when it failed.
+                        // A pinned command's last run: done when it passed, a red square when it failed.
                         if code == 0 {
                             StateGlyph(state: .done, size: 11)
                         } else {
@@ -173,8 +174,9 @@ private struct PaneView: View {
                     .background(RoundedRectangle(cornerRadius: 3).fill(active ? Theme.inverse : Theme.selected))
                 Text(pane.title)
                 Spacer()
-                if pane.role == .agent, let session = model.currentSession {
-                    Text(session.state.state.rawValue).foregroundStyle(stateColor(session.state.state))
+                if pane.role == .agent {
+                    let state = (model.agents[pane.id] ?? AgentTab()).state.state
+                    Text(state.rawValue).foregroundStyle(stateColor(state))
                 }
             }
             .font(Theme.mono(11))
@@ -188,7 +190,7 @@ private struct PaneView: View {
             } else {
                 TerminalPane(
                     pane: pane,
-                    sessionID: model.currentSession?.id ?? "",
+                    sessionID: model.currentTask?.id ?? "",
                     isFocused: active && model.mode == .insert,
                     focusRequest: model.terminalFocusRequest
                 )
@@ -224,10 +226,10 @@ private struct PaneView: View {
 private struct EmptyCenter: View {
     var body: some View {
         VStack(spacing: 10) {
-            Text("No session").font(Theme.ui(15, weight: .medium))
+            Text("No task").font(Theme.ui(15, weight: .medium))
             HStack(spacing: 6) {
                 KeyCap(text: "o")
-                Text("start work").foregroundStyle(Theme.fg3)
+                Text("new task").foregroundStyle(Theme.fg3)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)

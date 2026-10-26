@@ -4,13 +4,13 @@ description: "The menu bar owl: what needs you, from any app."
 
 # The menu bar
 
-The owl in the menu bar shows how many sessions need you, beside it when there are any.
+The owl in the menu bar shows how many tasks need you, beside it when there are any.
 
-![The menu bar owl with 2 sessions needing you](../images/shots/outside/menu-bar.png)
+![The menu bar owl with 2 tasks needing you](../images/shots/outside/menu-bar.png)
 
-Its menu lists the sessions waiting on you (choosing one opens Heed on it), how many are working, and:
+Its menu lists the tasks waiting on you (choosing one opens Heed on it), how many are working, and:
 
-![The menu: the waiting sessions, Open Heed, Settings, Quit](../images/shots/outside/menu.png)
+![The menu: the waiting tasks, Open Heed, Settings, Quit](../images/shots/outside/menu.png)
 
 | Item | |
 |---|---|

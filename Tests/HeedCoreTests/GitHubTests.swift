@@ -106,30 +106,6 @@ struct WorkPromptTests {
         #expect(prompt.contains("Closes elastic/docs-builder#2833"))
         #expect(!WorkPrompt.from(issues: [issue(1, "x")], closesLines: false).contains("Closes"))
     }
-
-    @Test func pullsAreTrackedByBranch() {
-        let repo = Repo(org: "o", name: "r")
-        let session = Session(
-            id: "s",
-            title: "t",
-            repos: [repo],
-            branch: "feature",
-            agent: "claude",
-            state: .init(.working)
-        )
-        let pull = PullRequest(
-            ref: PullRef(repo: repo, number: 7), title: "", url: "", state: .open, isDraft: false,
-            headBranch: "feature",
-            review: nil, checks: CheckSummary(), unresolvedThreads: 0, updatedAt: Date()
-        )
-        let changes = PullTracking.changes(sessions: [session], pulls: [pull])
-        guard case let .sessionUpserted(updated)? = changes.first else {
-            Testing.Issue.record("expected an update")
-            return
-        }
-        #expect(updated.trackedPRs == [pull.ref])
-        #expect(PullTracking.changes(sessions: [updated], pulls: [pull]).isEmpty)
-    }
 }
 
 struct PullDetailTests {
@@ -247,5 +223,48 @@ struct AgentEventTests {
         log = AgentEvent.log(log, adding: AgentEvent(at: start + 10, state: .working, reason: nil))
         log = AgentEvent.log(log, adding: AgentEvent(at: start + 11, state: .blocked, reason: "Bash"))
         #expect(log.map(\.state) == [.blocked, .done, .done])
+    }
+}
+
+struct IssueMergeTests {
+    private let kibana = Repo(org: "elastic", name: "kibana")
+    private let eui = Repo(org: "elastic", name: "eui")
+
+    private func issue(_ repo: Repo, _ number: Int, age: TimeInterval = 0) -> HeedCore.Issue {
+        HeedCore.Issue(
+            repo: repo, number: number, title: "#\(number)", url: "", body: "", labels: [], author: nil,
+            updatedAt: Date(timeIntervalSince1970: 1_000_000 - age)
+        )
+    }
+
+    @Test func mergingFlagsHowAnIssueInvolvesYou() {
+        let merged = GitHub.mergeIssues(
+            assigned: [issue(eui, 1, age: 10)],
+            mentioned: [issue(eui, 1, age: 10), issue(kibana, 2, age: 5)]
+        )
+        #expect(merged.map(\.number) == [2, 1])
+        #expect(merged.first { $0.number == 1 }.map { $0.assigned && $0.mentioned } == true)
+        #expect(merged.first { $0.number == 2 }.map { !$0.assigned && $0.mentioned } == true)
+    }
+
+    @Test func pullDetailReadsCrossReferences() throws {
+        let json = """
+        {"data":{"repository":{"pullRequest":{"number":1,"title":"t","body":"","baseRefName":"main","headRefName":"b",
+          "additions":1,"deletions":1,"state":"OPEN",
+          "commits":{"totalCount":1,"nodes":[{"commit":{"oid":"a","statusCheckRollup":null}}]},
+          "reviews":{"nodes":[]},"closingIssuesReferences":{"nodes":[]},"reviewThreads":{"nodes":[]},
+          "timelineItems":{"nodes":[
+            {"source":{"number":4,"title":"Companion","state":"OPEN","createdAt":"2026-10-14T09:00:00Z",
+              "author":{"login":"me"},"repository":{"nameWithOwner":"elastic/eui"}}},
+            {"source":{"number":9}},
+            {}]}}}}}
+        """
+        let detail = try #require(GitHub.parsePullDetail(
+            Data(json.utf8),
+            ref: PullRef(repo: kibana, number: 1),
+            now: Date()
+        ))
+        #expect(detail.references?.map(\.ref.description) == ["elastic/eui#4"])
+        #expect(detail.references?.first?.author == "me")
     }
 }

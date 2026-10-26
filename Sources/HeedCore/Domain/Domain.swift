@@ -1,7 +1,7 @@
 import Foundation
 
-/// A session's tabs and splits: restored on launch, so it is part of the domain rather than view state.
-public struct SessionLayout: Hashable, Sendable, Codable {
+/// A task's tabs and splits: restored on launch, so it is part of the domain rather than view state.
+public struct TaskLayout: Hashable, Sendable, Codable {
     public var tabs: [PaneTab]
     public var activeTab: Int
 
@@ -9,6 +9,8 @@ public struct SessionLayout: Hashable, Sendable, Codable {
         self.tabs = tabs
         self.activeTab = activeTab
     }
+
+    public var panes: [PaneSpec] { tabs.flatMap(\.tree.panes) }
 
     /// Removes a pane from whichever tab has it; a tab left without panes goes too. False when no tab has it.
     @discardableResult
@@ -33,58 +35,61 @@ public struct SessionLayout: Hashable, Sendable, Codable {
         if index < activeTab { activeTab -= 1 }
         activeTab = max(0, min(activeTab, tabs.count - 1))
     }
+
+    /// The first agent pane (its tab index and id), else the first pane: where prompts are typed.
+    public var agentPane: (tab: Int, pane: String)? {
+        for (index, tab) in tabs.enumerated() {
+            if let pane = tab.tree.panes.first(where: { $0.role == .agent }) { return (index, pane.id) }
+        }
+        return tabs.first?.tree.panes.first.map { (0, $0.id) }
+    }
 }
 
 /// Everything Heed knows, as one value. The window is drawn from this (plus input state), it is what the cache
 /// stores, and fixtures are just instances of it, so the UI can start in any state without IO. A cache with fields this
 /// build no longer has still loads: decoding skips unknown keys.
+///
+/// Tasks are pk's (the notes are the database); Heed keeps them here only as a cache for a fast start. Layouts and
+/// agent tabs are Heed's own.
 public struct Domain: Hashable, Sendable, Codable {
-    public var repos: [RepoRecord]
-    public var worktrees: [Worktree]
-    public var sessions: [Session]
-    public var layouts: [String: SessionLayout]
-    /// Closed sessions, newest first.
-    public var history: [HistoryEntry]
+    public var tasks: [WorkTask]
+    public var layouts: [String: TaskLayout]
+    /// Agent tabs by pane id.
+    public var agents: [String: AgentTab]
     public var github: GitHubState
     /// PR details by `org/name#n`, for the reader (cached, so it opens offline).
     public var pullDetails: [String: PullDetail]
 
     public init(
-        repos: [RepoRecord] = [], worktrees: [Worktree] = [], sessions: [Session] = [],
-        layouts: [String: SessionLayout] = [:], history: [HistoryEntry] = [], github: GitHubState = GitHubState(),
-        pullDetails: [String: PullDetail] = [:]
+        tasks: [WorkTask] = [], layouts: [String: TaskLayout] = [:], agents: [String: AgentTab] = [:],
+        github: GitHubState = GitHubState(), pullDetails: [String: PullDetail] = [:]
     ) {
-        self.pullDetails = pullDetails
-        self.history = history
-        self.github = github
-        self.repos = repos
-        self.worktrees = worktrees
-        self.sessions = sessions
+        self.tasks = tasks
         self.layouts = layouts
+        self.agents = agents
+        self.github = github
+        self.pullDetails = pullDetails
     }
 
     public static let empty = Domain()
 
-    public func repo(_ slug: String) -> RepoRecord? { repos.first { $0.id == slug } }
+    public func task(_ id: String) -> WorkTask? { tasks.first { $0.id == id } }
 
-    public func worktrees(of repo: Repo) -> [Worktree] { worktrees.filter { $0.repo == repo } }
-    public func session(_ id: String) -> Session? { sessions.first { $0.id == id } }
+    /// The task whose layout has pane `id`.
+    public func task(ofPane id: String) -> String? {
+        layouts.first { $0.value.panes.contains { $0.id == id } }?.key
+    }
 }
 
-/// One edit to the domain. Adapters (git, gh, hooks) and the UI both speak in these, so every change takes the same
+/// One edit to the domain. Adapters (pk, gh, hooks) and the UI both speak in these, so every change takes the same
 /// path: applied to the store (and persisted), and applied to the main-actor model, which redraws only what changed.
 public enum DomainChange: Hashable, Sendable, Codable {
-    case repoUpserted(RepoRecord)
-    case repoRemoved(String)
-    /// The complete worktree list of one repo, as git reported it.
-    case worktreesListed(repo: Repo, [Worktree])
-    case sessionUpserted(Session)
-    case sessionRemoved(String)
-    case layoutChanged(session: String, SessionLayout)
-    /// A session closes into history (its layout is dropped).
-    case sessionClosed(HistoryEntry)
-    /// A history entry comes back as an active session (`R` reopen).
-    case historyRemoved(String)
+    case taskUpserted(WorkTask)
+    /// The task goes with its layout and its agent tabs.
+    case taskRemoved(String)
+    /// Agent tabs of panes the new layout no longer has go too.
+    case layoutChanged(task: String, TaskLayout)
+    case agentChanged(pane: String, AgentTab)
     /// A GitHub sync finished (or failed: the status says so and the data is the previous data).
     case githubSynced(GitHubState)
     /// Notification threads marked read.
@@ -96,47 +101,26 @@ public enum DomainChange: Hashable, Sendable, Codable {
 public extension Domain {
     mutating func apply(_ change: DomainChange) {
         switch change {
-        case let .repoUpserted(record):
-            if let index = repos.firstIndex(where: { $0.id == record.id }) {
-                repos[index] = record
+        case let .taskUpserted(task):
+            if let index = tasks.firstIndex(where: { $0.id == task.id }) {
+                tasks[index] = task
             } else {
-                repos.append(record)
-                repos.sort { $0.id.localizedStandardCompare($1.id) == .orderedAscending }
+                tasks.append(task)
             }
-        case let .repoRemoved(slug):
-            repos.removeAll { $0.id == slug }
-            worktrees.removeAll { $0.repo.slug == slug }
-        case let .worktreesListed(repo, listed):
-            // Keep known status for worktrees git still lists; status refreshes arrive separately.
-            let known = Dictionary(worktrees.filter { $0.repo == repo }.map { ($0.path, $0.status) }) { first, _ in
-                first
+        case let .taskRemoved(id):
+            tasks.removeAll { $0.id == id }
+            for pane in layouts[id]?.panes ?? [] {
+                agents[pane.id] = nil
             }
-            let merged = listed.map { worktree in
-                var worktree = worktree
-                if worktree.status == nil, let status = known[worktree.path] { worktree.status = status }
-                return worktree
-            }
-            worktrees.removeAll { $0.repo == repo }
-            worktrees.append(contentsOf: merged)
-            sessions = sessions.map { BranchFollowing.follow($0, worktrees: merged) }
-        case let .sessionUpserted(session):
-            if let index = sessions.firstIndex(where: { $0.id == session.id }) {
-                sessions[index] = session
-            } else {
-                sessions.append(session)
-            }
-        case let .sessionRemoved(id):
-            sessions.removeAll { $0.id == id }
             layouts[id] = nil
-        case let .layoutChanged(session, layout):
-            layouts[session] = layout
-        case let .sessionClosed(entry):
-            sessions.removeAll { $0.id == entry.id }
-            layouts[entry.id] = nil
-            history.removeAll { $0.id == entry.id }
-            history.insert(entry, at: 0)
-        case let .historyRemoved(id):
-            history.removeAll { $0.id == id }
+        case let .layoutChanged(task, layout):
+            let kept = Set(layout.panes.map(\.id))
+            for pane in layouts[task]?.panes ?? [] where !kept.contains(pane.id) {
+                agents[pane.id] = nil
+            }
+            layouts[task] = layout
+        case let .agentChanged(pane, tab):
+            agents[pane] = tab
         case let .githubSynced(state):
             github = state
         case let .pullDetailFetched(detail):

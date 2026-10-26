@@ -2,7 +2,7 @@
 /// drawn from them: one list, so a command never exists in one of those places and not the others.
 public struct CommandSpec: Sendable, Equatable {
     public enum Group: String, Sendable, CaseIterable {
-        case move = "Move & sessions"
+        case move = "Move & tasks"
         case panes = "Panes & tabs"
         case views = "Views & overlays"
         case modes = "Modes"
@@ -25,34 +25,24 @@ public struct CommandSpec: Sendable, Equatable {
 
 public enum Commands {
     public static let all: [CommandSpec] = [
-        // Move & sessions
-        .init("row.next", "next session / row", .move),
-        .init("row.prev", "previous session / row", .move),
-        .init("row.first", "first session / row", .move),
-        .init("row.last", "last session / row", .move),
+        // Move & tasks
+        .init("row.next", "next task / row", .move),
+        .init("row.prev", "previous task / row", .move),
+        .init("row.first", "first task / row", .move),
+        .init("row.last", "last task / row", .move),
         .init("row.halfpage.down", "half a page down (ten rows)", .move),
         .init("row.halfpage.up", "half a page up (ten rows)", .move),
         .init("group.next", "first row of the next group (sidebar group, repo)", .move),
         .init("group.prev", "first row of this group, or of the one before", .move),
-        .init("session.filter", "filter the current view (typed in the status bar)", .move),
+        .init("task.filter", "filter the current view (typed in the status bar)", .move),
         .init("filter.clear", "clear the current view's filter", .move),
-        .init("session.attention", "next session needing you", .move),
-        .init("session.park", "park session", .move),
-        .init("session.close", "close session, keep worktree", .move),
-        .init("session.delete", "delete session and its worktrees (asks first)", .move),
-        .init(
-            "session.import", "import a worktree Heed does not manage yet as a session", .move,
-            arguments: "[path]"
-        ),
-        .init("session.import.path", "import the worktree at a path (any repo, anywhere)", .move),
-        .init("session.pin", "pin / unpin session", .move),
-        .init("session.back", "back to previous session", .move),
-        .init("session.open", "go to the session matching these words", .move, arguments: "<words>"),
-        .init("pin.jump", "jump to pinned session", .move, arguments: "<1-9>"),
-        .init("work.start", "start work", .move),
-        .init("resume", "pick up where you left off: the sessions to resume, as on launch", .move),
-        .init("work.again", "start work from this session's prompt", .move),
-        .init("view.history", "history", .move),
+        .init("task.attention", "next task needing you", .move),
+        .init("task.pin", "pin / unpin task", .move),
+        .init("task.back", "back to previous task", .move),
+        .init("task.open", "go to the task matching these words", .move, arguments: "<words>"),
+        .init("pin.jump", "jump to pinned task", .move, arguments: "<1-9>"),
+        .init("task.new", "new task: only a title", .move, arguments: "[title]"),
+        .init("resume", "pick up where you left off: the agents to resume, as on launch", .move),
         // Panes & tabs
         .init("pane.left", "focus pane left", .panes),
         .init("pane.right", "focus pane right", .panes),
@@ -68,41 +58,34 @@ public enum Commands {
         .init("tab.new", "new tab with shell", .panes),
         .init("tab.go", "go to tab n", .panes, arguments: "<n>"),
         // Views & overlays
-        .init("view", "switch view", .views, arguments: "<sessions|inbox|issues|prs|repos|history>"),
-        .init("view.sessions", "sessions", .views),
+        .init("view", "switch view", .views, arguments: "<tasks|inbox|issues|prs>"),
+        .init("view.tasks", "tasks", .views),
         .init("view.inbox", "inbox", .views),
         .init("view.issues", "issues", .views),
         .init("view.prs", "pull requests", .views),
-        .init("view.repos", "repos & worktrees", .views),
-        .init("overlay.pr", "PR overlay for this session (toggle)", .views),
-        .init("overlay.item", "open the PR or issue under the cursor; in Sessions, the session's PR (toggle)", .views),
+        .init("overlay.pr", "PR overlay for this task (toggle)", .views),
+        .init("overlay.item", "open the PR or issue under the cursor; in Tasks, the task's PR (toggle)", .views),
         .init("overlay.diff", "diff overlay: commits, staged, unstaged", .views),
         .init("overlay.help", "keys & states", .views),
         .init("overlay.close", "close overlay", .views),
-        .init("pr.next", "next PR of this session", .views),
-        .init("pr.prev", "previous PR of this session", .views),
-        .init("pr.session", "jump from a PR to its session", .views),
-        .init("pr.track", "track a PR by URL", .views, arguments: "<url>"),
-        .init("pr.untrack", "stop tracking a PR in this session (no rule adds it back)", .views, arguments: "[url]"),
+        .init("pr.task", "jump from a PR to its task", .views),
         .init("jump.back", "back", .views),
         .init(
             "open.browser",
-            "open in the browser: the item under the cursor; in Sessions its PR or issue (a picker when there are several, its repo when there are none)",
+            "open in the browser: the item under the cursor; in Tasks its PR or issue (a picker when there are both, Kibana when there are none)",
             .views
         ),
         .init("open.repo", "open the repo under the cursor on GitHub", .views),
-        .init("links.pick", "pick one of the session's PRs and issues to open in the browser", .views),
-        .init("issue.add", "link an issue to the session (its URL, or the copied one)", .views, arguments: "[url]"),
-        .init("issue.remove", "take an issue off the session", .views, arguments: "[url]"),
+        .init("links.pick", "pick the task's PR or issue to open in the browser", .views),
         .init("open.reader", "read inbox item, issue or PR", .views),
         .init("inspector.toggle", "collapse / expand the inspector", .views),
-        .init("sidebar.toggle", "collapse / expand the sessions sidebar", .views),
+        .init("sidebar.toggle", "collapse / expand the tasks sidebar", .views),
         .init("config.edit", "open config.toml in $EDITOR", .views),
         .init("agents.stop", "stop every agent and shell in every pane (with [sessions] persist = \"zmx\")", .views),
         .init("tools.detect", "find git and gh again (login shell PATH, usual places, [tools])", .views),
         .init("app.quit", "quit Heed", .views),
         .init(
-            "settings.open", "open Settings, on a section (general, agents, colors, worktrees, keys)", .views,
+            "settings.open", "open Settings, on a section (general, agents, keys)", .views,
             arguments: "[section]"
         ),
         .init("app.activate", "bring Heed's window to the front, as the global shortcut does", .views),
@@ -118,19 +101,14 @@ public enum Commands {
         .init("command.complete", "complete", .modes),
         // Selection
         .init("select.toggle", "toggle row", .selection),
-        .init("history.reopen", "reopen: resume, recreating the worktree if needed", .selection),
-        .init("history.again", "start a new session from this prompt", .selection),
-        .init("history.outcome", "cycle the outcome filter", .selection),
         .init("github.sync", "sync GitHub now", .selection),
-        .init("items.start", "start one session from the picked items", .selection),
-        .init("items.add", "add the picked items to the current session", .selection),
+        .init("items.start", "start one task from the picked items", .selection),
         .init("items.read", "mark read", .selection),
         .init("items.filter", "cycle the filter chips", .selection),
         .init("issues.repo.next", "next repo in the Issues repo column", .selection),
         .init("issues.repo.prev", "previous repo in the Issues repo column", .selection),
         .init("issues.repo", "show one repo's issues (no name: every repo)", .selection, arguments: "[name]"),
-        .init("issues.visibility", "flip the repo under the cursor between all issues and only yours", .selection),
-        .init("pr.start", "start a new session from this PR", .selection),
+        .init("pr.start", "start a new task from this PR", .selection),
         .init("diff.hunk.next", "next hunk", .selection),
         .init("diff.hunk.prev", "previous hunk", .selection),
         .init("diff.file.next", "next file", .selection),
@@ -142,13 +120,6 @@ public enum Commands {
         .init("diff.ask", "ask the agent about this hunk", .selection),
         .init("diff.copy", "copy path:line", .selection),
         .init("diff.edit", "open the file in the editor", .selection),
-        .init("repo.add", "add a repo outside the scanned roots (kept in repo_paths)", .selection, arguments: "<path>"),
-        .init("repo.scan", "refresh: rescan the repo roots", .selection),
-        .init("worktree.new", "start work in the repo under the cursor", .selection),
-        .init("select.remove", "remove the selected worktrees, or the one under the cursor (asks first)", .selection),
-        .init("select.pin", "pin selected", .selection),
-        .init("select.copy", "copy paths", .selection),
-        .init("select.open", "open the worktree's session, importing it when it has none", .selection),
     ]
 
     public static let byName: [String: CommandSpec] = Dictionary(uniqueKeysWithValues: all.map { ($0.name, $0) })

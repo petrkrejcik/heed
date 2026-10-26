@@ -1,10 +1,11 @@
 ---
-description: The states an agent can be in, how Heed knows them, and how they order your sessions.
+description: The states an agent can be in, how Heed knows them, and how they order your tasks.
 ---
 
 # Agent states
 
-Every session shows its agent's state, and the sidebar sorts by it: whatever needs you comes first.
+Every agent tab shows its agent's state. A task's row shows the most urgent of its agents, and the sidebar sorts by it:
+whatever needs you comes first.
 
 | State | Means |
 |---|---|
@@ -16,17 +17,17 @@ Every session shows its agent's state, and the sidebar sorts by it: whatever nee
 | **limited** | It hit a rate or usage limit. |
 | **exited** | The agent's process ended. |
 
-![The sidebar grouped by state: pinned, needs you, working, parked](../images/shots/concepts/states.png)
+![The sidebar grouped: pinned, needs you, working, idle, blocked](../images/shots/concepts/states.png)
 
 ## Reported or guessed
 
 Claude reports its state through [hooks](../agents/hooks.md): Heed passes it a small command to call as it works.
-Until the first hook arrives (a session just started, imported or resuming), Heed assumes a state and draws it with a
-dotted ring. Other agents never report, so their sessions keep the assumed state.
+Until the first hook arrives (an agent just started or resuming), Heed assumes a state and draws it with a dotted
+ring. Each agent tab reports on its own, so a task with two agents shows both.
 
 ## Where states show
 
 - The sidebar's groups and glyphs, and the inspector's event list.
-- The title bar's counts of blocked and asking sessions.
+- The title bar's counts of blocked and asking agents.
 - The [Dock badge](../outside-the-window/dock.md) and the [menu bar item](../outside-the-window/menu-bar.md).
-- `ga` jumps to the next session that needs you.
+- `ga` jumps to the next task that needs you.

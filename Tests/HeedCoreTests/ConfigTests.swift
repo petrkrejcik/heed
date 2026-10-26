@@ -80,39 +80,40 @@ struct ConfigTests {
 
     @Test func valuesOverrideTheDefaults() throws {
         let (decoded, problems) = ConfigLoader.decode("""
-        [worktrees]
-        root = "~/wt"
         [sessions]
         resume_on_launch = "always"
+        shell_split = true
         [agents.claude]
         command = "claude --model opus"
         prompt = "stdin"
         resume = ""
-        [repos."elastic/docs-builder"]
-        color = "teal"
-        [repos."elastic/docs-builder".tasks]
-        test = "dotnet test"
+        [commands]
+        jest = "yarn test:jest x-pack/platform/plugins/shared/onechat"
+        "type check" = "node scripts/type_check"
         [keys]
         insert_escape = "<C-g>"
         [keys.normal]
         "J" = "row.next"
-        [keys.repos]
-        "D" = "select.remove"
+        [keys.inbox]
+        "D" = "items.read"
         """)
         #expect(problems.isEmpty)
         let config = try #require(decoded)
-        #expect(config.work.worktreeRoot == "~/wt")
         #expect(config.work.resumeOnLaunch == .always)
+        #expect(config.work.shellSplit)
         #expect(config.work.agent("claude")?.command == "claude --model opus")
         #expect(config.work.agent("claude")?.prompt == .stdin)
         #expect(config.work.agent("claude")?.resumeArguments == nil)
-        #expect(config.repos["elastic/docs-builder"]?.color == "teal")
-        #expect(config.repos["elastic/docs-builder"]?.tasks.first?.1 == "dotnet test")
+        // Pinned commands keep the order config has them in.
+        #expect(config.work.commands == [
+            PinnedCommand(name: "jest", command: "yarn test:jest x-pack/platform/plugins/shared/onechat"),
+            PinnedCommand(name: "type check", command: "node scripts/type_check"),
+        ])
         let built = config.keymaps()
         #expect(built.problems.isEmpty)
         #expect(try built.keymaps[.normal]?.lookup(KeyNotation.parse("J")) == .command("row.next"))
         #expect(try built.keymaps[.insert]?.lookup(KeyNotation.parse("<C-g>")) == .command("mode.normal"))
-        #expect(try built.scoped["repos"]?.lookup(KeyNotation.parse("D")) == .command("select.remove"))
+        #expect(try built.scoped["inbox"]?.lookup(KeyNotation.parse("D")) == .command("items.read"))
     }
 
     @Test func badValuesAreReportedAndDefaultsKept() throws {
@@ -152,12 +153,22 @@ struct ConfigTests {
         [repos."elastic/docs"]
         issues = "all"
         admin_merge = true
+        [repos."elastic/kibana".tasks]
+        test = "yarn test"
+        [worktrees]
+        root = "~/wt"
+        [issues]
+        default = "all"
+        [keys.repos]
+        "D" = "select.remove"
+        [keys.history]
+        "o" = "history.reopen"
         """)
         let config = try #require(decoded)
         #expect(problems.isEmpty)
         #expect(config.work.agents.map(\.name) == ["claude"])
-        #expect(config.work.defaultAgent == "claude")
-        #expect(config.issues == IssueRules(repos: ["elastic/docs": .all]))
+        #expect(config.work.commands.isEmpty)
+        #expect(config.scopedKeys.isEmpty)
     }
 
     @Test func syntaxErrorsGiveNoConfig() {

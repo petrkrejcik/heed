@@ -4,35 +4,50 @@ public enum ResumePolicy: String, Hashable, Sendable, Codable, CaseIterable {
     case ask, always, never
 }
 
-/// What happens to one session on launch. design/screens/Resume.png.
+/// What happens to one task's agents on launch. design/screens/Resume.png.
 public struct ResumeCandidate: Identifiable, Hashable, Sendable {
     public enum Mode: String, Hashable, Sendable {
         /// Was mid-turn: resume, then send the continue prompt once idle.
         case resumeThenContinue = "resume, then continue"
         /// Was waiting on you (blocked, asking): resume only; the agent asks again.
         case resumeOnly = "resume only"
-        /// The agent no longer has the session (or cannot resume): start again from the prompt.
+        /// Claude no longer has any of its sessions: start again from the task note.
         case startFresh = "start fresh"
         /// Idle or finished: offered, not ticked.
         case leftClosed = "left closed"
     }
 
-    public var id: String { session.id }
-    public let session: Session
+    /// One agent tab: the line typed into it, and its Claude session id from then on.
+    public struct Pane: Hashable, Sendable {
+        public let pane: String
+        public let command: String
+        /// `command` without Heed's own hook settings, for the dialog.
+        public let display: String
+        public let claudeSessionID: String?
+        /// Started fresh, because Claude no longer has the tab's session.
+        public let fresh: Bool
+    }
+
+    public var id: String { task.id }
+    public let task: WorkTask
+    /// The task's most urgent agent state, as it was.
+    public let state: ObservedState
     public let mode: Mode
-    /// The exact line typed into the agent pane.
-    public let command: String
+    public let panes: [Pane]
     public let paneCount: Int
 
     /// Whether it is ticked by default.
     public var defaultSelected: Bool { mode != .leftClosed }
 
-    /// "was working", "was blocked on a permission prompt", "idle for 2h".
+    /// The first agent's line.
+    public var command: String { panes.first?.command ?? "" }
+
+    /// "was working", "was blocked on a permission prompt", "idle".
     public var summary: String {
-        switch session.state.state {
+        switch state.state {
         case .working: "was working"
         case .blocked: "was blocked on a permission prompt"
-        case .asking: "was asking\(session.state.reason.map { " \($0)" } ?? "")"
+        case .asking: "was asking\(state.reason.map { " \($0)" } ?? "")"
         case .limited: "was rate limited"
         case .done: "had finished"
         case .idle, .exited: "idle"
@@ -41,46 +56,68 @@ public struct ResumeCandidate: Identifiable, Hashable, Sendable {
 
     public var note: String? {
         switch mode {
-        case .resumeOnly where session.state.state == .blocked: "The prompt is gone after a restart. The agent will ask again."
-        case .startFresh: "The agent no longer has this session; it starts again from the original prompt."
-        default: nil
+        case .resumeOnly where state.state == .blocked: "The prompt is gone after a restart. The agent will ask again."
+        case .startFresh: "Claude no longer has this task's sessions; its agents start again from the task note."
+        default: panes.contains(where: \.fresh) ? "Some agents start again from the task note." : nil
         }
     }
 }
 
 public enum Resume {
-    /// The sessions worth offering on launch: every non-parked session with an agent. `hasSession` answers whether
-    /// the agent still has a session id (nil when unknown); it does file IO, so call this off the main actor.
+    /// The tasks worth offering on launch: every listed task with an agent tab. `hasSession` answers whether Claude
+    /// still has a session id for a directory (nil when unknown); it does file IO, so call this off the main actor.
+    /// `newID` gives the Claude session id of an agent that starts fresh.
     public static func candidates(
         domain: Domain, settings: WorkSettings, integration: IntegrationFiles?,
-        hasSession: (Session) -> Bool? = { _ in nil }
+        hasSession: (_ id: String, _ directory: String) -> Bool? = { _, _ in nil },
+        newID: () -> String = { NewTask.newID() }
     ) -> [ResumeCandidate] {
-        domain.sessions.compactMap { session -> ResumeCandidate? in
-            guard !session.parked, let agent = settings.agent(session.agent) else { return nil }
-            let panes = domain.layouts[session.id]?.tabs.flatMap(\.tree.panes).count ?? 0
-            let extra = integration.map {
-                AgentIntegration.launchArguments(agent: agent, sessionID: session.id, files: $0, resuming: true)
-            } ?? []
-            let resumable = session.agentSessionID.flatMap { id -> String? in
-                hasSession(session) == false ? nil : agent.resumeCommand(id: id, extraArguments: extra)
-            }
-            guard let resume = resumable else {
-                // Fresh start: a new agent session from the original prompt.
-                let fresh = integration.map {
-                    AgentIntegration.launchArguments(agent: agent, sessionID: session.id, files: $0)
-                } ?? []
-                let command = agent.launchCommand(prompt: session.prompt, extraArguments: fresh)
-                let active = [.working, .blocked, .asking, .limited].contains(session.state.state)
-                return ResumeCandidate(
-                    session: session, mode: active ? .startFresh : .leftClosed, command: command, paneCount: panes
+        let list = TaskList(domain.tasks, layouts: domain.layouts, agents: domain.agents)
+        guard let agent = settings.claude else { return [] }
+        return list.ordered.compactMap { task -> ResumeCandidate? in
+            guard let layout = domain.layouts[task.id] else { return nil }
+            let agentPanes = layout.panes.filter { $0.role == .agent }
+            guard !agentPanes.isEmpty else { return nil }
+            let panes = agentPanes.map { pane -> ResumeCandidate.Pane in
+                if let id = domain.agents[pane.id]?.claudeSessionID, hasSession(id, pane.directory) != false,
+                   agent.resumeArguments != nil
+                {
+                    let line = { (files: IntegrationFiles?) in
+                        agent.resumeCommand(id: id, extraArguments: AgentIntegration.launchArguments(
+                            agent: agent, claudeSessionID: id, files: files, resuming: true
+                        )) ?? ""
+                    }
+                    return ResumeCandidate.Pane(
+                        pane: pane.id, command: line(integration), display: line(nil), claudeSessionID: id,
+                        fresh: false
+                    )
+                }
+                let id = newID()
+                let prompt = task.notePath.map { "Read the task note at \($0) and continue." } ?? ""
+                let line = { (files: IntegrationFiles?) in
+                    agent.launchCommand(prompt: prompt, extraArguments: AgentIntegration.launchArguments(
+                        agent: agent, claudeSessionID: id, files: files
+                    ))
+                }
+                return ResumeCandidate.Pane(
+                    pane: pane.id, command: line(integration), display: line(nil),
+                    claudeSessionID: agent.sessionIDFlag == nil ? nil : id, fresh: true
                 )
             }
-            let mode: ResumeCandidate.Mode = switch session.state.state {
-            case .working, .limited: .resumeThenContinue
-            case .blocked, .asking: .resumeOnly
-            case .idle, .done, .exited: .leftClosed
+            let state = list.rollup(of: task.id).agent ?? ObservedState(.idle, source: .guessed)
+            let active = [.working, .blocked, .asking, .limited].contains(state.state)
+            let mode: ResumeCandidate.Mode = if panes.allSatisfy(\.fresh) {
+                active ? .startFresh : .leftClosed
+            } else {
+                switch state.state {
+                case .working, .limited: .resumeThenContinue
+                case .blocked, .asking: .resumeOnly
+                case .idle, .done, .exited: .leftClosed
+                }
             }
-            return ResumeCandidate(session: session, mode: mode, command: resume, paneCount: panes)
+            return ResumeCandidate(
+                task: task, state: state, mode: mode, panes: panes, paneCount: layout.panes.count
+            )
         }
     }
 }

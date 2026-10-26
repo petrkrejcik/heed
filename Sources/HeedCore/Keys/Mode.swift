@@ -8,7 +8,7 @@ public enum Mode: String, CaseIterable, Sendable, Codable {
     case visual
     /// `:` command line with completion.
     case command
-    /// Letter badges over every pane, tab and session.
+    /// Letter badges over every pane, tab and task.
     case hint
 
     public var label: String { rawValue.uppercased() }

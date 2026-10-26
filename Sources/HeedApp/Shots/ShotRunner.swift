@@ -49,9 +49,13 @@ enum ShotRunner {
         let only = environment["HEED_SHOTS_ONLY"] ?? ""
         ShotMode.active = true
         Clock.fixed = instant
-        // The fake world lives in /Users/you: paths split at its roots, as they would on a real Mac.
-        Paths.home = "/Users/you"
-        StartWorkForm.newSessionID = { "6f1c2a90-4b7d-4e3a-9c15-2d8e7f0a3b64" }
+        // The fake world lives in /Users/you: the main checkout is /Users/you/www/kibana.
+        Paths.home = Fixtures.home
+        var made = 0
+        NewTask.newID = {
+            made += 1
+            return String(format: "6f1c2a90-4b7d-4e3a-9c15-%012d", made)
+        }
         NSTimeZone.default = TimeZone(identifier: "Europe/Amsterdam")!
         var written = 0
         for shot in Shots.all where only.isEmpty || shot.id.hasPrefix(only) {
@@ -86,7 +90,7 @@ enum ShotRunner {
     }
 
     static func render(_ shot: Shot, into directory: URL) async throws {
-        let model = AppModel(domain: Fixtures.main, isFixture: true)
+        let model = AppModel(domain: Fixtures.tasks, isFixture: true)
         shot.prepare?(model)
         for stroke in (try? KeyNotation.parse(shot.keys)) ?? [] {
             _ = model.handle(stroke)

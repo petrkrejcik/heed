@@ -12,10 +12,10 @@ struct DomainStoreSafetyTests {
     @Test func aReadableCacheIsKeptAsThePreviousOne() async throws {
         let dir = try folder()
         let file = dir.appendingPathComponent("domain.json")
-        let store = DomainStore(domain: Fixtures.main, file: file)
+        let store = DomainStore(domain: Fixtures.tasks, file: file)
         await store.flush()
         let loaded = await DomainStore.load(from: file)
-        #expect(loaded.sessions.count == Fixtures.main.sessions.count)
+        #expect(loaded.tasks.count == Fixtures.tasks.tasks.count)
         let previous = try Data(contentsOf: DomainStore.previousFile(of: file))
         #expect(try previous == Data(contentsOf: file))
     }
@@ -23,9 +23,9 @@ struct DomainStoreSafetyTests {
     @Test func anUnreadableCacheIsMovedAsideNotLost() async throws {
         let dir = try folder()
         let file = dir.appendingPathComponent("domain.json")
-        try Data(#"{"version":6,"domain":{"sessions":"not what you think"}}"#.utf8).write(to: file)
+        try Data(#"{"version":7,"domain":{"tasks":"not what you think"}}"#.utf8).write(to: file)
         let loaded = await DomainStore.load(from: file)
-        #expect(loaded.sessions.isEmpty)
+        #expect(loaded.tasks.isEmpty)
         #expect(!FileManager.default.fileExists(atPath: file.path))
         let aside = try FileManager.default.contentsOfDirectory(atPath: dir.path)
             .filter { $0.hasPrefix("domain.unreadable-") }
@@ -35,7 +35,7 @@ struct DomainStoreSafetyTests {
     @Test func anotherFormatVersionIsMovedAsideToo() async throws {
         let dir = try folder()
         let file = dir.appendingPathComponent("domain.json")
-        let cached = CachedDomain(version: CachedDomain.currentVersion + 1, domain: Fixtures.main)
+        let cached = CachedDomain(version: CachedDomain.currentVersion + 1, domain: Fixtures.tasks)
         try JSONEncoder.heed.encode(cached).write(to: file)
         _ = await DomainStore.load(from: file)
         #expect(try FileManager.default.contentsOfDirectory(atPath: dir.path)
@@ -43,5 +43,15 @@ struct DomainStoreSafetyTests {
         if case let .failure(reason) = try DomainStore.decode(JSONEncoder.heed.encode(cached)) {
             #expect(reason.description.contains("format version"))
         }
+    }
+
+    @Test func aSessionsCacheFromBeforeTasksIsMovedAside() async throws {
+        let dir = try folder()
+        let file = dir.appendingPathComponent("domain.json")
+        try Data(#"{"version":6,"domain":{"sessions":[],"layouts":{},"repos":[]}}"#.utf8).write(to: file)
+        let loaded = await DomainStore.load(from: file)
+        #expect(loaded.tasks.isEmpty)
+        #expect(try FileManager.default.contentsOfDirectory(atPath: dir.path)
+            .contains { $0.hasPrefix("domain.unreadable-") })
     }
 }

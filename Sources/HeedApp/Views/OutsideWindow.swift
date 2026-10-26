@@ -15,7 +15,7 @@ struct Attention: Equatable {
 }
 
 /// The Dock icon with live state (`[ui] dock_state`): the app icon, plus a badge in the state's colour with how many
-/// sessions need you. Plain icon when nothing does.
+/// tasks need you. Plain icon when nothing does.
 @MainActor
 enum DockState {
     private static var shown: Attention?
@@ -82,8 +82,8 @@ enum DockState {
     }
 }
 
-/// The menu bar item (`[ui] menu_bar`): the mono owl, with the count beside it when sessions need you. Its menu lists
-/// those sessions (choosing one opens Heed on it), then Open Heed, Settings and Quit.
+/// The menu bar item (`[ui] menu_bar`): the mono owl, with the count beside it when tasks need you. Its menu lists
+/// those tasks (choosing one opens Heed on it), then Open Heed, Settings and Quit.
 @MainActor
 final class MenuBarItem: NSObject, NSMenuDelegate {
     static let shared = MenuBarItem()
@@ -106,7 +106,7 @@ final class MenuBarItem: NSObject, NSMenuDelegate {
         shown = attention
         item.button?.title = attention.total > 0 ? " \(attention.total)" : ""
         item.button?.toolTip = attention.total > 0
-            ? "Heed: \(attention.total) session\(attention.total == 1 ? "" : "s") need\(attention.total == 1 ? "s" : "") you"
+            ? "Heed: \(attention.total) task\(attention.total == 1 ? "" : "s") need\(attention.total == 1 ? "s" : "") you"
             : "Heed"
     }
 
@@ -130,7 +130,7 @@ final class MenuBarItem: NSObject, NSMenuDelegate {
 
     /// One line of the menu: what the real menu shows and the screenshots draw. Nil is a separator.
     struct Entry {
-        enum Action { case none, openSession(String), openHeed, settings, quit }
+        enum Action { case none, openTask(String), openHeed, settings, quit }
         var title: String
         var action: Action = .none
         var shortcut = ""
@@ -139,19 +139,25 @@ final class MenuBarItem: NSObject, NSMenuDelegate {
 
     static func entries(for model: AppModel) -> [Entry?] {
         var entries: [Entry?] = []
-        let waiting = model.sessions.filter { [.blocked, .asking].contains($0.state.state) }
+        let list = model.list
+        let waiting = list.ordered.compactMap { task -> (WorkTask, AgentState)? in
+            guard let state = list.rollup(of: task.id).agent?.state, [.blocked, .asking].contains(state) else {
+                return nil
+            }
+            return (task, state)
+        }
         if waiting.isEmpty {
             entries.append(Entry(title: "Nothing needs you"))
         } else {
             entries.append(Entry(title: "\(waiting.count) need\(waiting.count == 1 ? "s" : "") you"))
-            for session in waiting {
+            for (task, state) in waiting {
                 entries.append(Entry(
-                    title: "\(session.title) · \(session.state.state.rawValue)", action: .openSession(session.id),
-                    dot: session.state.state == .blocked ? Theme.block : Theme.ask
+                    title: "\(task.title) · \(state.rawValue)", action: .openTask(task.id),
+                    dot: state == .blocked ? Theme.block : Theme.ask
                 ))
             }
         }
-        let working = model.sessions.count { $0.state.state == .working }
+        let working = list.ordered.count { list.rollup(of: $0.id).agent?.state == .working }
         if working > 0 { entries.append(Entry(title: "\(working) working")) }
         entries.append(nil)
         entries.append(Entry(title: "Open Heed", action: .openHeed, shortcut: model.config.globalActivate))
@@ -172,7 +178,7 @@ final class MenuBarItem: NSObject, NSMenuDelegate {
             }
             let selector: Selector? = switch entry.action {
             case .none: nil
-            case .openSession: #selector(openSession(_:))
+            case .openTask: #selector(openTask(_:))
             case .openHeed: #selector(openHeed)
             case .settings: #selector(openSettings)
             case .quit: #selector(quit)
@@ -182,14 +188,14 @@ final class MenuBarItem: NSObject, NSMenuDelegate {
                 continue
             }
             menu.addItem(action: entry.title, selector, shortcut: entry.shortcut, target: self)
-            if case let .openSession(id) = entry.action { menu.items.last?.representedObject = id }
+            if case let .openTask(id) = entry.action { menu.items.last?.representedObject = id }
             if let color = entry.dot { menu.items.last?.image = dot(NSColor(color)) }
         }
     }
 
-    @objc private func openSession(_ sender: NSMenuItem) {
+    @objc private func openTask(_ sender: NSMenuItem) {
         guard let id = sender.representedObject as? String else { return }
-        model?.show(sessionID: id)
+        model?.show(taskID: id)
     }
 
     @objc private func openHeed() { model?.activateHeed() }

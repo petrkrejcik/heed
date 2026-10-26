@@ -4,13 +4,13 @@ description: Your open pull requests, their checks and reviews.
 
 # Pull requests
 
-`gp` lists your open pull requests, and the ones your sessions track.
+`gp` lists your open pull requests, and your tasks' PRs.
 
 ![Pull requests: repo and number, title and branch, checks, review](../images/shots/github/prs.png)
 
 Each row shows:
 
-- **The branch**, with the state of the session working on it.
+- **The branch**, with the state of the task working on it.
 - **Checks**: one segment per check, green passed, red failed, blue running, with the failing one named.
 - **Review**: approved, changes requested, or waiting, and how many review threads are unresolved.
 - **State**: where it stands, the same mark the sidebar shows (see [the state of a PR](pr-overlay.md#the-state-of-a-pr)).
@@ -18,7 +18,7 @@ Each row shows:
 | Key | |
 |---|---|
 | `go`, `↩` | [Read](reading.md) it in the app |
-| `gS` | Jump to the session working on it |
+| `gS` | Jump to the task working on it |
 | `gB` | Open in the browser |
 | `r` | Sync now |
 

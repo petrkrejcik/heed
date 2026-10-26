@@ -38,8 +38,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Before the model reads its preferences.
         LegacyDefaults.migrate()
         let environment = ProcessInfo.processInfo.environment
-        let fixture = environment["HEED_FIXTURE"] ?? (environment["HEED_SNAPSHOT"] != nil ? "main" : nil)
-        if let fixture, let domain = Fixtures.named(["resume", "firstrun"].contains(fixture) ? "main" : fixture) {
+        let fixture = environment["HEED_FIXTURE"] ?? (environment["HEED_SNAPSHOT"] != nil ? "tasks" : nil)
+        let base = switch fixture {
+        case "resume": "tasks"
+        case "firstrun": "empty"
+        default: fixture
+        }
+        if let fixture, let base, let domain = Fixtures.named(base) {
+            Paths.home = Fixtures.home
             let model = AppModel(domain: domain, isFixture: true)
             if fixture == "resume" { model.showResumeForFixture() }
             if fixture == "firstrun" {

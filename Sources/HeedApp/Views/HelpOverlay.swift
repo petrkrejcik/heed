@@ -19,7 +19,7 @@ struct HelpOverlay: View {
         ),
         (
             .visual,
-            "Select several sessions, worktrees or panes, then act on all of them.",
+            "Select several inbox items, issues or PRs, then act on all of them.",
             [("v V", "enter"), ("d m y", "remove, pin, copy")]
         ),
         (.command, "Typed commands with completion.", [
@@ -27,7 +27,7 @@ struct HelpOverlay: View {
         ]),
         (
             .hint,
-            "Letter badges over every pane, tab and session. Type one to jump.",
+            "Letter badges over every pane, tab and task. Type one to jump.",
             [("f", "jump to anything"), ("F", "jump and enter INSERT")]
         ),
     ]

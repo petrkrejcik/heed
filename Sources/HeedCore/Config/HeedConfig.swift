@@ -1,8 +1,8 @@
 import Foundation
 
 /// Everything `~/.config/heed/config.toml` says, as domain values. The agent is `[agents.claude]`, key bindings are
-/// `[keys.<mode or view>]` tables of notation = command, repos are keyed by `org/name`. Sections this build no longer
-/// has are ignored.
+/// `[keys.<mode or view>]` tables of notation = command, pinned commands are `[commands]`. Sections this build no
+/// longer has are ignored.
 public struct HeedConfig: Equatable, Sendable {
     public var work: WorkSettings
     public var insertEscape: String
@@ -13,29 +13,13 @@ public struct HeedConfig: Equatable, Sendable {
     public var showDockState = true
     /// `[keys.normal]`, `[keys.visual]`, ...: overrides laid over the defaults.
     public var keys: [Mode: [(String, String)]]
-    /// `[keys.repos]`, `[keys.inbox]`, ...: per-view overrides.
+    /// `[keys.tasks]`, `[keys.inbox]`, ...: per-view overrides.
     public var scopedKeys: [String: [(String, String)]]
-    public var repos: [String: RepoConfig]
     public var githubPollSeconds: Int
     public var tools = ToolSettings()
-    public var issues = IssueRules()
-
-    public struct RepoConfig: Equatable, Sendable {
-        public var color: String?
-        public var issues: IssueVisibility?
-        /// Pinned tasks (test, build, docs preview): name → command.
-        public var tasks: [(String, String)]
-
-        public static func == (lhs: RepoConfig, rhs: RepoConfig) -> Bool {
-            lhs.color == rhs.color && lhs.issues == rhs.issues && lhs.tasks.map(\.0) == rhs.tasks.map(\.0) && lhs.tasks
-                .map(\.1) == rhs.tasks
-                .map(\.1)
-        }
-    }
 
     public static let `default` = HeedConfig(
-        work: .default, insertEscape: DefaultKeys.insertEscape, keys: [:], scopedKeys: [:], repos: [:],
-        githubPollSeconds: 60
+        work: .default, insertEscape: DefaultKeys.insertEscape, keys: [:], scopedKeys: [:], githubPollSeconds: 60
     )
 
     public static func == (lhs: HeedConfig, rhs: HeedConfig) -> Bool {
@@ -54,10 +38,8 @@ public struct HeedConfig: Equatable, Sendable {
             lhs.showDockState == rhs.showDockState,
             flat(lhs.keys) == flat(rhs.keys),
             flat(lhs.scopedKeys) == flat(rhs.scopedKeys),
-            lhs.repos == rhs.repos,
             lhs.githubPollSeconds == rhs.githubPollSeconds,
             lhs.tools == rhs.tools,
-            lhs.issues == rhs.issues,
         ]
         return !same.contains(false)
     }
@@ -149,20 +131,6 @@ public enum ConfigLoader {
             }
         }
 
-        // [worktrees]
-        if let root = string(["worktrees", "root"]) { config.work.worktreeRoot = root }
-        if let roots = strings(["worktrees", "repo_roots"]) { config.work.repoRoots = roots }
-        if let paths = strings(["worktrees", "repo_paths"]) { config.work.repoPaths = paths }
-        if let prefix = string(["worktrees", "default_prefix"]) { config.work.prefixes.defaultPrefix = prefix }
-        if let table = root.value(at: ["worktrees", "prefixes"])?.table {
-            var prefixes: [String: [String]] = [:]
-            for prefix in table.keys {
-                if let words = strings(["worktrees", "prefixes", prefix]) {
-                    prefixes[prefix] = words.map { $0.lowercased() }
-                }
-            }
-            config.work.prefixes.prefixes = prefixes
-        }
         // [sessions]
         if let policy = string(["sessions", "resume_on_launch"]) {
             if let parsed = ResumePolicy(rawValue: policy) {
@@ -190,16 +158,8 @@ public enum ConfigLoader {
         if let gh = string(["tools", "gh"]) { config.tools.gh = gh }
         if let zmx = string(["tools", "zmx"]) { config.tools.zmx = zmx }
         if let path = strings(["tools", "path"]) { config.tools.path = path }
-        func visibility(_ path: [String]) -> IssueVisibility? {
-            guard let text = string(path) else { return nil }
-            guard let parsed = IssueVisibility(rawValue: text) else {
-                problems.append(ConfigProblem(path: path.joined(separator: "."), message: "expected all or involved"))
-                return nil
-            }
-            return parsed
-        }
-        // [issues]
-        if let fallback = visibility(["issues", "default"]) { config.issues.fallback = fallback }
+        // [commands]
+        config.work.commands = pairs(["commands"]).map { PinnedCommand(name: $0.0, command: $0.1) }
 
         // [agents.claude], field by field. Other agents run in a plain terminal tab, so other tables are ignored.
         for (index, base) in config.work.agents.enumerated() {
@@ -231,20 +191,6 @@ public enum ConfigLoader {
             config.work.agents[index] = agent
         }
 
-        // [repos."org/name"]
-        if let repos = root.value(at: ["repos"])?.table {
-            for slug in repos.keys {
-                let repo = HeedConfig.RepoConfig(
-                    color: string(["repos", slug, "color"]), issues: visibility(["repos", slug, "issues"]),
-                    tasks: pairs(["repos", slug, "tasks"])
-                )
-                config.repos[slug] = repo
-                if let issues = repo.issues { config.issues.repos[slug] = issues }
-                if !repo.tasks
-                    .isEmpty { config.work.tasks[slug] = repo.tasks.map { TaskSpec(name: $0.0, command: $0.1) } }
-            }
-        }
-
         // [keys]
         if let escape = string(["keys", "insert_escape"]) { config.insertEscape = escape }
         if let shortcut = string(["keys", "global_activate"]) { config.globalActivate = shortcut }
@@ -260,7 +206,7 @@ public enum ConfigLoader {
                     config.keys[mode] = entries
                 } else if DefaultKeys.scoped[name] != nil || ["issues", "prs"].contains(name) {
                     config.scopedKeys[name] = entries
-                } else {
+                } else if !["repos", "sessions", "history"].contains(name) {
                     problems.append(ConfigProblem(path: "keys.\(name)", message: "not a mode or a view"))
                 }
             }
@@ -273,33 +219,12 @@ public enum ConfigLoader {
     # Heed configuration. Saved changes apply right away; mistakes are reported in the status bar and the last good
     # config stays in use. Settings (⌘,) edits this file too, except key bindings, which live only here.
 
-    [worktrees]
-    # Worktrees are created at <root>/<repo>/<name>.
-    root = "~/code/wt"
-    # Directories scanned (two levels deep) for repositories.
-    repo_roots = ["~/Projects", "~/code"]
-    # Repos outside the roots, added when you import one of their worktrees by path (I in Sessions, :import <path>).
-    repo_paths = []
-    # Branches get a prefix picked by the prompt's first word ("Fix broken anchors" → fix/broken-anchors), else this.
-    # "" means no prefix. The worktree folder uses - for /.
-    default_prefix = "feature"
-
-    [worktrees.prefixes]
-    fix = ["fix", "bug", "broken", "crash", "repair", "resolve"]
-    bump = ["bump", "upgrade", "update"]
-    chore = ["chore", "cleanup", "tidy", "remove", "rename"]
-    refactor = ["refactor", "restructure", "simplify"]
-    docs = ["docs", "doc", "document", "readme"]
-    test = ["test", "tests", "cover"]
-    perf = ["perf", "speed", "optimize", "faster"]
-    feature = ["add", "implement", "support", "create", "introduce", "build", "feature"]
-
     [sessions]
-    # On launch: ask which sessions to resume, resume them all, or none.
+    # On launch: ask which tasks' agents to resume (each agent tab resumes its own Claude session), all, or none.
     resume_on_launch = "ask"           # ask | always | never
-    # Typed into a resumed session that was mid-turn, once the agent is idle. "" turns it off.
+    # Typed into a resumed agent that was mid-turn, once it is idle. "" turns it off.
     continue_prompt = "Continue where you left off."
-    # Open a shell split beside the agent in new sessions (Start work can still toggle it per session).
+    # Open a shell split beside the agent in new tasks.
     shell_split = false
     # Keep every pane's terminal alive in a zmx session, so agents keep running when heed quits, restarts or updates,
     # and come back as they were: auto (zmx when it is installed and works; Settings > General shows its check),
@@ -310,14 +235,8 @@ public enum ConfigLoader {
     # How often the view on screen refreshes from GitHub; the others refresh five times less often.
     poll_seconds = 60
 
-    [issues]
-    # Which issues the Issues view shows per repo: "involved" (assigned to you or mentioning you) or "all" open
-    # issues. Override per repo ([repos."org/name"] issues = "all"). w in Issues (I in Repos) flips the repo under the
-    # cursor.
-    default = "involved"
-
     [ui]
-    # A menu bar item: an owl that shows how many sessions need you, with those sessions and Open Heed.
+    # A menu bar item: an owl that shows how many tasks need you, with those tasks and Open Heed.
     menu_bar = true
     # The Dock icon shows the same: a badge in the state's colour (blocked, else asking) with the count.
     dock_state = true
@@ -338,14 +257,10 @@ public enum ConfigLoader {
     plan = "--permission-mode plan"
     resume = "--resume {id}"
 
-    # Repo colors: teal, pink, lime, orange, periwinkle, sky. Unset, a repo gets one from its org's name.
-    # [repos."elastic/docs-builder"]
-    # color = "teal"
-    # issues = "all"
-
-    # Pinned tasks per repo, each run in its own pane; the exit code sets the tab's glyph.
-    # [repos."elastic/docs-builder".tasks]
-    # test = "dotnet test"
+    # Pinned commands: each opens as a tab in a task's worktree when the task gets one; the exit code sets the tab's
+    # glyph.
+    [commands]
+    # jest = "yarn test:jest"
 
     [keys]
     # Leaves INSERT. It is also the terminal's quit signal, so pick something else if you need that.
@@ -354,7 +269,7 @@ public enum ConfigLoader {
     global_activate = "<C-M-h>"
     # Shift+Escape leaves INSERT too; a plain Escape always goes to the terminal. [keys.insert] "<S-Esc>" = "" unbinds.
 
-    # Bindings per mode ([keys.normal], [keys.visual], ...) or per view ([keys.repos], [keys.inbox], [keys.history],
+    # Bindings per mode ([keys.normal], [keys.visual], ...) or per view ([keys.tasks], [keys.inbox], [keys.issues],
     # [keys.diff], [keys.pr]), in vim notation, each naming a command (the same names : completes). "" unbinds.
     # [keys.normal]
     # "gB" = ""

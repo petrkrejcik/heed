@@ -12,19 +12,15 @@ struct MainWindow: View {
             GeometryReader { geometry in
                 HStack(spacing: 0) {
                     switch model.view {
-                    case .sessions:
+                    case .tasks:
                         if model.sidebarCollapsed {
-                            SessionRail().shotRegion(.rail)
+                            TaskRail().shotRegion(.rail)
                         } else {
                             Sidebar(width: geometry.size.width < 1000 ? 260 : 330).shotRegion(.sidebar)
                         }
                         CenterArea().shotRegion(.center)
                         // The inspector gives way first on narrow windows; `zi` hides it outright.
                         if model.inspectorVisible, geometry.size.width >= 1180 { Inspector().shotRegion(.inspector) }
-                    case .repos:
-                        ReposView()
-                    case .history:
-                        HistoryView()
                     case .inbox:
                         InboxView()
                     case .issues:
@@ -50,17 +46,13 @@ struct MainWindow: View {
             if model.issueReader != nil { IssueReaderView().shotRegion(.reader).padding(.top, 44).padding(.bottom, 28) }
         }
         .overlay {
-            if model.startWork != nil { StartWorkView() }
+            if let form = model.newTask { NewTaskView(form: form) }
         }
         .overlay {
             if model.resume != nil { ResumeView() }
         }
         .overlay {
-            if let picker = model.importPicker { ImportPickerView(picker: picker) }
             if let picker = model.linkPicker { LinkPickerView(picker: picker) }
-        }
-        .overlay {
-            if let state = model.pathImport { PathImportView(state: state) }
         }
         .overlay {
             if let confirmation = model.confirmation { ConfirmationView(confirmation: confirmation) }
@@ -181,8 +173,8 @@ struct TitleBar: View {
         }
     }
 
-    /// What you are looking at: the session's branch and PR, or the PR, issue, worktree or history entry under the
-    /// cursor (or open in a reader).
+    /// What you are looking at: the task's worktree, title and PR, or the PR or issue under the cursor (or open in a
+    /// reader).
     @ViewBuilder private var crumb: some View {
         if let context = model.titleContext {
             HStack(spacing: 6) {
@@ -266,10 +258,10 @@ struct StatusBar: View {
             if model.filtering {
                 filterLine
             } else {
-                if let session = model.currentSession {
+                if let branch = model.currentTask?.branch {
                     HStack(spacing: 6) {
                         Image(systemName: "arrow.triangle.branch").font(.system(size: 10))
-                        Text(session.branch)
+                        Text(branch)
                     }
                     .padding(.horizontal, 12)
                 }
@@ -313,9 +305,7 @@ struct StatusBar: View {
         case .inbox, .issues, .prs:
             let count = model.itemIDs(model.view).count
             return "\(count == 0 ? 0 : model.cursor(in: model.view) + 1)/\(count)"
-        case .repos: return "\(model.worktreeRows.isEmpty ? 0 : model.repoCursor + 1)/\(model.worktreeRows.count)"
-        case .history: return "\(model.historyRows.isEmpty ? 0 : model.historyCursor + 1)/\(model.historyRows.count)"
-        case .sessions: return "\(model.list.ordered.isEmpty ? 0 : model.cursor + 1)/\(model.list.ordered.count)"
+        case .tasks: return "\(model.list.ordered.isEmpty ? 0 : model.cursor + 1)/\(model.list.ordered.count)"
         }
     }
 
@@ -342,23 +332,22 @@ struct StatusBar: View {
                 .joined(separator: " · ")
                 + " · ⎋ \(model.confirmation?.cancel.lowercased() ?? "cancel")"
         case .normal where model.confirmation != nil: "y or ↩ confirm · n, ⎋ or q cancel"
-        case .normal where model.importPicker != nil: "type to filter · ⌃n ⌃p move · ↩ import · ⎋ cancel"
-        case .normal where model.pathImport != nil: "⇥ complete · ⌃n ⌃p choose · ⌃w up a folder · ↩ import · ⎋ cancel"
+        case .normal where model.newTask != nil: "type a title · ↩ create · ⎋ cancel"
         case .normal where model.filtering: "words match anywhere · ⌃w word · ⌃u clear · ↩ keep · ⎋ clear"
         case .normal where model.overlay == .diff: "j k line · n hunk · ]f file · ⇥ scope · c commit · t split · gd close"
-        case .normal where model.issueReader != nil: "s start session · a add to session · gB browser · ⎋ back"
+        case .normal where model.issueReader != nil: "s new task · gB browser · ⎋ back"
         case .normal where model.reader != nil || model.overlay == .pr:
-            "\(model.keyText(for: "pr.start")) new session · ]p next PR · gS session · gB browser · ⎋ back"
-        case .normal where model.view == .repos: "o start work here · v select · dd remove · r rescan · w issues · { } repo · / filter"
-        case .normal where model.view == .history: "j k move · / filter · R reopen · O new from prompt · t outcome"
-        case .normal where model.view == .inbox: "↩ read · space pick · v range · s start session · a add · x mark read · t unread/all · / filter"
-        case .normal where model.view == .issues: "↩ read · space pick · s start session · t filter · ⇥ repo · w all/yours · / filter"
-        case .normal where model.view == .prs: "↩ open · v select · gS session · r sync"
-        case .normal: "i insert · o start work · m pin · { } group · Iw import · : command · ? keys"
+            "\(model.keyText(for: "pr.start")) new task · gS task · gB browser · ⎋ back"
+        case .normal where model.view == .inbox: "↩ read · space pick · v range · s new task · x mark read · t unread/all · / filter"
+        case .normal where model.view == .issues: "↩ read · space pick · s new task · t filter · ⇥ repo · / filter"
+        case .normal where model.view == .prs: "↩ open · v select · gS task · r sync"
+        case .normal: "i insert · o new task · m pin · { } group · : command · ? keys"
         case .insert: "⇧⎋ or \(KeyCapText.of(model.config.insertEscape)) normal · ⌘/ keys"
-        case .visual where model.view == .prs:
-            "\(model.pickedIDs(model.view).count) selected · space toggle · ⎋ cancel"
-        case .visual: "\(model.selectedRows.count) selected · space toggle · y copy path · o open session · ⎋ cancel"
+        case .visual where model.view == .inbox:
+            "\(model.pickedIDs(model.view).count) selected · space toggle · s new task · x read · ⎋ cancel"
+        case .visual where model.view == .issues:
+            "\(model.pickedIDs(model.view).count) selected · space toggle · s new task · ⎋ cancel"
+        case .visual: "\(model.pickedIDs(model.view).count) selected · space toggle · ⎋ cancel"
         case .command: "⇥ complete · ↩ run · ⎋ cancel"
         case .hint: "type a label · ⎋ cancel"
         }
@@ -500,178 +489,7 @@ struct ConfirmationView: View {
     }
 }
 
-/// `I` in Sessions: worktrees without a session (main checkouts last), narrowed as you type; ↩ imports one.
-struct ImportPickerView: View {
-    @Environment(AppModel.self) private var model
-    let picker: Typeahead<Worktree>
-
-    var body: some View {
-        let matches = picker.matches
-        ZStack {
-            Color.black.opacity(0.5)
-            VStack(alignment: .leading, spacing: 0) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Import a worktree").font(Theme.ui(15, weight: .semibold))
-                    Text(
-                        "Worktrees of your repos that Heed does not manage yet. Importing resumes the agent session kept there, else starts the agent fresh. Elsewhere on disk? Ip imports a path."
-                    )
-                    .font(Theme.ui(12)).foregroundStyle(Theme.fg3)
-                }
-                .padding(18)
-                HStack(spacing: 6) {
-                    Image(systemName: "magnifyingglass").font(.system(size: 11)).foregroundStyle(Theme.fg3)
-                    Text(picker.query + "▌").font(Theme.mono(12.5))
-                    Spacer()
-                    Text("\(matches.count) of \(picker.items.count)").font(Theme.mono(11)).foregroundStyle(Theme.fg3)
-                }
-                .padding(.horizontal, 18)
-                .padding(.vertical, 8)
-                .overlay(alignment: .top) { Theme.line.frame(height: 1) }
-                .overlay(alignment: .bottom) { Theme.line.frame(height: 1) }
-                ScrollViewReader { proxy in
-                    ListScroll {
-                        ListStack(alignment: .leading, spacing: 0) {
-                            ForEach(Array(matches.enumerated()), id: \.element.id) { index, worktree in
-                                // Repo and branch, the path small below: room to read, and the matches marked.
-                                VStack(alignment: .leading, spacing: 3) {
-                                    HStack(spacing: 10) {
-                                        RepoChip(repo: worktree.repo, highlight: picker.query).fixedSize()
-                                        Highlighted(
-                                            text: worktree.branch ?? "detached \(worktree.head)", query: picker.query
-                                        )
-                                        .font(Theme.mono(12.5))
-                                        .lineLimit(1)
-                                        if worktree.isMain {
-                                            Text("main checkout").font(Theme.ui(11)).foregroundStyle(Theme.fg3)
-                                        }
-                                        Spacer(minLength: 0)
-                                    }
-                                    WorktreePath(
-                                        path: worktree.path,
-                                        roots: model.settings.pathRoots,
-                                        query: picker.query
-                                    )
-                                }
-                                .padding(.horizontal, 18)
-                                .padding(.vertical, 9)
-                                .background(index == picker.cursor ? Theme.bg3 : .clear)
-                                .contentShape(Rectangle())
-                                .onTapGesture { model.pickImport(worktree) }
-                                .id(index)
-                            }
-                        }
-                    }
-                    .onChange(of: picker.cursor) { proxy.scrollTo(picker.cursor) }
-                }
-                .frame(maxHeight: 380)
-                if AppModel.looksLikePath(picker.query), matches.isEmpty {
-                    HStack(spacing: 8) {
-                        KeyCap(text: "↩")
-                        Text("import the worktree at \(picker.query)").font(Theme.mono(12))
-                        Spacer()
-                    }
-                    .padding(.horizontal, 18)
-                    .padding(.vertical, 10)
-                }
-                HStack {
-                    Text("⌃n ⌃p move · ↩ import · ⎋ cancel · Ip (in Sessions) imports a path").font(Theme.ui(11.5))
-                        .foregroundStyle(Theme.fg3)
-                    Spacer()
-                }
-                .padding(14)
-                .overlay(alignment: .top) { Theme.line.frame(height: 1) }
-            }
-            .frame(width: 640)
-            .fixedSize(horizontal: false, vertical: true)
-            .background(RoundedRectangle(cornerRadius: 12).fill(Theme.bg2))
-            .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Theme.line))
-            .clipShape(RoundedRectangle(cornerRadius: 12))
-            .shadow(color: .black.opacity(0.5), radius: 30).shotRegion(.picker)
-        }
-    }
-}
-
-/// `P` in Sessions: a path with directory completion and a preview of what is there; ↩ imports that worktree.
-struct PathImportView: View {
-    @Environment(AppModel.self) private var model
-    let state: AppModel.PathImport
-
-    var body: some View {
-        ZStack {
-            Color.black.opacity(0.5)
-            VStack(alignment: .leading, spacing: 0) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Import a path").font(Theme.ui(15, weight: .semibold))
-                    Text(
-                        "Any worktree of any repo, wherever it is. A repo Heed does not know is added (and kept in [worktrees] repo_paths)."
-                    )
-                    .font(Theme.ui(12)).foregroundStyle(Theme.fg3)
-                    .fixedSize(horizontal: false, vertical: true)
-                }
-                .padding(18)
-                HStack(spacing: 6) {
-                    Image(systemName: "folder").font(.system(size: 11)).foregroundStyle(Theme.fg3)
-                    Text(state.query + "▌").font(Theme.mono(12.5)).lineLimit(1).truncationMode(.head)
-                    Spacer()
-                }
-                .padding(.horizontal, 18)
-                .padding(.vertical, 9)
-                .background(Theme.pane)
-                .overlay(alignment: .top) { Theme.line.frame(height: 1) }
-                .overlay(alignment: .bottom) { Theme.line.frame(height: 1) }
-                if let preview = state.preview {
-                    HStack(spacing: 8) {
-                        Image(systemName: state.importable ? "checkmark.circle.fill" : "minus.circle")
-                            .foregroundStyle(state.importable ? Theme.done : Theme.fg3)
-                        Text(preview).font(Theme.mono(12)).foregroundStyle(state.importable ? Theme.fg : Theme.fg3)
-                            .lineLimit(1)
-                        Spacer()
-                        if state.importable {
-                            KeyCap(text: "↩")
-                            Text("import").font(Theme.ui(12)).foregroundStyle(Theme.fg2)
-                        }
-                    }
-                    .padding(.horizontal, 18)
-                    .padding(.vertical, 9)
-                    .overlay(alignment: .bottom) { Theme.line.frame(height: 1) }
-                }
-                VStack(alignment: .leading, spacing: 0) {
-                    ForEach(Array(state.candidates.enumerated()), id: \.element) { index, path in
-                        HStack(spacing: 8) {
-                            Image(systemName: "folder").font(.system(size: 10)).foregroundStyle(Theme.fg3)
-                            Text((path as NSString).lastPathComponent + "/").font(Theme.mono(12))
-                            Spacer()
-                            if index == state.cursor { KeyCap(text: "⇥") }
-                        }
-                        .padding(.horizontal, 18)
-                        .padding(.vertical, 5)
-                        .background(index == state.cursor ? Theme.bg3 : .clear)
-                    }
-                    if state.candidates.isEmpty {
-                        Text("No folders here to complete.").font(Theme.ui(12)).foregroundStyle(Theme.fg3)
-                            .padding(.horizontal, 18).padding(.vertical, 8)
-                    }
-                }
-                .padding(.vertical, 6)
-                HStack {
-                    Text("⇥ complete · ⌃n ⌃p choose · ⌃w up a folder · ↩ import · ⎋ cancel")
-                        .font(Theme.ui(11.5)).foregroundStyle(Theme.fg3)
-                    Spacer()
-                }
-                .padding(14)
-                .overlay(alignment: .top) { Theme.line.frame(height: 1) }
-            }
-            .frame(width: 640)
-            .fixedSize(horizontal: false, vertical: true)
-            .background(RoundedRectangle(cornerRadius: 12).fill(Theme.bg2))
-            .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Theme.line))
-            .clipShape(RoundedRectangle(cornerRadius: 12))
-            .shadow(color: .black.opacity(0.5), radius: 30).shotRegion(.picker)
-        }
-    }
-}
-
-/// `gB` / `gR` with several places to go: the session's PRs and issues (or repos), numbered.
+/// `gB` with several places to go: the task's PR and issues, numbered.
 struct LinkPickerView: View {
     @Environment(AppModel.self) private var model
     let picker: LinkPicker
@@ -717,7 +535,7 @@ struct LinkPickerView: View {
         }
     }
 
-    private func icon(_ link: SessionLink) -> String {
+    private func icon(_ link: TaskLink) -> String {
         switch link {
         case .pull: "arrow.triangle.pull"
         case .issue: "smallcircle.filled.circle"
@@ -725,7 +543,7 @@ struct LinkPickerView: View {
         }
     }
 
-    private func title(_ link: SessionLink) -> String {
+    private func title(_ link: TaskLink) -> String {
         switch link {
         case let .pull(ref): model.github.pull(ref)?.title ?? ""
         case let .issue(ref): model.issue(for: ref)?.title ?? ""
@@ -733,7 +551,7 @@ struct LinkPickerView: View {
         }
     }
 
-    private func state(_ link: SessionLink) -> String {
+    private func state(_ link: TaskLink) -> String {
         switch link {
         case let .pull(ref): model.github.pull(ref).map { $0.state.rawValue.lowercased() } ?? ""
         case let .issue(ref): model.issueInfo[ref].map { $0.closed ? "closed" : "open" } ?? ""

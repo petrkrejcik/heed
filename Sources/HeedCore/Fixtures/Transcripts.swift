@@ -4,86 +4,68 @@ import Foundation
 /// Markup: `{dim}`, `{bold}`, `{green}`, `{blue}`, `{amber}`, `{red}`, `{violet}` start a style, `{/}` ends it.
 public extension Fixtures {
     static let transcripts: [String: String] = [
-        "s1-agent": """
-        {bold}claude{/} {dim}· fix-anchors-redirects{/}
+        "t2-agent": """
+        {bold}claude{/} {dim}· 299433-fix-image-upload-403{/}
 
-        {bold}>{/} Fix broken anchors in redirects.yml.
-          Every target must hit a heading.
+        {bold}>{/} Fix the 403 on image upload behind
+          a proxy. Read the task note first.
 
-        {violet}●{/} Making anchor lookups slug-aware,
-          then adding moved-page fixtures.
+        {violet}●{/} The upload skips the base path, so
+          the proxy rejects it. Fixing that.
 
-        {green}●{/} {bold}Update{/}(RedirectFile.cs)
+        {green}●{/} {bold}Update{/}(upload_image.ts)
           {dim}⎿ 4 additions, 2 removals{/}
 
-        {green}●{/} {bold}Write{/}(moved-page.yml)
+        {green}●{/} {bold}Write{/}(upload_image.test.ts)
           {dim}⎿ Wrote 18 lines{/}
 
-        {blue}●{/} {bold}Bash{/}(dotnet test)
-          {dim}⎿ 212 passed, 0 failed so far{/}
+        {blue}●{/} {bold}Bash{/}(yarn test:jest upload_image)
+          {dim}⎿ 12 passed, 0 failed so far{/}
 
-        {amber}✻ Running tests… (14m · esc){/}
+        {amber}✻ Running tests… (2m · esc){/}
         """,
-        "s1-shell": """
-        {green}you@mac{/} {blue}fix-anchors{/} % git status -s
-         M src/…/RedirectFile.cs
-        ?? tests/redirects/moved-page.yml
-        {green}you@mac{/} {blue}fix-anchors{/} % ▌
+        "t2-shell": """
+        {green}you@mac{/} {blue}299433-fix-image-upload-403{/} % git status -s
+         M x-pack/…/public/upload_image.ts
+        ?? x-pack/…/public/upload_image.test.ts
+        {green}you@mac{/} {blue}299433-fix-image-upload-403{/} % ▌
         """,
-        "s1-tests": """
-        {dim}dotnet watch ⌚ Started{/}
-          Passed! Failed: 0, Passed: 212
-        {dim}dotnet watch ⌚ Waiting for changes{/}
+        "t2-agent2": """
+        {bold}>{/} Answer the review comments on
+          #299455.
+
+        {green}●{/} Both threads answered. The second
+          needs a proxy test; noted in the task.
         """,
-        "s2-agent": """
-        {bold}>{/} Add a cross-link validator for
-          assembled docs.
-
-        {green}●{/} {bold}Write{/}(CrossLinks/Validator.cs)
-          {dim}⎿ Wrote 96 lines{/}
-
-        {amber}Bash command{/}
-          dotnet publish -c Release
-          src/docs-assembler
-
-        {bold}Do you want to proceed?{/}
-        {amber}❯ 1. Yes{/}
-          2. Yes, don't ask again for this
-          3. No, tell Claude what to do
+        "t2-jest": """
+        {dim}yarn test:jest --watch{/}
+          Tests: 12 passed, 12 total
+        {dim}Watching for file changes{/}
         """,
-        "s3-agent": """
-        {bold}claude{/} {dim}· ingest-backpressure{/}
+        "t5-agent": """
+        {bold}claude{/} {dim}· kibana{/}
 
-        {violet}●{/} Three questions before I change
-          the stage:
+        {violet}●{/} Two questions before I dig into
+          SSE batching:
 
-          {violet}1.{/} Block producers when the buffer
-             is full, or drop the oldest?
-          {violet}2.{/} Is 10k events a good default?
-          {violet}3.{/} Add a metric for time blocked?
+          {violet}1.{/} Batch by time (50ms) or by
+             size (8 events)?
+          {violet}2.{/} Measure in the browser or in
+             the server logs?
 
         {dim}Enter to select · ↑/↓ to navigate · Esc to cancel{/}
         """,
-        "s4-agent": """
-        {bold}>{/} Arrowheads detach at small zoom.
+        "t3-agent": """
+        {bold}claude{/} {dim}· review-299044-timeline-freeze{/}
 
-        {green}●{/} {bold}Read{/}(Sequence/Arrow.cs)
-        {green}●{/} {bold}Update{/}(Sequence/Arrow.cs)
-          {dim}⎿ 7 additions, 3 removals{/}
-
-        {amber}✻ Editing… (3m · esc to interrupt){/}
+        {green}●{/} Review done. The freeze comes from
+          re-rendering every round; memoizing
+          the round list fixes it. Notes are in
+          the task.
         """,
-        "s5-agent": """
-        {green}●{/} PR #412 is approved and checks
-          pass. Nothing left to do.
-
-        {dim}Total cost: $0.42 · 18 turns{/}
-        """,
-        "s6-agent": """
-        {bold}claude{/} {dim}· docs-nav-spike{/}
-
-        {green}●{/} Spike done: the nav reads from
-          the toc tree. PR #2852 is open.
+        "t1-kibana": """
+        {dim}[2026-10-26T09:12:04] [info][status] Kibana is now available{/}
+        {dim}server    log   [09:12:04.311] http server running at{/} http://localhost:5601
         """,
     ]
 

@@ -217,7 +217,7 @@ public struct PullRequest: Identifiable, Hashable, Sendable, Codable {
     }
 }
 
-/// Builds the one prompt Start work gets when it starts from several inbox items or issues.
+/// The first prompt of a task started from inbox items or issues (`s` in Inbox and Issues).
 public enum WorkPrompt {
     public static func from(issues: [Issue], closesLines: Bool = true) -> String {
         guard !issues.isEmpty else { return "" }
@@ -241,83 +241,5 @@ public enum WorkPrompt {
             "- \(item.repo.name)\(item.number.map { "#\($0)" } ?? "") \(item.title) (\(item.reasonText))"
         }
         return (["Look into these:"] + refs).joined(separator: "\n")
-    }
-}
-
-/// Links PRs to sessions: a PR whose head branch is one of a session's branches, in one of its repos, is tracked by
-/// it.
-public enum PullTracking {
-    public static func changes(sessions: [Session], pulls: [PullRequest], now: Date = Date()) -> [DomainChange] {
-        sessions.compactMap { session -> DomainChange? in
-            var updated = session
-            let added = pulls.filter { pull in
-                session.branches.contains(pull.headBranch) && session.repos.contains(pull.ref.repo)
-                    && updated.track(pull.ref, because: "branch \(pull.headBranch)", at: now)
-            }
-            return added.isEmpty ? nil : .sessionUpserted(updated)
-        }
-    }
-
-    /// PRs that mention one of a session's PRs: yours, open, and opened after the session started are its own
-    /// (follow-ups, companion changes); anyone else's are only suggested.
-    public static func linked(
-        _ references: [PullDetail.Reference], session: Session, viewer: String?
-    ) -> (track: [PullDetail.Reference], suggest: [PullDetail.Reference]) {
-        let fresh = references.filter { reference in
-            !session.trackedPRs.contains(reference.ref) && !session.untrackedPRs.contains(reference.ref)
-                && reference.state == "OPEN"
-        }
-        let mine = fresh.filter { reference in
-            viewer.map { reference.author?.lowercased() == $0.lowercased() } == true
-                && (reference.createdAt.map { $0 >= session.createdAt } ?? false)
-        }
-        return (mine, fresh.filter { !mine.contains($0) })
-    }
-}
-
-/// A session follows its worktrees from branch to branch: merge, then `git switch -c next`, and the session is on
-/// `next` too.
-public enum BranchFollowing {
-    public static func follow(_ session: Session, worktrees: [Worktree], now: Date = Date()) -> Session {
-        var session = session
-        for worktree in worktrees where session.owns(worktree) {
-            if !session.worktreePaths.contains(worktree.path) { session.worktreePaths.append(worktree.path) }
-            guard let branch = worktree.branch, !session.branches.contains(branch) else { continue }
-            session.branches.append(branch)
-            session.record("now on \(branch) in \(worktree.repo.name)", at: now)
-        }
-        return session
-    }
-}
-
-/// Which issues the Issues view shows for a repo. Issues assigned to you or mentioning you always show.
-public enum IssueVisibility: String, CaseIterable, Sendable, Codable {
-    /// Every open issue.
-    case all
-    /// Only those assigned to you or mentioning you.
-    case involved
-}
-
-/// `[issues] default` and `[repos."org/name"] issues`: a repo's own setting wins.
-public struct IssueRules: Equatable, Sendable {
-    public var fallback: IssueVisibility
-    public var repos: [String: IssueVisibility]
-
-    public init(fallback: IssueVisibility = .involved, repos: [String: IssueVisibility] = [:]) {
-        self.fallback = fallback
-        self.repos = repos
-    }
-
-    public func visibility(_ repo: Repo) -> IssueVisibility {
-        repos[repo.slug] ?? fallback
-    }
-
-    /// Search qualifiers for the repos that show all issues, including local repos when the fallback is all.
-    public func watchQualifiers(local: [Repo]) -> [String] {
-        var repoSlugs = Set(repos.filter { $0.value == .all }.keys)
-        if fallback == .all {
-            repoSlugs.formUnion(local.filter { repos[$0.slug] == nil }.map(\.slug))
-        }
-        return repoSlugs.sorted().map { "repo:\($0)" }
     }
 }

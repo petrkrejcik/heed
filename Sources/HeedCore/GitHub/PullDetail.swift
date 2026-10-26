@@ -1,7 +1,7 @@
 import Foundation
 
 /// A PR as the reader shows it: description, review threads with the diff they refer to, checks, linked issues.
-/// Fetched on demand and for PRs sessions track.
+/// Fetched on demand and for the PRs of tasks.
 public struct PullDetail: Hashable, Sendable, Codable {
     public var ref: PullRef
     public var title: String

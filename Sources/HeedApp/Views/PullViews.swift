@@ -1,7 +1,7 @@
 import HeedCore
 import SwiftUI
 
-/// `go` over a session: its PRs, one at a time (design/screens/PROverlay.png).
+/// `go` over a task: its PR (design/screens/PROverlay.png).
 struct PullOverlayView: View {
     @Environment(AppModel.self) private var model
 
@@ -22,25 +22,22 @@ struct PullOverlayView: View {
 
     private func tabs(current: PullRef) -> some View {
         HStack(spacing: 10) {
-            ForEach(model.currentSession?.trackedPRs ?? [], id: \.self) { ref in
-                HStack(spacing: 6) {
-                    RepoChip(repo: ref.repo).fixedSize()
-                    Text(verbatim: "#\(ref.number)").font(Theme.mono(12))
-                        .foregroundStyle(ref == current ? Theme.fg : Theme.fg3)
-                }
-                .fixedSize()
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
-                .background(RoundedRectangle(cornerRadius: 8).strokeBorder(ref == current ? Theme.fg3 : .clear))
+            HStack(spacing: 6) {
+                RepoChip(repo: current.repo).fixedSize()
+                Text(verbatim: "#\(current.number)").font(Theme.mono(12)).foregroundStyle(Theme.fg)
             }
-            KeyCap(text: "]p")
-            KeyCap(text: "[p")
-            Text("PRs of this session").font(Theme.ui(12)).foregroundStyle(Theme.fg3)
+            .fixedSize()
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(RoundedRectangle(cornerRadius: 8).strokeBorder(Theme.fg3))
+            if let task = model.currentTask {
+                Text(task.title).font(Theme.ui(12)).foregroundStyle(Theme.fg3).lineLimit(1)
+            }
             Spacer()
             KeyCap(text: "go")
             Text("or").font(Theme.ui(12)).foregroundStyle(Theme.fg3)
             KeyCap(text: "⎋")
-            Text("back to session").font(Theme.ui(12)).foregroundStyle(Theme.fg3)
+            Text("back to the task").font(Theme.ui(12)).foregroundStyle(Theme.fg3)
         }
         .padding(.horizontal, 20)
         .frame(height: 52)
@@ -179,10 +176,10 @@ struct PullDetailView: View {
     private func side(_ detail: PullDetail?) -> some View {
         VStack(alignment: .leading, spacing: 16) {
             SectionHeader(title: "Linked")
-            if let session = model.sessions.first(where: { $0.trackedPRs.contains(ref) }) {
+            if let task = model.task(for: ref) {
                 HStack(spacing: 8) {
-                    StateGlyph(state: session.state.state)
-                    Text(session.branch).font(Theme.mono(12))
+                    StateGlyph(state: model.agentState(of: task)?.state ?? .exited)
+                    Text(task.title).font(Theme.ui(12)).lineLimit(1)
                 }
             }
             ForEach(detail?.closes ?? [], id: \.self) { issue in
@@ -218,22 +215,21 @@ struct PullDetailView: View {
             }
             let mentions = model.suggestedLinks(for: ref)
             if !mentions.isEmpty {
-                // PRs that link here but are not this session's own: someone else's, or older than the session.
                 SectionHeader(title: "Also mentions it")
                 ForEach(mentions, id: \.ref) { mention in
                     VStack(alignment: .leading, spacing: 2) {
                         Text(verbatim: "\(mention.ref.repo.name)#\(mention.ref.number) \(mention.title)")
                             .font(Theme.ui(12)).lineLimit(1)
-                        Text(verbatim: "@\(mention.author ?? "ghost") · :pr.track \(mention.ref.url)")
+                        Text(verbatim: "@\(mention.author ?? "ghost") · \(mention.ref.url)")
                             .font(Theme.mono(10.5)).foregroundStyle(Theme.fg3).lineLimit(1).textSelection(.enabled)
                     }
                 }
             }
             Spacer()
             VStack(alignment: .leading, spacing: 8) {
-                keyRow(model.keyText(for: "pr.start"), "start a new session from this PR")
+                keyRow(model.keyText(for: "pr.start"), "start a new task from this PR")
                 keyRow("gB", "open on GitHub")
-                keyRow("gS", "jump to its session")
+                keyRow("gS", "jump to its task")
             }
         }
         .padding(20)

@@ -1,7 +1,7 @@
 import Foundation
 
 /// PRs an agent opened, read from its tool calls: the `gh pr create` it ran, the GitHub MCP `create_pull_request` it
-/// called. Only a creation counts; a PR URL the agent merely read or quoted is not this session's work.
+/// called. Only a creation counts; a PR URL the agent merely read or quoted is not this task's work.
 public enum PullCreation {
     /// The PR URLs a tool call created. `tool` is the tool's name, `command` the shell command it ran (if any),
     /// `output` everything it printed or returned.

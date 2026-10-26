@@ -16,34 +16,26 @@ toc:
       - file: index.md
       - file: installation.md
       - file: first-run.md
-      - file: first-session.md
+      - file: first-task.md
   - folder: concepts
     children:
       - file: index.md
-      - file: sessions.md
+      - file: tasks.md
       - file: agent-states.md
-      - file: worktrees.md
       - file: modes.md
-  - folder: sessions
+  - folder: tasks
     children:
       - file: index.md
       - file: sidebar.md
+      - file: new-task.md
       - file: moving-around.md
       - file: typing-into-agents.md
       - file: panes-and-tabs.md
       - file: inspector.md
-      - file: pin-park-close-delete.md
+      - file: pinning.md
       - file: resume.md
       - file: zmx.md
       - file: filtering.md
-  - folder: start-work
-    children:
-      - file: index.md
-      - file: repos.md
-      - file: branch-names.md
-      - file: agent-and-options.md
-      - file: from-github.md
-      - file: again.md
   - folder: agents
     children:
       - file: index.md
@@ -57,21 +49,11 @@ toc:
       - file: pull-requests.md
       - file: reading.md
       - file: pr-overlay.md
-      - file: tracking-prs.md
-  - folder: worktrees
-    children:
-      - file: index.md
-      - file: repos.md
-      - file: importing.md
-      - file: removing.md
+      - file: task-prs.md
   - folder: diff
     children:
       - file: index.md
       - file: reviewing.md
-  - folder: history
-    children:
-      - file: index.md
-      - file: reopening.md
   - folder: keyboard
     children:
       - file: index.md

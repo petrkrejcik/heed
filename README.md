@@ -31,7 +31,7 @@
   <img src="https://img.shields.io/badge/macOS-15%2B-informational" alt="macOS 15+">
 </p>
 
-![heed: sessions on the left, agent terminals in the middle, the PR and agent events on the right](docs/images/shots/landing/main.png)
+![heed: tasks on the left, agent terminals in the middle, the PR and agents on the right](docs/images/shots/landing/main.png)
 
 ## Install
 
@@ -47,16 +47,14 @@ Or [download the latest release](https://github.com/heed-build/heed/releases/lat
 - **Claude, one window.** Claude (or any command, without a state), each in a real libghostty terminal with tabs and
   splits. Claude reports its state through hooks (working, idle, blocked, asking, done), so
   heed knows who needs you, and `ga` jumps there.
-- **Start work in one line.** Press `o`, describe the task: heed picks the repo, makes a worktree named after it and
-  starts the agent with your prompt. Sessions resume where you left them after a restart.
-- **Watch the PRs.** heed follows the PRs your sessions open: review comments with the code they are on, failing
-  checks, conflicts, and what holds each back from green, on the session's row and in the PR overlay. You decide what
-  the agent fixes.
+- **A task in one line.** Press `o` and type a title: heed starts claude on it in the Kibana checkout. A task can have
+  several agent tabs; each resumes its own Claude session after a restart.
+- **Watch the PRs.** heed follows each task's PR: review comments with the code they are on, failing checks,
+  conflicts, and what holds it back from green, on the task's row and in the PR overlay. You decide what the agent
+  fixes.
 - **Keyboard first.** NORMAL, INSERT, VISUAL, COMMAND and HINT modes, counts, relative numbers, `:` commands, and every
   feature a named command you can rebind.
-- **Worktrees.** Create, list and remove worktrees across repos; removal never touches dirty or unpushed work.
-
-heed keeps a record of each session; the agents own their transcripts. It is macOS only and not sandboxed: it has to
+heed keeps each task's layout and agent tabs; the agents own their transcripts. It is macOS only and not sandboxed: it has to
 spawn shells, git and agents.
 
 ## Development
@@ -84,7 +82,7 @@ Headless checks: `HEED_SNAPSHOT=out.png build/Heed.app/Contents/MacOS/Heed` rend
 ## Outside the window
 
 - `⌃⌥H` (`[keys] global_activate`) brings Heed to the front from any app, reopening the window if it was closed.
-- The menu bar owl (`[ui] menu_bar`, on by default) shows how many sessions need you; its menu lists them (choosing
+- The menu bar owl (`[ui] menu_bar`, on by default) shows how many tasks need you; its menu lists them (choosing
   one opens Heed on it), plus Open Heed, Settings and Quit. With it on, closing the window keeps Heed
   and its agents running.
 - The Dock icon (`[ui] dock_state`, on by default) gets a badge in the state's colour (blocked, else asking) with the
@@ -96,7 +94,7 @@ The brand pack (icon, logo, menu bar template, social preview, org avatars) live
 
 | Path | What |
 | --- | --- |
-| `Sources/HeedCore` | No UI: key notation, keymaps, the mode engine, commands, sessions, pane trees, the hook protocol |
+| `Sources/HeedCore` | No UI: key notation, keymaps, the mode engine, commands, tasks, pane trees, the hook protocol |
 | `Sources/HeedApp` | SwiftUI shell, AppKit key routing (`Keys/KeyRouter.swift`), terminal hosting (`Terminal/`) |
 | `Sources/HeedTerminal` | The libghostty wrapper; the only code that touches `ghostty.h` (built when GhosttyKit exists) |
 | `Sources/heed` | The CLI agent hooks call: `heed state blocked --reason "..."` over a unix socket |

@@ -1,6 +1,6 @@
 import Foundation
 
-/// An issue, by repo and number: what a session links to besides its PRs.
+/// An issue, by repo and number.
 public struct IssueRef: Hashable, Sendable, Codable, CustomStringConvertible {
     public var repo: Repo
     public var number: Int
@@ -23,7 +23,7 @@ public struct IssueRef: Hashable, Sendable, Codable, CustomStringConvertible {
     public var url: String { "https://github.com/\(repo.slug)/issues/\(number)" }
 }
 
-/// What heed knows of a linked issue beyond its number: fetched when a session shows it.
+/// What heed knows of a linked issue beyond its number: fetched when a task shows it.
 public struct IssueInfo: Hashable, Sendable {
     public var title: String
     public var closed: Bool
@@ -45,8 +45,8 @@ public struct IssueInfo: Hashable, Sendable {
     }
 }
 
-/// One thing a session links to on GitHub: a PR or an issue. The inspector lists them, `gB` opens them.
-public enum SessionLink: Hashable, Sendable {
+/// One thing a task links to on GitHub: its PR, its issue, or the repo. The inspector lists them, `gB` opens them.
+public enum TaskLink: Hashable, Sendable {
     case pull(PullRef)
     case issue(IssueRef)
     case repo(Repo)
@@ -69,66 +69,6 @@ public enum SessionLink: Hashable, Sendable {
 }
 
 public enum IssueLinks {
-    /// GitHub's closing keywords: `Closes #12`, `fixes org/repo#3`, `Resolved: https://github.com/o/r/issues/4`.
-    /// A bare `#12` is in `defaultRepo`.
-    public static func referenced(in text: String, defaultRepo: Repo?) -> [IssueRef] {
-        let pattern = #"(?i)\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\b:?\s+(https://github\.com/[\w.-]+/[\w.-]+/issues/\d+|[\w.-]+/[\w.-]+#\d+|#\d+)"#
-        guard let regex = try? NSRegularExpression(pattern: pattern) else { return [] }
-        let range = NSRange(text.startIndex..., in: text)
-        var result: [IssueRef] = []
-        for match in regex.matches(in: text, range: range) {
-            guard let span = Range(match.range(at: 1), in: text) else { continue }
-            let token = String(text[span])
-            let ref: IssueRef?
-            if token.hasPrefix("https://") {
-                ref = IssueRef(url: token)
-            } else if token.hasPrefix("#") {
-                ref = defaultRepo.flatMap { repo in Int(token.dropFirst()).map { IssueRef(repo: repo, number: $0) } }
-            } else {
-                let parts = token.split(separator: "#")
-                let slug = parts.first.map { $0.split(separator: "/") } ?? []
-                ref = slug.count == 2 && parts.count == 2
-                    ? Int(parts[1])
-                    .map { IssueRef(repo: Repo(org: String(slug[0]), name: String(slug[1])), number: $0) }
-                    : nil
-            }
-            if let ref, !result.contains(ref) { result.append(ref) }
-        }
-        return result
-    }
-
-    /// A session's issues: those added by hand, those its prompt closes, and those its PRs close; without duplicates,
-    /// and without the ones taken off by hand.
-    public static func issues(
-        added: [IssueRef], prompt: String, defaultRepo: Repo?, closedByPulls: [IssueRef], hidden: [IssueRef]
-    ) -> [IssueRef] {
-        var result: [IssueRef] = []
-        for ref in added + referenced(in: prompt, defaultRepo: defaultRepo) + closedByPulls
-            where !result.contains(ref) && !hidden.contains(ref)
-        {
-            result.append(ref)
-        }
-        return result
-    }
-
-    /// The links in the order the inspector lists them: open PRs, merged, closed, then open issues, closed issues.
-    public static func ordered(
-        pulls: [PullRef], state: (PullRef) -> PullRequest.State?, issues: [IssueRef], closed: (IssueRef) -> Bool
-    ) -> [SessionLink] {
-        func rank(_ pull: PullRef) -> Int {
-            switch state(pull) {
-            case .open, nil: 0
-            case .merged: 1
-            case .closed: 2
-            }
-        }
-        let sortedPulls = pulls.enumerated().sorted { (rank($0.element), $0.offset) < (rank($1.element), $1.offset) }
-        let sortedIssues = issues.enumerated().sorted {
-            (closed($0.element) ? 1 : 0, $0.offset) < (closed($1.element) ? 1 : 0, $1.offset)
-        }
-        return sortedPulls.map { .pull($0.element) } + sortedIssues.map { .issue($0.element) }
-    }
-
     /// The compare page that opens a PR for a pushed branch.
     public static func compareURL(repo: Repo, branch: String) -> String {
         let encoded = branch.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? branch
@@ -140,14 +80,14 @@ public enum IssueLinks {
 public struct LinkPicker: Equatable, Sendable {
     public enum Outcome: Equatable, Sendable {
         case handled, cancel
-        case open([SessionLink])
+        case open([TaskLink])
     }
 
     public let title: String
-    public let links: [SessionLink]
+    public let links: [TaskLink]
     public private(set) var cursor = 0
 
-    public init(title: String, links: [SessionLink]) {
+    public init(title: String, links: [TaskLink]) {
         self.title = title
         self.links = links
     }

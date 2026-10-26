@@ -10,34 +10,27 @@ command can also be run by name on the command line (`:`), and any key changed i
 
 This page is generated from the code (`mise run shots`).
 
-## Move & sessions
+## Move & tasks
 
 | Command | Keys | Does |
 |---|---|---|
-| `row.next` | `j`, `<Down>`, `j` (VISUAL) | next session / row |
-| `row.prev` | `k`, `<Up>`, `k` (VISUAL) | previous session / row |
-| `row.first` | `gg`, `gg` (VISUAL) | first session / row |
-| `row.last` | `G`, `G` (VISUAL) | last session / row |
+| `row.next` | `j`, `<Down>`, `j` (VISUAL) | next task / row |
+| `row.prev` | `k`, `<Up>`, `k` (VISUAL) | previous task / row |
+| `row.first` | `gg`, `gg` (VISUAL) | first task / row |
+| `row.last` | `G`, `G` (VISUAL) | last task / row |
 | `row.halfpage.down` | `<C-d>` | half a page down (ten rows) |
 | `row.halfpage.up` | `<C-u>` | half a page up (ten rows) |
 | `group.next` | `}` | first row of the next group (sidebar group, repo) |
 | `group.prev` | `{` | first row of this group, or of the one before |
-| `session.filter` | `/` | filter the current view (typed in the status bar) |
+| `task.filter` | `/` | filter the current view (typed in the status bar) |
 | `filter.clear` |  | clear the current view's filter |
-| `session.attention` | `ga` | next session needing you |
-| `session.park` | `zz` | park session |
-| `session.close` | `x` | close session, keep worktree |
-| `session.delete` | `dd` (sessions) | delete session and its worktrees (asks first) |
-| `session.import` `[path]` | `Iw` (sessions) | import a worktree Heed does not manage yet as a session |
-| `session.import.path` | `Ip` (sessions) | import the worktree at a path (any repo, anywhere) |
-| `session.pin` | `m` | pin / unpin session |
-| `session.back` | `''` | back to previous session |
-| `session.open` `<words>` |  | go to the session matching these words |
-| `pin.jump` `<1-9>` | `'1`, `'2`, `'3`, `'4`, `'5`, `'6`, `'7`, `'8`, `'9` | jump to pinned session |
-| `work.start` | `o` | start work |
-| `resume` |  | pick up where you left off: the sessions to resume, as on launch |
-| `work.again` | `O` | start work from this session's prompt |
-| `view.history` | `gh` | history |
+| `task.attention` | `ga` | next task needing you |
+| `task.pin` | `m` | pin / unpin task |
+| `task.back` | `''` | back to previous task |
+| `task.open` `<words>` |  | go to the task matching these words |
+| `pin.jump` `<1-9>` | `'1`, `'2`, `'3`, `'4`, `'5`, `'6`, `'7`, `'8`, `'9` | jump to pinned task |
+| `task.new` `[title]` | `o` | new task: only a title |
+| `resume` |  | pick up where you left off: the agents to resume, as on launch |
 
 ## Panes & tabs
 
@@ -61,36 +54,29 @@ This page is generated from the code (`mise run shots`).
 
 | Command | Keys | Does |
 |---|---|---|
-| `view` `<sessions|inbox|issues|prs|repos|history>` |  | switch view |
-| `view.sessions` | `gs` | sessions |
+| `view` `<tasks|inbox|issues|prs>` |  | switch view |
+| `view.tasks` | `gs` | tasks |
 | `view.inbox` | `gm` | inbox |
 | `view.issues` | `gi` | issues |
 | `view.prs` | `gp` | pull requests |
-| `view.repos` | `gr` | repos & worktrees |
-| `overlay.pr` |  | PR overlay for this session (toggle) |
-| `overlay.item` | `go` | open the PR or issue under the cursor; in Sessions, the session's PR (toggle) |
+| `overlay.pr` |  | PR overlay for this task (toggle) |
+| `overlay.item` | `go` | open the PR or issue under the cursor; in Tasks, the task's PR (toggle) |
 | `overlay.diff` | `gd` | diff overlay: commits, staged, unstaged |
 | `overlay.help` | `?`, `<D-/>`, `?` (VISUAL), `<D-/>` (VISUAL), `<D-/>` (INSERT), `<D-/>` (COMMAND) | keys & states |
 | `overlay.close` | `<Esc>`, `<Esc>` (diff), `<Esc>` (issue), `<Esc>` (pr) | close overlay |
-| `pr.next` | `]p` | next PR of this session |
-| `pr.prev` | `[p` | previous PR of this session |
-| `pr.session` | `gS` | jump from a PR to its session |
-| `pr.track` `<url>` | `gU` | track a PR by URL |
-| `pr.untrack` `[url]` |  | stop tracking a PR in this session (no rule adds it back) |
+| `pr.task` | `gS` | jump from a PR to its task |
 | `jump.back` | `<C-o>` | back |
-| `open.browser` | `gB` | open in the browser: the item under the cursor; in Sessions its PR or issue (a picker when there are several, its repo when there are none) |
+| `open.browser` | `gB` | open in the browser: the item under the cursor; in Tasks its PR or issue (a picker when there are both, Kibana when there are none) |
 | `open.repo` | `gR` | open the repo under the cursor on GitHub |
-| `links.pick` |  | pick one of the session's PRs and issues to open in the browser |
-| `issue.add` `[url]` |  | link an issue to the session (its URL, or the copied one) |
-| `issue.remove` `[url]` |  | take an issue off the session |
+| `links.pick` |  | pick the task's PR or issue to open in the browser |
 | `open.reader` | `<CR>` | read inbox item, issue or PR |
 | `inspector.toggle` | `zi` | collapse / expand the inspector |
-| `sidebar.toggle` | `zs` | collapse / expand the sessions sidebar |
+| `sidebar.toggle` | `zs` | collapse / expand the tasks sidebar |
 | `config.edit` |  | open config.toml in $EDITOR |
 | `agents.stop` |  | stop every agent and shell in every pane (with [sessions] persist = "zmx") |
 | `tools.detect` |  | find git and gh again (login shell PATH, usual places, [tools]) |
 | `app.quit` |  | quit Heed |
-| `settings.open` `[section]` | `<D-,>` | open Settings, on a section (general, agents, colors, worktrees, keys) |
+| `settings.open` `[section]` | `<D-,>` | open Settings, on a section (general, agents, keys) |
 | `app.activate` |  | bring Heed's window to the front, as the global shortcut does |
 | `welcome` |  | show the getting-started checks again |
 
@@ -112,19 +98,14 @@ This page is generated from the code (`mise run shots`).
 | Command | Keys | Does |
 |---|---|---|
 | `select.toggle` | `<Space>` (VISUAL), `<Space>` (inbox), `<Space>` (issues), `<Space>` (prs) | toggle row |
-| `history.reopen` | `R` (history) | reopen: resume, recreating the worktree if needed |
-| `history.again` | `O` (history) | start a new session from this prompt |
-| `history.outcome` | `t` (history) | cycle the outcome filter |
 | `github.sync` | `r` (inbox), `r` (issues), `r` (pr), `r` (prs) | sync GitHub now |
-| `items.start` | `s` (inbox), `s` (issue), `s` (issues) | start one session from the picked items |
-| `items.add` | `a` (inbox), `a` (issue), `a` (issues) | add the picked items to the current session |
-| `items.read` | `x` (inbox) | mark read |
+| `items.start` | `s` (VISUAL), `s` (inbox), `s` (issue), `s` (issues) | start one task from the picked items |
+| `items.read` | `x` (VISUAL), `x` (inbox) | mark read |
 | `items.filter` | `t` (inbox), `t` (issues) | cycle the filter chips |
 | `issues.repo.next` | `<Tab>` (issues) | next repo in the Issues repo column |
 | `issues.repo.prev` | `<S-Tab>` (issues) | previous repo in the Issues repo column |
 | `issues.repo` `[name]` |  | show one repo's issues (no name: every repo) |
-| `issues.visibility` | `w` (issues), `w` (repos) | flip the repo under the cursor between all issues and only yours |
-| `pr.start` | `S` (pr) | start a new session from this PR |
+| `pr.start` | `S` (pr) | start a new task from this PR |
 | `diff.hunk.next` | `n` (diff) | next hunk |
 | `diff.hunk.prev` | `N` (diff) | previous hunk |
 | `diff.file.next` | `]f` (diff) | next file |
@@ -136,10 +117,3 @@ This page is generated from the code (`mise run shots`).
 | `diff.ask` | `a` (diff) | ask the agent about this hunk |
 | `diff.copy` | `y` (diff) | copy path:line |
 | `diff.edit` | `e` (diff) | open the file in the editor |
-| `repo.add` `<path>` |  | add a repo outside the scanned roots (kept in repo_paths) |
-| `repo.scan` | `r` (repos) | refresh: rescan the repo roots |
-| `worktree.new` | `o` (repos) | start work in the repo under the cursor |
-| `select.remove` | `d` (VISUAL), `dd` (repos) | remove the selected worktrees, or the one under the cursor (asks first) |
-| `select.pin` | `m` (VISUAL) | pin selected |
-| `select.copy` | `y` (VISUAL) | copy paths |
-| `select.open` | `o` (VISUAL), `<CR>` (repos) | open the worktree's session, importing it when it has none |

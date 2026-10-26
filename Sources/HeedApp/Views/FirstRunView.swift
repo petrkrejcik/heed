@@ -42,11 +42,11 @@ struct FirstRunView: View {
             step("Tools", done: report.tools.map { $0.tools.allSatisfy { $0.path != nil } } ?? false) {
                 ToolsList(report: report.tools)
             }
-            step("Repos", done: !model.repos.isEmpty) {
-                Text(model.repos.isEmpty
-                    ? "Scanning \(model.settings.repoRoots.joined(separator: ", "))…"
-                    : "\(model.repos.count) repos found under \(model.settings.repoRoots.joined(separator: ", ")).")
-                    .foregroundStyle(Theme.fg2)
+            step("Tasks", done: true) {
+                Text(
+                    "Every task works in Kibana. A new task starts claude in \(Paths.abbreviate(Kibana.mainCheckout))."
+                )
+                .foregroundStyle(Theme.fg2)
             }
             step("Agents", done: report.agents.contains { $0.path != nil }) {
                 VStack(alignment: .leading, spacing: 8) {

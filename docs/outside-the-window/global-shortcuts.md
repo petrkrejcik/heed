@@ -14,5 +14,5 @@ global_activate = "<C-M-h>"
 `""` turns it off. It needs at least one of ⌃, ⌥ or ⌘, so it never swallows ordinary typing, and no Accessibility
 permission. If another app already owns the combination, the status bar says so.
 
-Heed never takes focus by itself: this shortcut, and clicking a session in the menu bar, are the only times it comes
+Heed never takes focus by itself: this shortcut, and clicking a task in the menu bar, are the only times it comes
 forward.

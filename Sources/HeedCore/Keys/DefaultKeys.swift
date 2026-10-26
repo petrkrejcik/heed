@@ -6,21 +6,19 @@ public enum DefaultKeys {
 
     public static let normal: [(String, String)] = [
         ("j", "row.next"), ("k", "row.prev"), ("<Down>", "row.next"), ("<Up>", "row.prev"),
-        ("gg", "row.first"), ("G", "row.last"), ("/", "session.filter"),
+        ("gg", "row.first"), ("G", "row.last"), ("/", "task.filter"),
         ("<C-d>", "row.halfpage.down"), ("<C-u>", "row.halfpage.up"), ("}", "group.next"), ("{", "group.prev"),
         ("h", "pane.left"), ("l", "pane.right"),
-        ("o", "work.start"), ("O", "work.again"), ("ga", "session.attention"), ("zz", "session.park"),
-        ("x", "session.close"), ("m", "session.pin"), ("''", "session.back"),
+        ("o", "task.new"), ("ga", "task.attention"), ("m", "task.pin"), ("''", "task.back"),
         ("'1", "pin.jump 1"), ("'2", "pin.jump 2"), ("'3", "pin.jump 3"), ("'4", "pin.jump 4"), ("'5", "pin.jump 5"),
         ("'6", "pin.jump 6"), ("'7", "pin.jump 7"), ("'8", "pin.jump 8"), ("'9", "pin.jump 9"),
-        ("gh", "view.history"), ("gr", "view.repos"),
         ("<C-w>v", "pane.split.right"), ("<C-w>s", "pane.split.below"), ("<C-w>z", "pane.zoom"),
         ("<C-w>q", "pane.close"), ("<C-w>h", "pane.left"), ("<C-w>l", "pane.right"), ("<C-w>j", "pane.down"),
         ("<C-w>k", "pane.up"),
         ("gt", "tab.next"), ("gT", "tab.prev"), ("gn", "tab.new"),
-        ("gs", "view.sessions"), ("gm", "view.inbox"), ("gi", "view.issues"), ("gp", "view.prs"),
-        ("go", "overlay.item"), ("]p", "pr.next"), ("[p", "pr.prev"), ("gd", "overlay.diff"), ("gS", "pr.session"),
-        ("<C-o>", "jump.back"), ("gB", "open.browser"), ("gR", "open.repo"), ("gU", "pr.track"),
+        ("gs", "view.tasks"), ("gm", "view.inbox"), ("gi", "view.issues"), ("gp", "view.prs"),
+        ("go", "overlay.item"), ("gd", "overlay.diff"), ("gS", "pr.task"),
+        ("<C-o>", "jump.back"), ("gB", "open.browser"), ("gR", "open.repo"),
         ("zi", "inspector.toggle"), ("zs", "sidebar.toggle"), ("<CR>", "open.reader"),
         ("i", "mode.insert"), ("v", "mode.visual"), ("V", "mode.visual"), (":", "mode.command"),
         ("f", "mode.hint"), ("F", "hint.insert"),
@@ -30,9 +28,8 @@ public enum DefaultKeys {
 
     public static let visual: [(String, String)] = [
         ("j", "row.next"), ("k", "row.prev"), ("gg", "row.first"), ("G", "row.last"),
-        ("<Space>", "select.toggle"), ("d", "select.remove"), ("m", "select.pin"), ("y", "select.copy"),
-        ("o", "select.open"), ("<Esc>", "mode.normal"), ("?", "overlay.help"),
-        ("<D-/>", "overlay.help"),
+        ("<Space>", "select.toggle"), ("s", "items.start"), ("x", "items.read"), ("<Esc>", "mode.normal"),
+        ("?", "overlay.help"), ("<D-/>", "overlay.help"),
     ]
 
     public static let insert: [(String, String)] = [
@@ -50,20 +47,13 @@ public enum DefaultKeys {
 
     /// Bindings that only apply in one view, keyed by view name.
     public static let scoped: [String: [(String, String)]] = [
-        "sessions": [("dd", "session.delete"), ("Iw", "session.import"), ("Ip", "session.import.path")],
-        "repos": [
-            ("o", "worktree.new"), ("r", "repo.scan"), ("w", "issues.visibility"), ("dd", "select.remove"),
-            ("<CR>", "select.open"),
-        ],
-        "history": [("R", "history.reopen"), ("O", "history.again"), ("t", "history.outcome")],
         "inbox": [
-            ("<Space>", "select.toggle"), ("s", "items.start"), ("a", "items.add"), ("x", "items.read"),
+            ("<Space>", "select.toggle"), ("s", "items.start"), ("x", "items.read"),
             ("t", "items.filter"), ("r", "github.sync"),
         ],
         "issues": [
-            ("<Space>", "select.toggle"), ("s", "items.start"), ("a", "items.add"), ("r", "github.sync"),
-            ("t", "items.filter"), ("<Tab>", "issues.repo.next"),
-            ("<S-Tab>", "issues.repo.prev"), ("w", "issues.visibility"),
+            ("<Space>", "select.toggle"), ("s", "items.start"), ("r", "github.sync"),
+            ("t", "items.filter"), ("<Tab>", "issues.repo.next"), ("<S-Tab>", "issues.repo.prev"),
         ],
         "prs": [
             ("r", "github.sync"), ("<Space>", "select.toggle"),
@@ -75,7 +65,7 @@ public enum DefaultKeys {
             ("a", "diff.ask"), ("y", "diff.copy"), ("e", "diff.edit"), ("<Esc>", "overlay.close"),
         ],
         /// The issue reader.
-        "issue": [("s", "items.start"), ("a", "items.add"), ("<Esc>", "overlay.close")],
+        "issue": [("s", "items.start"), ("<Esc>", "overlay.close")],
         /// The PR overlay and the reader.
         "pr": [("S", "pr.start"), ("<Esc>", "overlay.close"), ("r", "github.sync")],
     ]

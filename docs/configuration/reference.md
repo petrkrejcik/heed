@@ -14,33 +14,12 @@ This page is generated from the code (`mise run shots`).
 # Heed configuration. Saved changes apply right away; mistakes are reported in the status bar and the last good
 # config stays in use. Settings (⌘,) edits this file too, except key bindings, which live only here.
 
-[worktrees]
-# Worktrees are created at <root>/<repo>/<name>.
-root = "~/code/wt"
-# Directories scanned (two levels deep) for repositories.
-repo_roots = ["~/Projects", "~/code"]
-# Repos outside the roots, added when you import one of their worktrees by path (I in Sessions, :import <path>).
-repo_paths = []
-# Branches get a prefix picked by the prompt's first word ("Fix broken anchors" → fix/broken-anchors), else this.
-# "" means no prefix. The worktree folder uses - for /.
-default_prefix = "feature"
-
-[worktrees.prefixes]
-fix = ["fix", "bug", "broken", "crash", "repair", "resolve"]
-bump = ["bump", "upgrade", "update"]
-chore = ["chore", "cleanup", "tidy", "remove", "rename"]
-refactor = ["refactor", "restructure", "simplify"]
-docs = ["docs", "doc", "document", "readme"]
-test = ["test", "tests", "cover"]
-perf = ["perf", "speed", "optimize", "faster"]
-feature = ["add", "implement", "support", "create", "introduce", "build", "feature"]
-
 [sessions]
-# On launch: ask which sessions to resume, resume them all, or none.
+# On launch: ask which tasks' agents to resume (each agent tab resumes its own Claude session), all, or none.
 resume_on_launch = "ask"           # ask | always | never
-# Typed into a resumed session that was mid-turn, once the agent is idle. "" turns it off.
+# Typed into a resumed agent that was mid-turn, once it is idle. "" turns it off.
 continue_prompt = "Continue where you left off."
-# Open a shell split beside the agent in new sessions (Start work can still toggle it per session).
+# Open a shell split beside the agent in new tasks.
 shell_split = false
 # Keep every pane's terminal alive in a zmx session, so agents keep running when heed quits, restarts or updates,
 # and come back as they were: auto (zmx when it is installed and works; Settings > General shows its check),
@@ -51,14 +30,8 @@ persist = "auto"
 # How often the view on screen refreshes from GitHub; the others refresh five times less often.
 poll_seconds = 60
 
-[issues]
-# Which issues the Issues view shows per repo: "involved" (assigned to you or mentioning you) or "all" open
-# issues. Override per repo ([repos."org/name"] issues = "all"). w in Issues (I in Repos) flips the repo under the
-# cursor.
-default = "involved"
-
 [ui]
-# A menu bar item: an owl that shows how many sessions need you, with those sessions and Open Heed.
+# A menu bar item: an owl that shows how many tasks need you, with those tasks and Open Heed.
 menu_bar = true
 # The Dock icon shows the same: a badge in the state's colour (blocked, else asking) with the count.
 dock_state = true
@@ -79,14 +52,10 @@ command = "claude"
 plan = "--permission-mode plan"
 resume = "--resume {id}"
 
-# Repo colors: teal, pink, lime, orange, periwinkle, sky. Unset, a repo gets one from its org's name.
-# [repos."elastic/docs-builder"]
-# color = "teal"
-# issues = "all"
-
-# Pinned tasks per repo, each run in its own pane; the exit code sets the tab's glyph.
-# [repos."elastic/docs-builder".tasks]
-# test = "dotnet test"
+# Pinned commands: each opens as a tab in a task's worktree when the task gets one; the exit code sets the tab's
+# glyph.
+[commands]
+# jest = "yarn test:jest"
 
 [keys]
 # Leaves INSERT. It is also the terminal's quit signal, so pick something else if you need that.
@@ -95,7 +64,7 @@ insert_escape = "<C-\\>"
 global_activate = "<C-M-h>"
 # Shift+Escape leaves INSERT too; a plain Escape always goes to the terminal. [keys.insert] "<S-Esc>" = "" unbinds.
 
-# Bindings per mode ([keys.normal], [keys.visual], ...) or per view ([keys.repos], [keys.inbox], [keys.history],
+# Bindings per mode ([keys.normal], [keys.visual], ...) or per view ([keys.tasks], [keys.inbox], [keys.issues],
 # [keys.diff], [keys.pr]), in vim notation, each naming a command (the same names : completes). "" unbinds.
 # [keys.normal]
 # "gB" = ""

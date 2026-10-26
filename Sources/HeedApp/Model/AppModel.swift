@@ -2,20 +2,18 @@ import AppKit
 import HeedCore
 import Observation
 
-/// The app's views, switched with `g` keys (`gs`, `gm`, `gi`, `gp`, `gr`, `gh`).
+/// The app's views, switched with `g` keys (`gs`, `gm`, `gi`, `gp`).
 enum AppView: String, CaseIterable, Identifiable {
-    case sessions, inbox, issues, prs, repos, history
+    case tasks, inbox, issues, prs
 
     var id: String { rawValue }
 
     var title: String {
         switch self {
-        case .sessions: "Sessions"
+        case .tasks: "Tasks"
         case .inbox: "Inbox"
         case .issues: "Issues"
         case .prs: "PRs"
-        case .repos: "Repos"
-        case .history: "History"
         }
     }
 
@@ -39,8 +37,8 @@ enum Overlay: Equatable {
 
 /// Everything the window draws, on the main actor.
 ///
-/// The domain arrives as separate stored properties (sessions, layouts, repos, worktrees) so Observation redraws only
-/// what reads the one that changed. Every edit, from the UI or an adapter, is a `DomainChange` that goes through
+/// The domain arrives as separate stored properties (tasks, layouts, agents) so Observation redraws only what reads
+/// the one that changed. Every edit, from the UI or an adapter, is a `DomainChange` that goes through
 /// `commit`: applied here, then to the store off the main actor, which persists it. Nothing here waits on a process,
 /// the network or the disk.
 @MainActor
@@ -48,29 +46,34 @@ enum Overlay: Equatable {
 final class AppModel {
     static let mainWindowID = NSUserInterfaceItemIdentifier("heed.main")
     // Domain
-    private(set) var sessions: [Session] = [] {
+    private(set) var tasks: [WorkTask] = [] {
         didSet {
             rebuildList()
-            if filters[.repos] != nil { rebuildWorktreeRows() }
             updateOutsideWindow()
         }
     }
 
-    private(set) var layouts: [String: SessionLayout] = [:]
-    private(set) var repos: [RepoRecord] = [] { didSet { if repos != oldValue { rebuildWorktreeRows() } } }
-    private(set) var worktrees: [Worktree] = [] { didSet { if worktrees != oldValue { rebuildWorktreeRows() } } }
-    private(set) var history: [HistoryEntry] = []
+    /// Tabs and panes per task id.
+    private(set) var layouts: [String: TaskLayout] = [:] { didSet { rebuildList() } }
+    /// What each agent tab is doing, by pane id.
+    private(set) var agents: [String: AgentTab] = [:] {
+        didSet {
+            rebuildList()
+            updateOutsideWindow()
+        }
+    }
+
     private(set) var github = GitHubState()
     private(set) var pullDetails: [String: PullDetail] = [:]
-    private(set) var list = SessionList([])
+    private(set) var list = TaskList([])
     private(set) var settings: WorkSettings
     private(set) var config = HeedConfig.default
     /// What is wrong with config.toml, if anything; the last good config stays in use.
     private(set) var configProblems: [ConfigProblem] = []
     let configFile = ConfigLoader.defaultFile()
     private var configWatcher: ConfigWatcher?
-    /// Results of pinned tasks by pane: the exit code of the last run.
-    private(set) var taskResults: [String: Int] = [:]
+    /// Results of pinned commands by pane: the exit code of the last run.
+    private(set) var commandResults: [String: Int] = [:]
     /// The first-run screen, while shown.
     private(set) var firstRun: FirstRunReport?
     /// Where git and gh were found, and the search path every command and pane runs with.
@@ -87,7 +90,7 @@ final class AppModel {
     let integration = ShotMode.active
         ? IntegrationFiles(directory: URL(fileURLWithPath: "/Users/you/Library/Application Support/Heed"))
         : IntegrationFiles.default()
-    /// The latest hook events per session, newest first: shown in the inspector, not persisted (agents own history).
+    /// The latest hook events per task, newest first: shown in the inspector, not persisted (agents own history).
     private(set) var events: [String: [AgentEvent]] = [:]
 
     // Filtering (`/`): typed in the status bar while `filtering`, one filter per view; each view shows its own as a
@@ -95,15 +98,12 @@ final class AppModel {
     private(set) var filtering = false
     private(set) var filters: [AppView: String] = [:] {
         didSet {
-            if filters[.sessions] != oldValue[.sessions] { rebuildList() }
-            if filters[.repos] != oldValue[.repos] { rebuildWorktreeRows() }
+            if filters[.tasks] != oldValue[.tasks] { rebuildList() }
         }
     }
 
     func filter(for view: AppView) -> String { filters[view] ?? "" }
-    var sessionFilter: String { filter(for: .sessions) }
-    private(set) var historyOutcome: Outcome?
-    private(set) var historyCursor = 0
+    var taskFilter: String { filter(for: .tasks) }
 
     // GitHub lists: cursor and picked ids per view
     private(set) var itemCursor: [AppView: Int] = [:]
@@ -115,15 +115,13 @@ final class AppModel {
 
     // Resume on launch
     private(set) var resume: ResumeForm?
-    /// Resumed sessions that were mid-turn: they get the continue prompt once their agent reports idle.
+    /// Resumed agent tabs (pane ids) that were mid-turn: they get the continue prompt once they report idle.
     private var pendingContinue: Set<String> = []
 
     // Cursors
     private(set) var cursor = 0
-    private var previousSessionID: String?
-    private(set) var repoCursor = 0
-    /// VISUAL selection in the Repos table: worktree ids toggled with space, plus the range from the anchor.
-    private(set) var toggledRows: Set<String> = []
+    private var previousTaskID: String?
+    /// Where VISUAL started in a GitHub list: the range from here to the cursor is picked.
     private var visualAnchor: Int?
 
     // Keys and modes
@@ -133,7 +131,7 @@ final class AppModel {
     var pendingKeys: String { engine.pendingDisplay }
 
     // Chrome
-    private(set) var view: AppView = .sessions {
+    private(set) var view: AppView = .tasks {
         didSet {
             updateScope()
             if view != oldValue { viewChangedForSync() }
@@ -145,7 +143,7 @@ final class AppModel {
     private(set) var reader: PullRef? { didSet { updateScope() } }
     /// The issue being read (`go` or ↩ on an issue).
     private(set) var issueReader: Issue? { didSet { updateScope() } }
-    /// The PR the overlay shows (one of the current session's).
+    /// The PR the overlay shows (the current task's).
     private(set) var overlayPull: PullRef?
 
     /// Scoped key bindings follow what has focus: the diff, the PR overlay or reader, else the view.
@@ -177,11 +175,8 @@ final class AppModel {
     private(set) var flash: String?
     private(set) var hintText = ""
     private var hintThenInsert = false
-    /// The Start work dialog, while open.
-    private(set) var startWork: StartWorkForm?
-    /// Why the last start failed, shown in the dialog.
-    private(set) var startWorkError: String?
-    private(set) var startingWork = false
+    /// The new task dialog, while open.
+    private(set) var newTask: NewTaskForm?
     /// Bumped when the focused terminal should take keyboard focus (entering INSERT, moving panes).
     private(set) var terminalFocusRequest = 0
     /// A text field owns the keyboard; the key router lets keys through to it.
@@ -197,7 +192,6 @@ final class AppModel {
             // UserDefaults reads the real Mac's preferences even with HOME pointed elsewhere.
             inspectorVisible = true
             sidebarCollapsed = false
-            config.issues = Fixtures.issueRules
             zmxHealth = ZmxHealth(path: "/opt/homebrew/bin/zmx", version: "0.8.1")
             issueInfo = Fixtures.issueInfo
         }
@@ -224,7 +218,6 @@ final class AppModel {
         store = DomainStore(domain: cached, file: file)
         await offerResume(domain: cached)
         startGitHubSync()
-        await refreshRepos()
     }
 
     // MARK: GitHub
@@ -252,8 +245,8 @@ final class AppModel {
         switch view {
         case .inbox: [.inbox]
         case .issues: [.issues]
-        // Sessions show their PRs' state; Repos and History their PR numbers.
-        case .sessions, .prs, .repos, .history: [.pulls]
+        // Tasks show their PRs' state.
+        case .tasks, .prs: [.pulls]
         }
     }
 
@@ -269,14 +262,11 @@ final class AppModel {
         syncing = true
         defer { syncing = false }
         let previous = github
-        let tracked = Array(Set(sessions.flatMap(\.trackedPRs)))
+        let tracked = Array(Set(tasks.compactMap(\.pull)))
         do {
-            let state = try await GitHub.sync(
-                parts: parts, tracked: tracked, previous: previous, issueRules: config.issues,
-                localRepos: repos.map(\.repo)
-            )
+            let state = try await GitHub.sync(parts: parts, tracked: tracked, previous: previous)
             syncSchedule.fetched(parts, at: Date())
-            commit([.githubSynced(state)] + PullTracking.changes(sessions: sessions, pulls: state.pulls))
+            commit(.githubSynced(state))
             refreshTrackedDetails()
             await refreshIssueInfo()
         } catch {
@@ -295,12 +285,12 @@ final class AppModel {
 
     // MARK: Resume on launch
 
-    /// Works out what to resume (checking which agent sessions still exist, off the main actor) and asks, resumes or
+    /// Works out what to resume (checking which Claude sessions still exist, off the main actor) and asks, resumes or
     /// does nothing, per `resumeOnLaunch`.
     /// `asked`: `:resume`, which always shows the dialog (never resuming silently) and says when there is nothing.
     private func offerResume(domain: Domain, asked: Bool = false) async {
-        guard asked || settings.resumeOnLaunch != .never, !domain.sessions.isEmpty else {
-            if asked { flash = "no sessions to resume" }
+        guard asked || settings.resumeOnLaunch != .never, !domain.tasks.isEmpty else {
+            if asked { flash = "no tasks to resume" }
             return
         }
         guard !isFixture else {
@@ -310,37 +300,29 @@ final class AppModel {
         let settings = settings
         let integration = integration
         let found = await Task.detached(priority: .userInitiated) {
-            Resume.candidates(domain: domain, settings: settings, integration: integration) { session in
-                let directory = domain.layouts[session.id]?.tabs.first?.tree.panes.first?.directory ?? ""
-                return AgentIntegration.hasSession(
-                    agent: session.agent,
-                    id: session.agentSessionID ?? "",
-                    directory: directory
-                )
+            Resume.candidates(domain: domain, settings: settings, integration: integration) { id, directory in
+                AgentIntegration.hasSession(agent: "claude", id: id, directory: directory)
             }
         }.value
         // An agent whose pane's zmx session is alive never stopped: its pane reattaches, there is nothing to resume.
         let live = TerminalSurfaces.shared.livePanes
-        let candidates = found.filter { candidate in
-            guard let layout = domain.layouts[candidate.id],
-                  let (_, paneID) = agentPane(in: layout) else { return true }
-            return !live.contains(paneID)
-        }
+        let candidates = found.filter { candidate in !candidate.panes.allSatisfy { live.contains($0.pane) } }
         guard !candidates.isEmpty else {
-            if asked { flash = "nothing to resume: every session's agent is running or gone" }
+            if asked { flash = "nothing to resume: every task's agents are running or gone" }
             return
         }
         if settings.resumeOnLaunch == .always, !asked {
-            resumeSessions(candidates.filter(\.defaultSelected))
+            resumeTasks(candidates.filter(\.defaultSelected))
         } else {
             resume = ResumeForm(candidates: candidates)
         }
     }
 
-    /// Fixture: open on the resume dialog for the fixture's sessions, without checking any files.
+    /// Fixture: open on the resume dialog for the fixture's tasks, without checking any files.
     func showResumeForFixture() {
         resume = ResumeForm(candidates: Resume.candidates(
-            domain: Domain(sessions: sessions, layouts: layouts), settings: settings, integration: integration
+            domain: Domain(tasks: tasks, layouts: layouts, agents: agents), settings: settings,
+            integration: integration
         ))
     }
 
@@ -351,43 +333,48 @@ final class AppModel {
             resume = form
         case let .resume(chosen):
             resume = nil
-            resumeSessions(chosen)
+            resumeTasks(chosen)
         case .startEmpty:
             resume = nil
         }
     }
 
-    /// Starts each chosen session's agent pane on its resume (or fresh) command, now, even off screen.
-    private func resumeSessions(_ chosen: [ResumeCandidate]) {
+    /// Starts each chosen task's agent tabs on their resume (or fresh) commands, now, even off screen. A tab whose
+    /// zmx session is still alive is left as it is.
+    private func resumeTasks(_ chosen: [ResumeCandidate]) {
         guard !isFixture else {
             flash = "fixture: no IO"
             return
         }
+        let live = TerminalSurfaces.shared.livePanes
         for candidate in chosen {
-            guard var layout = layouts[candidate.id], var session = sessions.first(where: { $0.id == candidate.id })
-            else { continue }
-            guard let (tabIndex, paneID) = agentPane(in: layout) else { continue }
-            layout.tabs[tabIndex].tree = layout.tabs[tabIndex].tree.updating(paneID) { $0.command = candidate.command }
-            session.record(candidate.mode == .startFresh ? "relaunched · started fresh" : "resumed after restart")
-            session.state = ObservedState(.idle, source: .guessed, reason: "resuming")
-            commit([.layoutChanged(session: session.id, layout), .sessionUpserted(session)])
-            TerminalSurfaces.shared.autostartPanes.insert(paneID)
-            if let pane = layout.tabs[tabIndex].tree.panes.first(where: { $0.id == paneID }) {
-                TerminalSurfaces.shared.prepare(pane, sessionID: session.id)
+            guard var layout = layouts[candidate.id], var task = task(candidate.id) else { continue }
+            var changes: [DomainChange] = []
+            var started: [PaneSpec] = []
+            for pane in candidate.panes where !live.contains(pane.pane) {
+                guard let tabIndex = layout.tabs.firstIndex(where: { $0.tree.contains(pane.pane) }) else { continue }
+                layout.tabs[tabIndex].tree = layout.tabs[tabIndex].tree.updating(pane.pane) {
+                    $0.command = pane.command
+                }
+                var agent = agents[pane.pane] ?? AgentTab()
+                agent.state = ObservedState(.idle, source: .guessed, reason: "resuming")
+                agent.claudeSessionID = pane.claudeSessionID
+                changes.append(.agentChanged(pane: pane.pane, agent))
+                if let spec = layout.tabs[tabIndex].tree.panes.first(where: { $0.id == pane.pane }) {
+                    started.append(spec)
+                }
+                if candidate.mode == .resumeThenContinue, !pane.fresh, !settings.continuePrompt.isEmpty {
+                    pendingContinue.insert(pane.pane)
+                }
             }
-            if candidate.mode == .resumeThenContinue, !settings.continuePrompt.isEmpty {
-                pendingContinue.insert(session.id)
+            task.record(candidate.mode == .startFresh ? "relaunched · started fresh" : "resumed after restart")
+            commit([.layoutChanged(task: task.id, layout), .taskUpserted(task)] + changes)
+            for pane in started {
+                TerminalSurfaces.shared.autostartPanes.insert(pane.id)
+                TerminalSurfaces.shared.prepare(pane, sessionID: task.id)
             }
         }
-        if !chosen.isEmpty { flash = "resumed \(chosen.count) session\(chosen.count == 1 ? "" : "s")" }
-    }
-
-    /// The pane the agent runs in: the first `.agent` pane, else the first pane.
-    private func agentPane(in layout: SessionLayout) -> (Int, String)? {
-        for (index, tab) in layout.tabs.enumerated() {
-            if let pane = tab.tree.panes.first(where: { $0.role == .agent }) { return (index, pane.id) }
-        }
-        return layout.tabs.first?.tree.panes.first.map { (0, $0.id) }
+        if !chosen.isEmpty { flash = "resumed \(chosen.count) task\(chosen.count == 1 ? "" : "s")" }
     }
 
     // MARK: Config
@@ -432,13 +419,12 @@ final class AppModel {
         if !wasSignedIn, gathered.githubUser != nil { await syncGitHub() }
     }
 
-    /// Every org Heed shows: repos, sessions, GitHub items.
+    /// Every org Heed shows: Kibana's and the GitHub items'.
     private func loadAvatars() {
         guard !isFixture else { return }
-        let orgs = repos.map(\.repo.org) + sessions.flatMap(\.repos).map(\.org) + github.pulls.map(\.ref.repo.org)
-            + github.inbox.map(\.repo.org) + github.issues.map(\.repo.org)
-        // "local" stands for repos without a GitHub remote; github.com/local is someone else.
-        Avatars.shared.load(orgs.filter { $0 != "local" })
+        let orgs = [Kibana.repo.org] + github.pulls.map(\.ref.repo.org) + github.inbox.map(\.repo.org)
+            + github.issues.map(\.repo.org)
+        Avatars.shared.load(Array(Set(orgs)))
     }
 
     func applyConfig(source: String) {
@@ -446,7 +432,6 @@ final class AppModel {
         configProblems = problems
         guard let decoded else { return }
         let toolsChanged = decoded.tools != config.tools
-        let issuesChanged = decoded.issues != config.issues
         config = decoded
         settings = decoded.work
         if !isFixture {
@@ -456,7 +441,6 @@ final class AppModel {
         engine.setKeymaps(built.keymaps, scoped: built.scoped)
         updateScope()
         keyProblems = built.problems
-        Palette.shared.apply(decoded)
         if !isFixture {
             let shortcuts: [(GlobalHotKey.Name, String, () -> Void)] = [
                 (.activate, decoded.globalActivate, { [weak self] in self?.activateHeed() }),
@@ -469,8 +453,6 @@ final class AppModel {
         }
         updateOutsideWindow()
         if toolsChanged, !isFixture { Task { await detectTools() } }
-        // Repos that now show all issues need fetching; ones that no longer do are hidden by issueRows right away.
-        if issuesChanged, !isFixture, github.syncedAt != nil { Task { await syncGitHub(parts: [.issues]) } }
     }
 
     /// `[tools] zmx` (a path, or a name on the search path), else zmx on the search path.
@@ -500,8 +482,7 @@ final class AppModel {
         }
     }
 
-    /// Settings writes one value into config.toml; the watcher picks the change up like any other edit.
-    /// Removes a key from config.toml: an org or repo override going back to what it inherits.
+    /// Removes a key from config.toml: a setting going back to its default.
     func unsetConfig(_ path: [String]) {
         do {
             try ConfigWatcher.remove(path, in: configFile)
@@ -510,6 +491,7 @@ final class AppModel {
         }
     }
 
+    /// Settings writes one value into config.toml; the watcher picks the change up like any other edit.
     func setConfig(_ path: [String], _ value: TOMLValue) {
         do {
             try ConfigWatcher.set(path, to: value, in: configFile)
@@ -536,64 +518,71 @@ final class AppModel {
         }
     }
 
-    /// One message from an agent's hook, applied to its session.
+    /// One message from an agent's hook, applied to its task and to the agent tab it came from (`HEED_PANE_ID`; a
+    /// message without a known pane goes to the task's first agent tab).
     func receive(_ message: HookMessage) {
-        guard var session = sessions.first(where: { $0.id == message.session }) else { return }
+        guard var task = task(message.session), let layout = layouts[task.id] else { return }
+        let pane = message.pane.flatMap { id in layout.panes.contains { $0.id == id } ? id : nil }
+            ?? layout.agentPane?.pane
+        var changes: [DomainChange] = []
         switch message.kind {
         case let .state(state, reason):
-            session.state = ObservedState(state, source: .reported, reason: reason)
-            session.activity = reason.map { "\(state.rawValue) · \($0)" } ?? state.rawValue
-            session.lastActivity = message.sentAt
-            events[session.id] = AgentEvent.log(
-                events[session.id] ?? [], adding: AgentEvent(at: message.sentAt, state: state, reason: reason)
+            guard let pane else { return }
+            var agent = agents[pane] ?? AgentTab()
+            agent.state = ObservedState(state, source: .reported, reason: reason)
+            agent.activity = reason.map { "\(state.rawValue) · \($0)" } ?? state.rawValue
+            if state == .idle || state == .done { agent.lastTurnAt = message.sentAt }
+            task.lastActivity = message.sentAt
+            events[task.id] = AgentEvent.log(
+                events[task.id] ?? [], adding: AgentEvent(at: message.sentAt, state: state, reason: reason)
             )
-            if state == .idle, pendingContinue.remove(session.id) != nil,
-               let layout = layouts[session.id], let (_, paneID) = agentPane(in: layout)
-            {
-                TerminalSurfaces.shared.typeLine(settings.continuePrompt, paneID: paneID)
-                session.record("sent “\(settings.continuePrompt)”")
+            if state == .idle, pendingContinue.remove(pane) != nil {
+                TerminalSurfaces.shared.typeLine(settings.continuePrompt, paneID: pane)
+                task.record("sent “\(settings.continuePrompt)”")
             }
-        case let .title(title):
-            session.title = title
+            changes.append(.agentChanged(pane: pane, agent))
         case let .prAdd(url):
-            // Sent by the agent's hooks when it opened a PR (or by `heed pr add`).
-            guard let pull = PullRef(url: url), session.track(pull, because: "opened by \(session.agent)") else {
-                return
-            }
+            // Sent by the agent's hooks when it opened a PR (or by `heed pr add`). A task has one PR.
+            guard task.pr == nil, let pull = PullRef(url: url) else { return }
+            task.pr = url
+            task.record("opened PR #\(pull.number)")
             fetchDetail(pull)
         case let .issueAdd(url):
-            guard let issue = IssueRef(url: url), !session.issues.contains(issue) else { return }
-            session.issues.append(issue)
-            session.hiddenIssues.removeAll { $0 == issue }
-            session.record("linked \(issue.repo.name)#\(issue.number)")
+            guard task.issue == nil, let issue = IssueRef(url: url) else { return }
+            task.issue = url
+            task.record("linked \(issue.repo.name)#\(issue.number)")
             Task { await refreshIssueInfo(force: [issue]) }
         case let .agentSession(id, _):
-            session.agentSessionID = id
-        case let .notify(text):
-            flash = "\(session.title): \(text)"
+            guard let pane else { return }
+            var agent = agents[pane] ?? AgentTab()
+            agent.claudeSessionID = id
+            commit(.agentChanged(pane: pane, agent))
             return
-        case let .taskExit(code):
-            if let pane = message.pane { taskResults[pane] = code }
+        case let .notify(text):
+            flash = "\(task.title): \(text)"
+            return
+        case let .commandExit(code):
+            if let pane = message.pane { commandResults[pane] = code }
             return
         }
-        commit(.sessionUpserted(session))
+        commit([.taskUpserted(task)] + changes)
     }
 
     func flush() async { await store?.flush() }
 
     private func rebuildList() {
-        // The selection is a session, not a row. A session moving between groups (parked to working, say) reorders
-        // the list; the cursor follows the session it was on, so what you look at and type into never changes under
-        // you. Read before the rebuild: `currentSession` still indexes the old list here.
-        let selected = currentSession?.id
-        let filter = sessionFilter
-        list = SessionList(filter.isEmpty ? sessions : sessions.filter { session in
+        // The selection is a task, not a row. A task moving between groups (idle to working, say) reorders the list;
+        // the cursor follows the task it was on, so what you look at and type into never changes under you. Read
+        // before the rebuild: `currentTask` still indexes the old list here.
+        let selected = currentTask?.id
+        let filter = taskFilter
+        list = TaskList(filter.isEmpty ? tasks : tasks.filter { task in
             FilterQuery.matches(
                 filter,
-                [session.title, session.worktreeName, session.branch, session.agent]
-                    + session.repos.map(\.name) + session.trackedPRs.map { "#\($0.number)" }
+                [task.title, task.worktreeName ?? "", task.branch ?? "", task.epic ?? ""]
+                    + [task.pull.map { "#\($0.number)" } ?? ""]
             )
-        })
+        }, layouts: layouts, agents: agents)
         if let selected, let index = list.ordered.firstIndex(where: { $0.id == selected }) {
             cursor = index
         } else {
@@ -602,11 +591,9 @@ final class AppModel {
     }
 
     private func replace(with domain: Domain) {
-        sessions = domain.sessions
+        tasks = domain.tasks
         layouts = domain.layouts
-        repos = domain.repos
-        worktrees = domain.worktrees
-        history = domain.history
+        agents = domain.agents
         github = domain.github
         pullDetails = domain.pullDetails
         cursor = min(cursor, max(list.ordered.count - 1, 0))
@@ -617,76 +604,43 @@ final class AppModel {
         guard !changes.isEmpty else { return }
         let before = currentDomain
         let after = before.applying(changes)
-        if after.history != before.history { history = after.history }
         if after.github != before.github { github = after.github }
-        if after.repos != before.repos || after.github.pulls != before.github.pulls { loadAvatars() }
+        if after.github.pulls != before.github.pulls { loadAvatars() }
         if after.pullDetails != before.pullDetails { pullDetails = after.pullDetails }
-        if after.sessions != before.sessions { sessions = after.sessions }
+        if after.tasks != before.tasks { tasks = after.tasks }
         if after.layouts != before.layouts { layouts = after.layouts }
-        if after.repos != before.repos { repos = after.repos }
-        if after.worktrees != before.worktrees { worktrees = after.worktrees }
+        if after.agents != before.agents { agents = after.agents }
         if let store { Task { await store.apply(changes) } }
     }
 
     func commit(_ change: DomainChange) { commit([change]) }
 
     var currentDomain: Domain {
-        Domain(
-            repos: repos, worktrees: worktrees, sessions: sessions, layouts: layouts, history: history, github: github,
-            pullDetails: pullDetails
-        )
+        Domain(tasks: tasks, layouts: layouts, agents: agents, github: github, pullDetails: pullDetails)
     }
 
-    /// Scans the repo roots and lists every repo's worktrees with their status, concurrently and off the main actor.
-    func refreshRepos() async {
-        guard !isFixture else { return }
-        var found = await RepoScanner.scan(roots: settings.repoRoots)
-        for path in settings.repoPaths {
-            if let record = await Git.record(at: Paths.expand(path)), !found.contains(record) { found.append(record) }
-        }
-        commit(found.map { .repoUpserted($0) })
-        // Every clone, not one per repo: two checkouts of the same GitHub repo (in ~/Projects and ~/code, say) share
-        // one record, and each has worktrees of its own. A repo's list is committed once all its clones answered.
-        let known = repos.filter { !found.map(\.path).contains($0.path) }
-        let clones = Dictionary(grouping: found + known) { $0.repo }
-        await withTaskGroup(of: [DomainChange].self) { group in
-            for (repo, records) in clones {
-                group.addTask {
-                    var listed: [Worktree] = []
-                    for record in records {
-                        for worktree in await (try? Git.worktrees(of: record)) ?? []
-                            where !listed.contains(where: { $0.path == worktree.path })
-                        {
-                            listed.append(worktree)
-                        }
-                    }
-                    guard !listed.isEmpty else { return [] }
-                    for index in listed.indices {
-                        listed[index].status = try? await Git.status(at: listed[index].path)
-                    }
-                    return [.worktreesListed(repo: repo, listed)]
-                }
-            }
-            for await changes in group {
-                commit(changes)
-            }
-        }
-    }
+    func task(_ id: String) -> WorkTask? { tasks.first { $0.id == id } }
+
+    /// The listed task whose PR this is.
+    func task(for pull: PullRef) -> WorkTask? { list.ordered.first { $0.pull == pull } }
+
+    /// A task's most urgent agent state, for glyphs outside the sidebar.
+    func agentState(of task: WorkTask) -> ObservedState? { list.rollup(of: task.id).agent }
 
     /// `gB` / `gR` with more than one place to go.
     private(set) var linkPicker: LinkPicker?
-    /// Titles and states of the issues sessions link to (fetched, not cached on disk).
+    /// Titles and states of the issues tasks link to (fetched, not cached on disk).
     private(set) var issueInfo: [IssueRef: IssueInfo] = [:]
     private var issueInfoFetchedAt: [IssueRef: Date] = [:]
 
     // MARK: Derived
 
-    var currentSession: Session? {
+    var currentTask: WorkTask? {
         let ordered = list.ordered
         return ordered.indices.contains(cursor) ? ordered[cursor] : nil
     }
 
-    var currentLayout: SessionLayout? { currentSession.flatMap { layouts[$0.id] } }
+    var currentLayout: TaskLayout? { currentTask.flatMap { layouts[$0.id] } }
     var currentTabs: [PaneTab] { currentLayout?.tabs ?? [] }
     var currentTabIndex: Int { currentLayout?.activeTab ?? 0 }
 
@@ -695,8 +649,8 @@ final class AppModel {
         return all.indices.contains(currentTabIndex) ? all[currentTabIndex] : nil
     }
 
-    var blockedCount: Int { sessions.count { $0.state.state == .blocked } }
-    var askingCount: Int { sessions.count { $0.state.state == .asking } }
+    var blockedCount: Int { list.rollups.values.count { $0.agent?.state == .blocked } }
+    var askingCount: Int { list.rollups.values.count { $0.agent?.state == .asking } }
 
     // MARK: Title
 
@@ -716,11 +670,10 @@ final class AppModel {
         if let ref = reader ?? (overlay == .pr ? overlayPull : nil) { return pullContext(ref) }
         let index = cursor(in: view)
         switch view {
-        case .sessions:
-            guard let session = currentSession else { return nil }
+        case .tasks:
+            guard let task = currentTask else { return nil }
             return TitleContext(
-                lead: session.repos.first?.name, main: session.branch,
-                detail: session.trackedPRs.first.map { "#\($0.number)" }
+                lead: task.worktreeName ?? "kibana", main: task.title, detail: task.pull.map { "#\($0.number)" }
             )
         case .inbox:
             let rows = inboxRows
@@ -738,17 +691,6 @@ final class AppModel {
         case .prs:
             let rows = pullRows
             return rows.indices.contains(index) ? pullContext(rows[index].ref) : nil
-        case .repos:
-            guard worktreeRows.indices.contains(repoCursor) else { return nil }
-            let worktree = worktreeRows[repoCursor]
-            return TitleContext(lead: worktree.repo.name, main: worktree.branch ?? "detached \(worktree.head)")
-        case .history:
-            guard let entry = selectedHistory else { return nil }
-            return TitleContext(
-                lead: entry.session.repos.first?.name,
-                main: entry.session.branch,
-                detail: entry.session.title
-            )
         }
     }
 
@@ -760,68 +702,14 @@ final class AppModel {
         )
     }
 
-    // The Repos view's lists, kept rather than computed on every read: the table reads them per row and per repo.
-    /// Added worktrees (not main checkouts), in table order: grouped by repo in `sortedRepos` order, then by path;
-    /// narrowed by the Repos `/` filter.
-    private(set) var worktreeRows: [Worktree] = []
-    /// Repos as Repos lists them: most worktrees first, then by name.
-    private(set) var sortedRepos: [RepoRecord] = []
-    /// Rows per repo slug in `worktreeRows`.
-    private(set) var worktreeRowCounts: [String: Int] = [:]
-    /// Every added worktree, whatever the filter.
-    private(set) var worktreeCount = 0
-
-    private func rebuildWorktreeRows() {
-        let counts = RepoOrder.worktreeCounts(worktrees)
-        // One row per repo in the repo list, however many clones it has.
-        var seen: Set<Repo> = []
-        let unique = repos.filter { seen.insert($0.repo).inserted }
-        sortedRepos = RepoOrder.sorted(unique, counts: counts)
-        worktreeCount = counts.values.reduce(0, +)
-        let rank = Dictionary(sortedRepos.enumerated().map { ($1.id, $0) }) { first, _ in first }
-        let filter = filter(for: .repos)
-        let added = worktrees.filter { !$0.isMain }
-        let roots = settings.pathRoots
-        let matching = filter.isEmpty ? added : added.filter { worktree in
-            FilterQuery.matches(filter, [
-                worktree.repo.slug, worktree.branch ?? "", Paths.split(worktree.path, roots: roots).relative,
-                session(for: worktree)?.agent ?? "",
-            ])
-        }
-        worktreeRows = matching.sorted {
-            $0.repo.slug == $1.repo.slug ? $0.path < $1.path
-                : (rank[$0.repo.slug] ?? .max, $0.repo.slug) < (rank[$1.repo.slug] ?? .max, $1.repo.slug)
-        }
-        worktreeRowCounts = Dictionary(grouping: worktreeRows, by: \.repo.slug).mapValues(\.count)
-    }
-
-    func session(for worktree: Worktree) -> Session? {
-        sessions.first { $0.branch == worktree.branch && $0.repos.contains(worktree.repo) }
-    }
-
-    /// Rows selected in VISUAL: the range from the anchor to the cursor, plus rows toggled with space.
-    var selectedRows: Set<String> {
-        let rows = worktreeRows
-        var selected = toggledRows
-        if mode == .visual, let anchor = visualAnchor, !rows.isEmpty {
-            let range = min(anchor, repoCursor) ... max(anchor, repoCursor)
-            for index in range where rows.indices.contains(index) {
-                selected.insert(rows[index].id)
-            }
-        }
-        return selected
-    }
-
-    /// Hint labels for every session row and every pane of the current tab, in that order.
-    /// What `f` labels: in Sessions the sessions and the panes; elsewhere the rows of the view's list.
+    /// Hint labels for every task row and every pane of the current tab, in that order.
+    /// What `f` labels: in Tasks the tasks and the panes; elsewhere the rows of the view's list.
     var hintTargets: [(label: String, target: HintTarget)] {
         let targets: [HintTarget] = switch view {
-        case .sessions:
+        case .tasks:
             list.ordered
-                .map { HintTarget.session($0.id) } + (currentTab?.tree.panes.map { HintTarget.pane($0.id) } ?? [])
+                .map { HintTarget.task($0.id) } + (currentTab?.tree.panes.map { HintTarget.pane($0.id) } ?? [])
         case .inbox, .issues, .prs: itemIDs(view).indices.map { HintTarget.row(view, $0) }
-        case .repos: worktreeRows.indices.map { HintTarget.row(.repos, $0) }
-        case .history: historyRows.indices.map { HintTarget.row(.history, $0) }
         }
         return zip(HintLabels.generate(count: targets.count), targets).map { ($0, $1) }
     }
@@ -839,16 +727,8 @@ final class AppModel {
             answerConfirmation(stroke)
             return true
         }
-        if importPicker != nil {
-            answerImportPicker(stroke)
-            return true
-        }
         if linkPicker != nil {
             answerLinkPicker(stroke)
-            return true
-        }
-        if pathImport != nil {
-            answerPathImport(stroke)
             return true
         }
         if firstRun != nil {
@@ -870,19 +750,19 @@ final class AppModel {
             typeFilter(stroke)
             return true
         }
-        if startWork != nil {
-            handleStartWork(stroke)
+        if newTask != nil {
+            handleNewTask(stroke)
             return true
         }
         let before = engine.mode
         let outcome = engine.handle(stroke)
         switch outcome {
         case .terminal:
-            if var session = currentSession {
+            if var task = currentTask {
                 let now = Date()
-                if now.timeIntervalSince(session.lastActivity) > 60 {
-                    session.lastActivity = now
-                    commit(.sessionUpserted(session))
+                if now.timeIntervalSince(task.lastActivity) > 60 {
+                    task.lastActivity = now
+                    commit(.taskUpserted(task))
                 }
             }
             return false
@@ -906,17 +786,8 @@ final class AppModel {
     private func modeChanged(from previous: Mode) {
         if previous == .command { commandText = "" }
         if previous == .hint { hintText = "" }
-        if previous == .visual {
-            toggledRows = []
-            visualAnchor = nil
-        }
-        if mode == .visual {
-            visualAnchor = switch view {
-            case .repos: repoCursor
-            case .inbox, .issues, .prs: itemCursor[view] ?? 0
-            default: nil
-            }
-        }
+        if previous == .visual { visualAnchor = nil }
+        if mode == .visual { visualAnchor = [.inbox, .issues, .prs].contains(view) ? itemCursor[view] ?? 0 : nil }
         if mode == .insert { terminalFocusRequest += 1 }
     }
 
@@ -958,55 +829,26 @@ final class AppModel {
         case "row.halfpage.up": moveRow(by: -10 * count)
         case "group.next": moveGroup(forward: true)
         case "group.prev": moveGroup(forward: false)
-        case "session.attention":
-            view = .sessions
+        case "task.attention":
+            view = .tasks
             if let next = list.nextNeedingYou(after: cursor) { setCursor(next) } else { flash = "nobody needs you" }
-        case "session.pin": togglePin()
-        case "session.park": updateCurrent { $0.parked.toggle() }
-        case "session.close": confirmClose()
-        case "session.delete": confirmDelete()
-        case "session.import.path": openPathImport()
-        case "session.import":
-            if command.arguments.isEmpty {
-                openImportPicker()
-            } else {
-                importPath(command.arguments.joined(separator: " "))
-            }
-        case "session.back": goBack()
+        case "task.pin": togglePin()
+        case "task.back": goBack()
         case "pin.jump": jumpToPin(Int(command.arguments.first ?? "") ?? 1)
-        case "work.start" where command.arguments.first == "--agent":
-            // `:agent claude`: Start work with that agent chosen.
-            let name = command.arguments.dropFirst().first ?? ""
-            openStartWork(prompt: "")
-            if startWork?.choose(agent: name) == false {
-                flash = "no agent \(name) (\(settings.agents.map(\.name).joined(separator: ", ")))"
-            }
-        case "work.start": openStartWork(prompt: command.arguments.joined(separator: " "))
+        case "task.new": openNewTask(title: command.arguments.joined(separator: " "))
         case "resume": Task { await offerResume(domain: currentDomain, asked: true) }
-        case "session.open": openSession(matching: command.arguments.joined(separator: " "))
+        case "task.open": openTask(matching: command.arguments.joined(separator: " "))
         case "tab.go":
             if let n = command.arguments.first.flatMap(Int.init) ?? command.count, currentTabs.indices.contains(n - 1) {
                 selectTab(n - 1)
             } else {
-                flash = "no tab \(command.arguments.first ?? "") (this session has \(currentTabs.count))"
+                flash = "no tab \(command.arguments.first ?? "") (this task has \(currentTabs.count))"
             }
         case "filter.clear":
             filtering = false
             clearFilter(view)
         case "issues.repo": pickIssueRepo(named: command.arguments.first)
         case "app.activate": activateHeed()
-        case "pr.track": trackPull(command.arguments.first)
-        case "pr.untrack": untrackPull(command.arguments.first)
-        case "select.pin": pinSelected()
-        case "work.again": openStartWork(prompt: currentSession?.prompt ?? "")
-        case "worktree.new":
-            openStartWork(prompt: "")
-            if worktreeRows.indices.contains(repoCursor) {
-                let row = worktreeRows[repoCursor]
-                startWork?.choose(repo: row.repo.slug)
-            }
-        case "repo.scan": rescan()
-        case "repo.add": addRepo(command.arguments.joined(separator: " "))
         case "pane.left": updateTab { $0.focus(.left) }
         case "pane.right": updateTab { $0.focus(.right) }
         case "pane.up": updateTab { $0.focus(.up) }
@@ -1020,9 +862,7 @@ final class AppModel {
         case "tab.prev": cycleTab(by: -count)
         case "tab.new": newTab()
         case "view": if let target = AppView(rawValue: command.arguments.first ?? "") { view = target }
-        case "view.history": view = .history
-        case "view.repos": view = .repos
-        case "view.sessions": view = .sessions
+        case "view.tasks": view = .tasks
         case "view.inbox": view = .inbox
         case "view.issues": view = .issues
         case "view.prs": view = .prs
@@ -1044,7 +884,7 @@ final class AppModel {
         case "inspector.toggle": inspectorVisible.toggle()
         case "sidebar.toggle": sidebarCollapsed.toggle()
         case "mode.normal", "mode.insert", "mode.visual", "mode.command", "mode.hint":
-            if command.name == "mode.insert", view != .sessions || currentTab == nil { engine.enter(.normal) }
+            if command.name == "mode.insert", view != .tasks || currentTab == nil { engine.enter(.normal) }
             hintThenInsert = false
         case "hint.insert":
             engine.enter(.hint)
@@ -1052,13 +892,9 @@ final class AppModel {
         case "command.submit": submitCommandLine()
         case "command.complete": completeCommandLine()
         case "select.toggle": toggleRow()
-        case "select.copy": copySelectedPaths()
-        case "select.open": openSelected()
-        case "select.remove": confirmRemoveSelected()
-        case "session.filter": startFilter()
+        case "task.filter": startFilter()
         case "github.sync": Task { await syncGitHub() }
         case "items.start": startFromItems()
-        case "items.add": addItemsToSession()
         case "items.read": markItemsRead()
         case "items.filter":
             if view == .issues {
@@ -1070,30 +906,22 @@ final class AppModel {
             }
         case "issues.repo.next": cycleIssueRepo(by: 1)
         case "issues.repo.prev": cycleIssueRepo(by: -1)
-        case "issues.visibility": toggleIssueVisibility()
         case "open.reader": openReader()
         case "open.browser": openInBrowser()
         case "open.repo": openRepo()
         case "links.pick": pickLinks()
-        case "issue.add": addIssue(command.arguments.first)
-        case "issue.remove": removeIssue(command.arguments.first)
         case "overlay.pr": togglePullOverlay()
         case "overlay.item": toggleItemOverlay()
-        case "pr.next": cyclePull(by: 1)
-        case "pr.prev": cyclePull(by: -1)
         case "jump.back": closeReaderOrOverlay()
         case "pr.start": startFromPull()
-        case "pr.session": jumpToPullSession()
-        case "history.reopen": reopenSelected()
-        case "history.again": openStartWork(prompt: selectedHistory?.session.prompt ?? "")
-        case "history.outcome": cycleOutcome()
+        case "pr.task": jumpToPullTask()
         case "app.quit": NSApp.terminate(nil)
         case "config.edit": NSWorkspace.shared.open(configFile)
         case "tools.detect": Task { await detectTools(force: true) }
         case "settings.open":
             if let name = command.arguments.first {
                 guard let section = SettingsView.Section.named(name) else {
-                    flash = "no Settings section \(name) (general, agents, colors, cleanup, keys)"
+                    flash = "no Settings section \(name) (\(SettingsView.Section.allCases.map(\.name).joined(separator: ", ")))"
                     return
                 }
                 settingsSection = section
@@ -1105,7 +933,7 @@ final class AppModel {
         }
     }
 
-    /// `<Esc>` in NORMAL: the reader, an overlay, then back from a view to Sessions.
+    /// `<Esc>` in NORMAL: the reader, then an overlay.
     private func closeTopmost() {
         if issueReader != nil {
             issueReader = nil
@@ -1114,7 +942,7 @@ final class AppModel {
         } else if overlay != nil {
             overlay = nil
         }
-        // Never a view change: views are places of their own, not layers over Sessions.
+        // Never a view change: views are places of their own, not layers over Tasks.
     }
 
     private func submitCommandLine() {
@@ -1150,23 +978,18 @@ final class AppModel {
         }
         if shownPull != nil, overlay == .pr || reader != nil { return }
         switch view {
-        case .repos: setRow(repoCursor + delta)
-        case .history: setRow(historyCursor + delta)
         case .inbox, .issues, .prs: setRow((itemCursor[view] ?? 0) + delta)
-        case .sessions: setCursor(cursor + delta)
+        case .tasks: setCursor(cursor + delta)
         }
     }
 
-    /// The current list's group of each row, and the cursor: sidebar groups, repos, days.
+    /// The current list's group of each row, and the cursor: sidebar groups, repos.
     private var rowGroups: (keys: [String], cursor: Int) {
         switch view {
-        case .sessions: (list.ordered.map { sessionGroup($0).rawValue }, cursor)
-        case .repos: (worktreeRows.map(\.repo.slug), repoCursor)
+        case .tasks: (list.ordered.map { list.group(of: $0.id)?.rawValue ?? "" }, cursor)
         case .inbox: (inboxRows.map(\.repo.slug), cursor(in: .inbox))
         case .issues: (issueRows.map(\.repo.slug), cursor(in: .issues))
         case .prs: (pullRows.map(\.ref.repo.slug), cursor(in: .prs))
-        case .history:
-            (historyRows.map { Calendar.current.startOfDay(for: $0.closedAt).description }, historyCursor)
         }
     }
 
@@ -1181,14 +1004,6 @@ final class AppModel {
             let count = itemIDs(view).count
             guard count > 0 else { return }
             itemCursor[view] = min(max(index, 0), count - 1)
-        } else if view == .history {
-            let count = historyRows.count
-            guard count > 0 else { return }
-            historyCursor = min(max(index, 0), count - 1)
-        } else if view == .repos {
-            let count = worktreeRows.count
-            guard count > 0 else { return }
-            repoCursor = min(max(index, 0), count - 1)
         } else {
             setCursor(index)
         }
@@ -1198,44 +1013,44 @@ final class AppModel {
         let count = list.ordered.count
         guard count > 0 else { return }
         let clamped = min(max(index, 0), count - 1)
-        if clamped != cursor { previousSessionID = currentSession?.id }
+        if clamped != cursor { previousTaskID = currentTask?.id }
         cursor = clamped
     }
 
-    private func select(sessionID: String) {
-        if let index = list.ordered.firstIndex(where: { $0.id == sessionID }) { setCursor(index) }
+    private func select(taskID: String) {
+        if let index = list.ordered.firstIndex(where: { $0.id == taskID }) { setCursor(index) }
     }
 
     private func goBack() {
-        guard let previous = previousSessionID else { return }
-        select(sessionID: previous)
+        guard let previous = previousTaskID else { return }
+        select(taskID: previous)
     }
 
     private func jumpToPin(_ number: Int) {
         let pins = list.pins
         guard pins.indices.contains(number - 1) else {
-            flash = "no pinned session \(number)"
+            flash = "no pinned task \(number)"
             return
         }
-        view = .sessions
-        select(sessionID: pins[number - 1].id)
+        view = .tasks
+        select(taskID: pins[number - 1].id)
     }
 
     private func togglePin() {
-        guard let session = currentSession else { return }
-        if !session.pinned, list.pins.count >= SessionGroup.maxPins {
-            flash = "already \(SessionGroup.maxPins) pins; unpin one first"
+        guard let task = currentTask else { return }
+        if !task.pinned, list.pins.count >= TaskGroup.maxPins {
+            flash = "already \(TaskGroup.maxPins) pins; unpin one first"
             return
         }
         updateCurrent { $0.pinned.toggle() }
     }
 
-    /// Edits the current session and keeps the cursor on it, even when the edit moves it to another group.
-    private func updateCurrent(_ edit: (inout Session) -> Void) {
-        guard var session = currentSession else { return }
-        edit(&session)
-        commit(.sessionUpserted(session))
-        select(sessionID: session.id)
+    /// Edits the current task and keeps the cursor on it, even when the edit moves it to another group.
+    private func updateCurrent(_ edit: (inout WorkTask) -> Void) {
+        guard var task = currentTask else { return }
+        edit(&task)
+        commit(.taskUpserted(task))
+        select(taskID: task.id)
     }
 
     // MARK: Confirmation
@@ -1308,13 +1123,13 @@ final class AppModel {
         guard TerminalSurfaces.shared.persist == .zmx else {
             return flash = "agents stop when heed quits ([sessions] persist = \"none\")"
         }
-        let running = sessions.count { [.working, .blocked, .asking].contains($0.state.state) }
+        let running = agents.values.count { [.working, .blocked, .asking].contains($0.state.state) }
         ask(Confirmation(
             title: "Stop every agent?",
             lines: [
                 running > 0 ? "\(running) agent\(running == 1 ? " is" : "s are") working and will stop" :
                     "Agents and shells in every pane stop",
-                "Sessions stay; their panes reopen as shells, and resume works as after a restart",
+                "Tasks stay; their panes reopen as shells, and resume works as after a restart",
             ],
             accept: "Stop all"
         ) { [weak self] in
@@ -1333,63 +1148,25 @@ final class AppModel {
     func confirmQuitIfAgentsRun() -> Bool {
         // With zmx, quitting leaves the agents running: heed reattaches to them on its next launch.
         if TerminalSurfaces.shared.persist == .zmx { return false }
-        let running = sessions.filter { [.working, .blocked, .asking].contains($0.state.state) }
+        let running = list.ordered.compactMap { task -> (WorkTask, AgentState)? in
+            guard let state = list.rollup(of: task.id).agent?.state, [.working, .blocked, .asking].contains(state)
+            else { return nil }
+            return (task, state)
+        }
         guard !running.isEmpty, confirmation == nil else { return confirmation != nil }
         activateHeed()
         ask(Confirmation(
             title: "Quit Heed?",
-            lines: ["\(running.count) agent\(running.count == 1 ? " is" : "s are") running and will stop"]
-                + running.prefix(5).map { "\($0.title) · \($0.state.state.rawValue)" }
+            lines: ["\(running.count) task\(running.count == 1 ? " has" : "s have") agents running that will stop"]
+                + running.prefix(5).map { "\($0.0.title) · \($0.1.rawValue)" }
                 + (running.count > 5 ? ["and \(running.count - 5) more"] : [])
-                + ["Sessions stay and can resume on the next launch"],
+                + ["Tasks stay and can resume on the next launch"],
             accept: "Quit"
         ) { [weak self] in
             self?.quitConfirmed = true
             NSApp.terminate(nil)
         })
         return true
-    }
-
-    private func confirmClose() {
-        guard let session = currentSession else { return }
-        let running = [.working, .blocked, .asking].contains(session.state.state)
-        ask(Confirmation(
-            title: "Close \(session.title)?",
-            lines: [
-                running ? "\(session.agent) is \(session.state.state.rawValue): it stops with the panes" :
-                    "Its panes close",
-                "The worktree stays; the session moves to History, where R reopens it",
-            ],
-            accept: "Close"
-        ) { [weak self] in self?.closeCurrent() })
-    }
-
-    /// `dd` in Sessions: the session and its worktrees. Worktrees with unsaved work are kept (and said so).
-    private func confirmDelete() {
-        guard let session = currentSession else { return }
-        let (removals, kept, lines) = deletion(of: session)
-        ask(Confirmation(
-            title: "Delete \(session.title)?",
-            lines: ["The agent and its panes stop; the session moves to History"] + lines,
-            kept: kept,
-            accept: "Delete"
-        ) { [weak self] in self?.deleteSession(session.id, removals: removals, kept: kept) })
-    }
-
-    /// What deleting a session removes: its worktrees, minus those with work not saved anywhere else.
-    private func deletion(of session: Session) -> ([WorktreeRemoval], [String], [String]) {
-        let mine = worktrees.filter { !$0.isMain && session.owns($0) }
-        let (removals, kept) = planRemoval(mine, sessionsFollow: false)
-        let lines = removals.map { removal in
-            "remove \(removal.worktree.repo.name)/\(removal.worktree.branch ?? "")"
-                + (removal.deleteBranch ? " and its local branch" : "")
-        } + (mine.isEmpty ? ["No worktree to remove"] : [])
-        return (removals, kept, lines)
-    }
-
-    private func deleteSession(_ id: String, removals: [WorktreeRemoval], kept: [String]) {
-        closeSession(id)
-        if !removals.isEmpty { removeWorktrees(removals, kept: kept) }
     }
 
     /// Shell panes close at once; an agent pane asks, since its agent stops with it.
@@ -1401,31 +1178,9 @@ final class AppModel {
         }
         ask(Confirmation(
             title: "Close the \(pane.title) pane?",
-            lines: ["The agent in it stops; the session and its worktree stay"],
+            lines: ["The agent in it stops; the task and its worktree stay"],
             accept: "Close"
         ) { [weak self] in self?.closePane() })
-    }
-
-    private func closeCurrent() {
-        guard let session = currentSession else { return }
-        closeSession(session.id)
-    }
-
-    /// A session to History, its panes closed; its worktree stays.
-    private func closeSession(_ id: String) {
-        guard var session = sessions.first(where: { $0.id == id }) else { return }
-        let minutes = Int(Date().timeIntervalSince(session.createdAt) / 60)
-        session.record("ended after \(minutes / 60)h \(minutes % 60)m")
-        // The panes are read before the close drops the layout.
-        let panes = layouts[id]?.tabs.flatMap(\.tree.panes) ?? []
-        commit(.sessionClosed(HistoryEntry(
-            session: session, closedAt: Date(), outcome: HistoryEntry.outcome(closing: session)
-        )))
-        for pane in panes {
-            TerminalSurfaces.shared.close(paneID: pane.id)
-        }
-        cursor = min(cursor, max(list.ordered.count - 1, 0))
-        flash = "closed; worktree kept · in history (gh)"
     }
 
     private func jump(to target: HintTarget) {
@@ -1433,8 +1188,8 @@ final class AppModel {
         hintThenInsert = false
         hintText = ""
         switch target {
-        case let .session(id):
-            select(sessionID: id)
+        case let .task(id):
+            select(taskID: id)
             engine.enter(.normal)
         case let .pane(id):
             updateTab { $0.focused = id }
@@ -1443,501 +1198,22 @@ final class AppModel {
         case let .row(view, index):
             // f moves the cursor there; F also opens it.
             engine.enter(.normal)
-            switch view {
-            case .repos:
-                repoCursor = index
-                if thenInsert { openSelected() }
-            case .history:
-                historyCursor = index
-            default:
-                itemCursor[view] = index
-                if thenInsert { openReader() }
-            }
+            itemCursor[view] = index
+            if thenInsert { openReader() }
         }
     }
 
-    // MARK: Repos view
+    // MARK: Picking rows
 
     private func toggleRow() {
-        if [.inbox, .issues, .prs].contains(view) {
-            let ids = itemIDs(view)
-            let index = itemCursor[view] ?? 0
-            guard ids.indices.contains(index) else { return }
-            if picked[view, default: []].contains(ids[index]) {
-                picked[view]?.remove(ids[index])
-            } else {
-                picked[view, default: []].insert(ids[index])
-            }
-            return
-        }
-        let rows = worktreeRows
-        guard view == .repos, rows.indices.contains(repoCursor) else { return }
-        let id = rows[repoCursor].id
-        if toggledRows.contains(id) { toggledRows.remove(id) } else { toggledRows.insert(id) }
-    }
-
-    private var actionRows: [Worktree] {
-        let rows = worktreeRows
-        let selected = selectedRows
-        if !selected.isEmpty { return rows.filter { selected.contains($0.id) } }
-        return rows.indices.contains(repoCursor) ? [rows[repoCursor]] : []
-    }
-
-    private func copySelectedPaths() {
-        let paths = actionRows.map(\.path)
-        guard !paths.isEmpty else { return }
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(paths.joined(separator: "\n"), forType: .string)
-        flash = "copied \(paths.count) path\(paths.count == 1 ? "" : "s")"
-        engine.enter(.normal)
-        modeChanged(from: .visual)
-    }
-
-    /// `↩` in Repos (`o` in VISUAL): a worktree with a session jumps to it; ones without are imported as sessions,
-    /// resuming the agent session kept there when there is one. Asks first, showing what each will resume.
-    private func openSelected() {
-        let rows = actionRows
-        if mode == .visual {
-            engine.enter(.normal)
-            modeChanged(from: .visual)
-        }
-        openOrImport(rows)
-    }
-
-    // MARK: Import picker
-
-    /// `I` in Sessions: pick a worktree without a session (main checkouts included) to import.
-    private(set) var importPicker: Typeahead<Worktree>?
-
-    // MARK: Import a path
-
-    /// `P` in Sessions: a path typed with directory completion, previewed as it changes, imported with ↩.
-    struct PathImport {
-        var query: String
-        /// Directories completing the query; the cursor picks one for ⇥.
-        var candidates: [String] = []
-        var cursor = 0
-        /// What is at the query: "nullean/curb · fix/x", or why nothing can be imported there.
-        var preview: String?
-        var importable = false
-    }
-
-    private(set) var pathImport: PathImport?
-    private var pathPreviewTask: Task<Void, Never>?
-
-    private func openPathImport() {
-        pathImport = PathImport(query: "~/")
-        refreshPathImport()
-    }
-
-    func cancelPathImport() { pathImport = nil }
-
-    private func answerPathImport(_ stroke: KeyStroke) {
-        guard var state = pathImport else { return }
-        switch stroke {
-        case .escape:
-            pathImport = nil
-            return
-        case KeyStroke("CR"):
-            pathImport = nil
-            importPath(state.query)
-            return
-        case KeyStroke("Tab"):
-            // Complete to the highlighted directory, ready for the next component.
-            // The list may still be on its way after fast typing; one folder listing now is cheap.
-            let candidates = state.candidates.isEmpty ? PathCompletion.candidates(for: state.query) : state.candidates
-            guard candidates.indices.contains(state.cursor) else { return }
-            state.query = Paths.abbreviate(candidates[state.cursor]) + "/"
-        case KeyStroke("n", .control), KeyStroke("j", .control), KeyStroke("Down"):
-            state.cursor = min(state.cursor + 1, max(state.candidates.count - 1, 0))
-            pathImport = state
-            return
-        case KeyStroke("p", .control), KeyStroke("k", .control), KeyStroke("Up"):
-            state.cursor = max(state.cursor - 1, 0)
-            pathImport = state
-            return
-        case KeyStroke("BS"):
-            if !state.query.isEmpty { state.query.removeLast() }
-        case KeyStroke("w", .control), KeyStroke("BS", .option):
-            state.query = PathCompletion.droppingLastComponent(state.query)
-        case KeyStroke("u", .control):
-            state.query = ""
-        case KeyStroke("Space"):
-            state.query += " "
-        default:
-            guard !stroke.isNamed, stroke.modifiers.subtracting(.option).isEmpty else { return }
-            state.query += stroke.key
-        }
-        state.cursor = 0
-        pathImport = state
-        refreshPathImport()
-    }
-
-    /// Completions and the preview, off the main actor; a newer keystroke cancels an older lookup.
-    private func refreshPathImport() {
-        guard let query = pathImport?.query else { return }
-        if ShotMode.active {
-            // Screenshots never read the real disk: a made-up tree under /Users/you.
-            let folders = [
-                "/Users/you/code/wt/docs-builder",
-                "/Users/you/code/wt/mermaider",
-                "/Users/you/Projects/sandbox",
-            ]
-            updatePathImport(query) {
-                let typed = query.replacingOccurrences(of: "~", with: "/Users/you")
-                $0.candidates = folders.filter { $0.hasPrefix(typed) && $0 != typed.trimmingCharacters(in: ["/"]) }
-                $0.preview = query.contains("toc") ? "elastic/docs-builder · toc-ordering" : nil
-                $0.importable = query.contains("toc")
-            }
-            return
-        }
-        pathPreviewTask?.cancel()
-        pathPreviewTask = Task { [weak self] in
-            let candidates = await Task.detached { PathCompletion.candidates(for: query) }.value
-            guard !Task.isCancelled else { return }
-            self?.updatePathImport(query) { $0.candidates = candidates }
-            try? await Task.sleep(for: .milliseconds(150))
-            guard !Task.isCancelled else { return }
-            let path = Paths.expand(query)
-            var isDirectory: ObjCBool = false
-            guard FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory), isDirectory.boolValue else {
-                self?.updatePathImport(query) {
-                    $0.preview = query.isEmpty ? nil : "no such folder"
-                    $0.importable = false
-                }
-                return
-            }
-            let found = await Git.locate(path)
-            guard !Task.isCancelled else { return }
-            guard let self else { return }
-            guard let found else {
-                updatePathImport(query) {
-                    $0.preview = "not inside a git worktree"
-                    $0.importable = false
-                }
-                return
-            }
-            let name = "\(found.record.repo.slug) · \(found.worktree.branch ?? "detached")"
-                + (found.worktree.isMain ? " (main checkout)" : "")
-            let hasSession = worktrees.first { $0.path == found.worktree.path }.flatMap { session(for: $0) } != nil
-            updatePathImport(query) {
-                $0.preview = hasSession ? "\(name): has a session, ↩ jumps to it" : name
-                $0.importable = true
-            }
-        }
-    }
-
-    private func updatePathImport(_ query: String, _ edit: (inout PathImport) -> Void) {
-        guard var state = pathImport, state.query == query else { return }
-        edit(&state)
-        pathImport = state
-    }
-
-    static func looksLikePath(_ text: String) -> Bool {
-        let trimmed = text.trimmingCharacters(in: .whitespaces)
-        return trimmed.hasPrefix("/") || trimmed.hasPrefix("~")
-    }
-
-    /// Imports the worktree at `path` (any worktree of any repo): the repo is added if Heed did not know it (and kept
-    /// in `[worktrees] repo_paths` when it lies outside the scanned roots), then the worktree imports like any other.
-    func importPath(_ raw: String) {
-        let path = Paths.expand(raw.trimmingCharacters(in: .whitespaces))
-        guard !isFixture else {
-            flash = "fixture: no IO"
-            return
-        }
-        flash = "looking at \(Paths.abbreviate(path))…"
-        Task {
-            guard let (worktree, listed) = await adoptRepo(at: path) else { return }
-            openOrImport([listed.first { $0.path == worktree.path } ?? worktree])
-        }
-    }
-
-    /// `:repo.add <path>`: the repo at `path` joins Repos with its worktrees, and is kept in `[worktrees] repo_paths`
-    /// when it lies outside the scanned roots.
-    private func addRepo(_ raw: String) {
-        let path = Paths.expand(raw.trimmingCharacters(in: .whitespaces))
-        guard !raw.trimmingCharacters(in: .whitespaces).isEmpty else {
-            flash = ":repo.add <path> adds a repo outside \(settings.repoRoots.joined(separator: ", "))"
-            return
-        }
-        guard !isFixture else {
-            flash = "fixture: no IO"
-            return
-        }
-        flash = "looking at \(Paths.abbreviate(path))…"
-        Task {
-            guard let (worktree, listed) = await adoptRepo(at: path) else { return }
-            view = .repos
-            flash = "added \(worktree.repo.slug): \(listed.count) worktree\(listed.count == 1 ? "" : "s")"
-        }
-    }
-
-    /// The repo and worktrees at `path`, made known: added to the domain (and to repo_paths if outside the roots).
-    private func adoptRepo(at path: String) async -> (worktree: Worktree, listed: [Worktree])? {
-        guard let found = await Git.locate(path) else {
-            flash = "not inside a git worktree: \(Paths.abbreviate(path))"
-            return nil
-        }
-        if !repos.contains(where: { $0.id == found.record.id }) {
-            commit(.repoUpserted(found.record))
-            let roots = settings.repoRoots.map { Paths.expand($0) }
-            if !roots.contains(where: { found.record.path.hasPrefix($0 + "/") }) {
-                setConfig(
-                    ["worktrees", "repo_paths"],
-                    .array((settings.repoPaths + [Paths.abbreviate(found.record.path)]).map { .string($0) })
-                )
-            }
-        }
-        var listed = found.all
-        for index in listed.indices {
-            listed[index].status = try? await Git.status(at: listed[index].path)
-        }
-        commit(.worktreesListed(repo: found.record.repo, listed))
-        return (found.worktree, listed)
-    }
-
-    private func openImportPicker() {
-        let rank = Dictionary(sortedRepos.enumerated().map { ($1.id, $0) }) { first, _ in first }
-        let candidates = worktrees.filter { session(for: $0) == nil }.sorted {
-            if $0.isMain != $1.isMain { return !$0.isMain }
-            return $0.repo.slug == $1.repo.slug ? $0.path < $1.path
-                : (rank[$0.repo.slug] ?? .max, $0.repo.slug) < (rank[$1.repo.slug] ?? .max, $1.repo.slug)
-        }
-        // Open even when every listed worktree has a session: a typed path imports any other.
-        // The path below its root, so a root's own words (code, Projects) do not match every worktree.
-        let roots = settings.pathRoots
-        importPicker = Typeahead(items: candidates) {
-            [$0.repo.slug, $0.branch ?? "", Paths.split($0.path, roots: roots).relative]
-        }
-    }
-
-    private func answerImportPicker(_ stroke: KeyStroke) {
-        guard var picker = importPicker else { return }
-        // A typed path imports whatever worktree is there, known or not.
-        if stroke == KeyStroke("CR"), Self.looksLikePath(picker.query), picker.matches.isEmpty {
-            importPicker = nil
-            importPath(picker.query)
-            return
-        }
-        switch picker.handle(stroke) {
-        case .handled: importPicker = picker
-        case .cancel: importPicker = nil
-        case let .picked(worktree):
-            importPicker = nil
-            openOrImport([worktree])
-        }
-    }
-
-    func pickImport(_ worktree: Worktree) {
-        importPicker = nil
-        openOrImport([worktree])
-    }
-
-    func cancelImportPicker() { importPicker = nil }
-
-    private func openOrImport(_ rows: [Worktree]) {
-        guard !rows.isEmpty else { return }
-        let missing = rows.filter { session(for: $0) == nil }
-        if missing.isEmpty, let session = session(for: rows[0]) {
-            view = .sessions
-            select(sessionID: session.id)
-            return
-        }
-        guard !isFixture else {
-            flash = "fixture: no IO"
-            return
-        }
-        let defaultAgent = settings.agent(settings.defaultAgent)
-        flash = "looking for agent sessions…"
-        Task {
-            let found = await Task.detached(priority: .userInitiated) {
-                missing.map { ($0, Import.claudeSessions(directory: $0.path).first) }
-            }.value
-            flash = nil
-            let lines = found.map { worktree, agentSession -> String in
-                let name = "\(worktree.repo.name)/\(worktree.branch ?? worktree.head)"
-                guard let agentSession else { return "\(name): starts \(defaultAgent?.name ?? "a shell") fresh" }
-                let age = agentSession.modified.formatted(.relative(presentation: .named))
-                let prompt = agentSession.prompt.map { " · “\($0.prefix(50))”" } ?? ""
-                return "\(name): resumes the claude session from \(age)\(prompt)"
-            }
-            ask(Confirmation(
-                title: found
-                    .count == 1 ? "Import this worktree as a session?" : "Import \(found.count) worktrees as sessions?",
-                lines: lines,
-                accept: "Import",
-                destructive: false
-            ) { [weak self] in self?.importWorktrees(found, defaultAgent: defaultAgent) })
-        }
-    }
-
-    private func importWorktrees(_ found: [(Worktree, Import.AgentSession?)], defaultAgent: AgentProfile?) {
-        var firstID: String?
-        for (worktree, agentSession) in found {
-            let agent = agentSession.flatMap { settings.agent($0.agent) } ?? defaultAgent
-            let changes = Import.session(for: worktree, agent: agent, resume: agentSession, integration: integration)
-            for case let .layoutChanged(_, layout) in changes {
-                for pane in layout.tabs.flatMap(\.tree.panes) where pane.command != nil {
-                    TerminalSurfaces.shared.autostartPanes.insert(pane.id)
-                }
-            }
-            for case let .sessionUpserted(session) in changes where firstID == nil {
-                firstID = session.id
-            }
-            commit(changes)
-        }
-        view = .sessions
-        if let firstID { select(sessionID: firstID) }
-        if let tab = currentTab, let agent = tab.tree.panes.first(where: { $0.role == .agent }) { focusPane(agent.id) }
-        enterInsert()
-        flash = "imported \(found.count) session\(found.count == 1 ? "" : "s")"
-    }
-
-    /// Which of `rows` can go (clean, pushed, not pinned) and why the rest stay.
-    private func planRemoval(_ rows: [Worktree], sessionsFollow: Bool = true) -> (
-        removals: [WorktreeRemoval], kept: [String]
-    ) {
-        var kept: [String] = []
-        var removals: [WorktreeRemoval] = []
-        for worktree in rows {
-            let users = sessions.filter { $0.branch == worktree.branch && $0.repos.contains(worktree.repo) }
-            if sessionsFollow, users.contains(where: \.pinned) {
-                kept.append("\(worktree.repo.name)/\(worktree.branch ?? worktree.path): pinned session")
-            } else if let reason = WorktreeRemoval.unsafe(worktree) {
-                kept.append("\(worktree.repo.name)/\(worktree.branch ?? worktree.path): \(reason)")
-            } else {
-                removals.append(WorktreeRemoval(
-                    worktree: worktree, sessions: sessionsFollow ? users.map(\.id) : [],
-                    deleteBranch: worktree.branch != nil
-                ))
-            }
-        }
-        return (removals, kept)
-    }
-
-    private func confirmRemoveSelected() {
-        let rows = actionRows
-        if mode == .visual {
-            engine.enter(.normal)
-            modeChanged(from: .visual)
-        }
-        guard !rows.isEmpty else {
-            flash = "nothing selected"
-            return
-        }
-        let (removals, kept) = planRemoval(rows)
-        guard !removals.isEmpty else {
-            flash = "kept: \(kept.joined(separator: "; "))"
-            return
-        }
-        let closing = Set(removals.flatMap(\.sessions)).count
-        ask(Confirmation(
-            title: removals.count == 1
-                ? "Remove \(removals[0].worktree.repo.name)/\(removals[0].worktree.branch ?? "worktree")?"
-                : "Remove \(removals.count) worktrees?",
-            lines: removals.map { removal in
-                "\(removal.worktree.repo.name)/\(removal.worktree.branch ?? removal.worktree.path)"
-                    + (removal.deleteBranch ? " · local branch too" : "")
-            } +
-                (closing > 0 ?
-                    ["\(closing) session\(closing == 1 ? "" : "s") on them move\(closing == 1 ? "s" : "") to History"] :
-                    []),
-            kept: kept,
-            accept: "Remove"
-        ) { [weak self] in self?.removeWorktrees(removals, kept: kept) })
-    }
-
-    private func removeWorktrees(_ removals: [WorktreeRemoval], kept: [String]) {
-        guard !isFixture else {
-            flash = "fixture: no IO"
-            return
-        }
-        for id in Set(removals.flatMap(\.sessions)) {
-            for pane in layouts[id]?.tabs.flatMap(\.tree.panes) ?? [] {
-                TerminalSurfaces.shared.close(paneID: pane.id)
-            }
-        }
-        let skipped = kept
-        Task {
-            let (changes, failures) = await WorktreeRemoval.execute(removals, domain: currentDomain)
-            commit(changes)
-            flash = "removed \(removals.count - failures.count)" +
-                (skipped.isEmpty ? "" : " · kept \(skipped.count): \(skipped[0])")
-                + (failures.isEmpty ? "" : " · failed: \(failures[0])")
-        }
-    }
-
-    private func rescan() {
-        guard !isFixture else {
-            flash = "fixture: no IO"
-            return
-        }
-        flash = "scanning \(settings.repoRoots.joined(separator: ", "))…"
-        Task {
-            await refreshRepos()
-            flash = "\(repos.count) repos · \(worktreeCount) worktrees"
-        }
-    }
-
-    // MARK: History
-
-    /// History in display order (newest first), filtered by `/` text and the outcome chip.
-    var historyRows: [HistoryEntry] {
-        let filter = filter(for: .history)
-        return history.filter { entry in
-            (historyOutcome == nil || entry.outcome == historyOutcome)
-                && FilterQuery.matches(
-                    filter,
-                    [
-                        entry.session.title, entry.session.prompt, entry.session.branch, entry.session.agent,
-                    ] + entry.session.repos.map(\.name)
-                )
-        }
-    }
-
-    var selectedHistory: HistoryEntry? {
-        let rows = historyRows
-        return rows.indices.contains(historyCursor) ? rows[historyCursor] : nil
-    }
-
-    private func cycleOutcome() {
-        let all: [Outcome?] = [nil] + Outcome.allCases
-        let index = all.firstIndex(of: historyOutcome) ?? 0
-        historyOutcome = all[(index + 1) % all.count]
-        historyCursor = 0
-    }
-
-    private func reopenSelected() {
-        guard let entry = selectedHistory else { return }
-        guard !isFixture else {
-            flash = "fixture: no IO"
-            return
-        }
-        let domain = currentDomain
-        let settings = settings
-        let integration = integration
-        flash = "reopening \(entry.session.title)…"
-        Task {
-            do {
-                let changes = try await Reopen.execute(
-                    entry,
-                    domain: domain,
-                    settings: settings,
-                    integration: integration
-                )
-                for case let .layoutChanged(_, layout) in changes {
-                    for pane in layout.tabs.flatMap(\.tree.panes) where pane.command != nil {
-                        TerminalSurfaces.shared.autostartPanes.insert(pane.id)
-                    }
-                }
-                commit(changes)
-                view = .sessions
-                select(sessionID: entry.id)
-                flash = "reopened \(entry.session.title)"
-            } catch {
-                flash = "reopen failed: \(error)"
-            }
+        guard [.inbox, .issues, .prs].contains(view) else { return }
+        let ids = itemIDs(view)
+        let index = itemCursor[view] ?? 0
+        guard ids.indices.contains(index) else { return }
+        if picked[view, default: []].contains(ids[index]) {
+            picked[view]?.remove(ids[index])
+        } else {
+            picked[view, default: []].insert(ids[index])
         }
     }
 
@@ -1954,11 +1230,8 @@ final class AppModel {
         }
     }
 
-    /// Issues the rules show (involving you, or in a repo showing all), narrowed by the chip and the repo column.
-    var shownIssues: [Issue] {
-        github.issues
-            .filter { ($0.involvesYou || config.issues.visibility($0.repo) == .all) && issueFilter.matches($0) }
-    }
+    /// Issues involving you, narrowed by the chip.
+    var shownIssues: [Issue] { github.issues.filter { issueFilter.matches($0) } }
 
     /// The Issues repo column: repos with shown issues, most first, then by name.
     var issueRepoCounts: [(repo: Repo, count: Int)] {
@@ -1998,145 +1271,30 @@ final class AppModel {
         pickIssueRepo(repo)
     }
 
-    /// `:session.open anchors`: the first session matching every word, as the filter matches.
-    private func openSession(matching words: String) {
+    /// `:task.open upload`: the first task matching every word, as the filter matches.
+    private func openTask(matching words: String) {
         guard !words.isEmpty else {
-            flash = ":session.open <words> goes to the first session matching them"
+            flash = ":task.open <words> goes to the first task matching them"
             return
         }
-        guard let session = list.ordered.first(where: { session in
-            FilterQuery.matches(words, [session.title, session.branch, session.agent] + session.repos.map(\.name))
+        guard let task = list.ordered.first(where: { task in
+            FilterQuery.matches(words, [task.title, task.worktreeName ?? "", task.branch ?? ""])
         }) else {
-            flash = "no session matches \(words)"
+            flash = "no task matches \(words)"
             return
         }
-        view = .sessions
-        select(sessionID: session.id)
+        view = .tasks
+        select(taskID: task.id)
     }
 
-    /// `gU` (`:track <url>`): the current session tracks that PR; with no URL, the one on the clipboard.
-    /// `:pr.untrack [url]`: the session stops following a PR (the one in the overlay, or the session's only one), and
-    /// no rule adds it back.
-    private func untrackPull(_ argument: String?) {
-        guard let session = currentSession else { return flash = "no session here" }
-        let pull = argument.flatMap(PullRef.init(url:)) ?? shownPull
-            ?? (session.trackedPRs.count == 1 ? session.trackedPRs.first : nil)
-        guard let pull, session.trackedPRs.contains(pull) else {
-            return flash = session.trackedPRs.isEmpty ? "this session tracks no PR"
-                : "which PR? :pr.untrack <url>, or open it (go) first"
-        }
-        updateCurrent { session in
-            session.trackedPRs.removeAll { $0 == pull }
-            session.untrackedPRs.append(pull)
-            session.record("stopped tracking PR \(pull.repo.name)#\(pull.number) (by you)")
-        }
-        flash = "stopped tracking \(pull.repo.name)#\(pull.number); :pr.track adds it back"
-    }
-
-    /// After a PR's detail arrives: the sessions tracking it also take the PRs that link to it and are yours, opened
-    /// since the session started (a follow-up, a companion change in another repo).
-    private func trackLinked(_ detail: PullDetail) {
-        guard let references = detail.references, !references.isEmpty else { return }
-        let changes = sessions.filter { $0.trackedPRs.contains(detail.ref) }.compactMap { session -> DomainChange? in
-            var updated = session
-            let added = PullTracking.linked(references, session: session, viewer: github.viewer).track
-                .filter { updated.track($0.ref, because: "links to \(detail.ref.repo.name)#\(detail.ref.number)") }
-            return added.isEmpty ? nil : .sessionUpserted(updated)
-        }
-        commit(changes)
-        for case let .sessionUpserted(session) in changes {
-            for ref in session.trackedPRs where pullDetails[ref.description] == nil {
-                fetchDetail(ref)
-            }
-        }
-    }
-
-    /// PRs that mention this one but are someone else's (or older than the session): shown, not tracked.
+    /// PRs that mention this one: shown in the reader, never linked to a task.
     func suggestedLinks(for ref: PullRef) -> [PullDetail.Reference] {
-        guard let references = pullDetails[ref.description]?.references,
-              let session = sessions.first(where: { $0.trackedPRs.contains(ref) })
-        else { return [] }
-        return PullTracking.linked(references, session: session, viewer: github.viewer).suggest
-    }
-
-    private func trackPull(_ argument: String?) {
-        let text = argument ?? NSPasteboard.general.string(forType: .string)?
-            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        guard let pull = PullRef(url: text) else {
-            flash = argument == nil ? "copy a PR URL first, or :track <url>" : "not a PR URL: \(text)"
-            return
-        }
-        guard currentSession != nil else {
-            flash = "no session to track \(pull.repo.name)#\(pull.number)"
-            return
-        }
-        guard currentSession?.trackedPRs.contains(pull) == false else {
-            flash = "already tracking \(pull.repo.name)#\(pull.number)"
-            return
-        }
-        updateCurrent { session in
-            session.untrackedPRs.removeAll { $0 == pull }
-            session.track(pull, because: "by you")
-        }
-        flash = "tracking \(pull.repo.name)#\(pull.number)"
-        if !isFixture { Task { await syncGitHub(parts: [.pulls]) } }
-    }
-
-    /// VISUAL `m` in Repos: pins the sessions on the selected worktrees; when all are pinned already, unpins them.
-    private func pinSelected() {
-        let targets = actionRows.compactMap(session(for:))
-        if mode == .visual {
-            engine.enter(.normal)
-            modeChanged(from: .visual)
-        }
-        guard !targets.isEmpty else {
-            flash = "no sessions on the selected worktrees"
-            return
-        }
-        let pin = !targets.allSatisfy(\.pinned)
-        let room = SessionGroup.maxPins - list.pins.count
-        let changing = targets.filter { $0.pinned != pin }
-        guard !pin || changing.count <= room else {
-            flash = "only \(room) pin\(room == 1 ? "" : "s") left of \(SessionGroup.maxPins)"
-            return
-        }
-        commit(changing.map { session in
-            var session = session
-            session.pinned = pin
-            return .sessionUpserted(session)
-        })
-        flash = "\(pin ? "pinned" : "unpinned") \(changing.count) session\(changing.count == 1 ? "" : "s")"
+        pullDetails[ref.description]?.references ?? []
     }
 
     func pickIssueRepo(_ repo: Repo?) {
         issueRepo = repo
         itemCursor[.issues] = 0
-    }
-
-    /// `w` in Issues, `I` in Repos: the repo under the cursor flips between all issues and only yours.
-    private func toggleIssueVisibility() {
-        let repo: Repo?
-        switch view {
-        case .issues:
-            let rows = issueRows
-            let index = cursor(in: .issues)
-            repo = rows.indices.contains(index) ? rows[index].repo : issueRepo
-        case .repos:
-            let rows = worktreeRows
-            repo = rows.indices.contains(repoCursor) ? rows[repoCursor].repo : nil
-        default: repo = nil
-        }
-        guard let repo else {
-            flash = "no repo under the cursor"
-            return
-        }
-        let next: IssueVisibility = config.issues.visibility(repo) == .all ? .involved : .all
-        if isFixture {
-            config.issues.repos[repo.slug] = next
-        } else {
-            setConfig(["repos", repo.slug, "issues"], .string(next.rawValue))
-        }
-        flash = next == .all ? "\(repo.name): all open issues" : "\(repo.name): only issues involving you"
     }
 
     var pullRows: [PullRequest] {
@@ -2204,29 +1362,24 @@ final class AppModel {
 
     var itemsPromptPreview: String { itemsPrompt }
 
+    /// A title for a task started from the picked items: the item's own title when there is one.
+    private var itemsTitle: String {
+        let ids = actionIDs(view)
+        let titles: [String] = switch view {
+        case .issues: issueRows.filter { ids.contains($0.id) }.map(\.title)
+        case .inbox: inboxRows.filter { ids.contains($0.id) }.map(\.title)
+        default: []
+        }
+        return titles.count == 1 ? titles[0] : ""
+    }
+
     private func startFromItems() {
         let prompt = itemsPrompt
         guard !prompt.isEmpty else { return }
+        let title = itemsTitle
         clearPicks()
         issueReader = nil
-        openStartWork(prompt: prompt)
-    }
-
-    private func addItemsToSession() {
-        let prompt = itemsPrompt
-        guard !prompt.isEmpty, let session = currentSession, let layout = layouts[session.id],
-              let (_, paneID) = agentPane(in: layout)
-        else {
-            flash = "no session to add to"
-            return
-        }
-        guard session.state.state != .blocked, session.state.state != .asking else {
-            flash = "\(session.title) is waiting on you; answer it first"
-            return
-        }
-        TerminalSurfaces.shared.typeLine(prompt.replacingOccurrences(of: "\n", with: " "), paneID: paneID)
-        clearPicks()
-        flash = "added to \(session.title)"
+        openNewTask(title: title, context: prompt)
     }
 
     private func markItemsRead() {
@@ -2251,16 +1404,15 @@ final class AppModel {
         case .inbox: return inboxRows.indices.contains(index) ? inboxRows[index].url : nil
         case .issues: return issueRows.indices.contains(index) ? issueRows[index].url : nil
         case .prs: return pullRows.indices.contains(index) ? pullRows[index].url : nil
-        case .sessions: return currentSession?.trackedPRs.first?.url
-        default: return nil
+        case .tasks: return currentTask?.pull?.url
         }
     }
 
-    /// `gB`: what is under the cursor. In Sessions (outside the overlay and reader) the session's links: one opens,
-    /// several offer the picker, none opens its repo.
+    /// `gB`: what is under the cursor. In Tasks (outside the overlay and reader) the task's links: one opens,
+    /// several offer the picker, none opens Kibana.
     private func openInBrowser() {
-        if view == .sessions, issueReader == nil, shownPull == nil, let session = currentSession {
-            let links = links(of: session)
+        if view == .tasks, issueReader == nil, shownPull == nil, let task = currentTask {
+            let links = links(of: task)
             switch links.count {
             case 0: return openRepo()
             case 1: return open(links[0], browser: true)
@@ -2277,23 +1429,18 @@ final class AppModel {
 
     // MARK: Links
 
-    /// A session's issues: added by hand, closed by its prompt, closed by its PRs.
-    func issues(of session: Session) -> [IssueRef] {
-        let closedByPulls = session.trackedPRs.flatMap { ref in
+    /// A task's issues: its own, then those its PR closes.
+    func issues(of task: WorkTask) -> [IssueRef] {
+        let closedByPull = task.pull.map { ref in
             (pullDetails[ref.description]?.closes ?? []).map { IssueRef(repo: $0.repo, number: $0.number) }
-        }
-        return IssueLinks.issues(
-            added: session.issues, prompt: session.prompt, defaultRepo: session.repos.first,
-            closedByPulls: closedByPulls, hidden: session.hiddenIssues
-        )
+        } ?? []
+        var seen: Set<IssueRef> = []
+        return ([task.issueRef].compactMap(\.self) + closedByPull).filter { seen.insert($0).inserted }
     }
 
-    /// Everything a session links to on GitHub, in the inspector's order: open PRs, merged, closed, then issues.
-    func links(of session: Session) -> [SessionLink] {
-        IssueLinks.ordered(
-            pulls: session.trackedPRs, state: { self.github.pull($0)?.state }, issues: issues(of: session),
-            closed: { self.issueInfo[$0]?.closed ?? false }
-        )
+    /// Everything a task links to on GitHub, in the inspector's order: its PR, then its issues.
+    func links(of task: WorkTask) -> [TaskLink] {
+        (task.pull.map { [TaskLink.pull($0)] } ?? []) + issues(of: task).map(TaskLink.issue)
     }
 
     /// An issue as the reader shows it: from the issue sync when it has it, else from what was fetched for the link.
@@ -2308,7 +1455,7 @@ final class AppModel {
 
     /// A link clicked or picked: a PR opens the overlay on it, an issue the reader; `browser` (⌘-click, `gB`) opens it
     /// on GitHub instead.
-    func open(_ link: SessionLink, browser: Bool = false) {
+    func open(_ link: TaskLink, browser: Bool = false) {
         linkPicker = nil
         if browser {
             if let url = URL(string: link.url) { NSWorkspace.shared.open(url) }
@@ -2316,7 +1463,7 @@ final class AppModel {
         }
         switch link {
         case let .pull(ref):
-            if let index = list.ordered.firstIndex(where: { $0.trackedPRs.contains(ref) }), view == .sessions {
+            if let index = list.ordered.firstIndex(where: { $0.pull == ref }), view == .tasks {
                 setCursor(index)
             }
             overlayPull = ref
@@ -2337,38 +1484,30 @@ final class AppModel {
         }
     }
 
-    /// The repos under the cursor, for `gR`: a session's (all of them), a Repos row's, an item's.
+    /// The repo under the cursor, for `gR`: Kibana for a task, an item's.
     private var reposUnderCursor: [Repo] {
         if let issue = issueReader { return [issue.repo] }
         if let ref = shownPull, overlay == .pr || reader != nil { return [ref.repo] }
         let index = cursor(in: view)
         switch view {
-        case .sessions: return currentSession?.involvedRepos ?? []
-        case .repos: return worktreeRows.indices.contains(repoCursor) ? [worktreeRows[repoCursor].repo] : []
+        case .tasks: return currentTask == nil ? [] : [Kibana.repo]
         case .inbox: return inboxRows.indices.contains(index) ? [inboxRows[index].repo] : []
         case .issues: return issueRows.indices.contains(index) ? [issueRows[index].repo] : []
         case .prs: return pullRows.indices.contains(index) ? [pullRows[index].ref.repo] : []
-        case .history: return selectedHistory?.session.repos ?? []
         }
     }
 
-    /// `gR`: the repo under the cursor on GitHub; a session in several repos offers the picker.
+    /// `gR`: the repo under the cursor on GitHub.
     private func openRepo() {
-        let repos = reposUnderCursor.filter { $0.org != "local" }
-        switch repos.count {
-        case 0: flash = "no repo here"
-        case 1: open(.repo(repos[0]), browser: true)
-        default: linkPicker = LinkPicker(title: "Open a repo", links: repos.map(SessionLink.repo))
-        }
+        guard let repo = reposUnderCursor.first else { return flash = "no repo here" }
+        open(.repo(repo), browser: true)
     }
 
-    /// `:links.pick`: the picker over the session's links (and its repos when it has none).
+    /// `:links.pick`: the picker over the task's links (and Kibana when it has none).
     private func pickLinks() {
-        guard let session = currentSession else { return flash = "no session here" }
-        let links = links(of: session)
-        linkPicker = LinkPicker(
-            title: "Open in the browser", links: links.isEmpty ? session.involvedRepos.map(SessionLink.repo) : links
-        )
+        guard let task = currentTask else { return flash = "no task here" }
+        let links = links(of: task)
+        linkPicker = LinkPicker(title: "Open in the browser", links: links.isEmpty ? [.repo(Kibana.repo)] : links)
     }
 
     private func answerLinkPicker(_ stroke: KeyStroke) {
@@ -2386,40 +1525,11 @@ final class AppModel {
 
     func cancelLinkPicker() { linkPicker = nil }
 
-    /// `:issue.add <url>` (or the copied URL): links an issue to the session.
-    private func addIssue(_ argument: String?) {
-        let text = argument ?? NSPasteboard.general.string(forType: .string)?
-            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        guard let ref = IssueRef(url: text) else {
-            return flash = argument == nil ? "copy an issue URL first, or :issue.add <url>" : "not an issue URL: \(text)"
-        }
-        guard currentSession != nil else { return flash = "no session to link \(ref.repo.name)#\(ref.number) to" }
-        updateCurrent { session in
-            session.hiddenIssues.removeAll { $0 == ref }
-            if !session.issues.contains(ref) { session.issues.append(ref) }
-        }
-        flash = "linked \(ref.repo.name)#\(ref.number)"
-        Task { await refreshIssueInfo(force: [ref]) }
-    }
-
-    /// `:issue.remove [url]`: takes an issue off the session (the given one, else its first).
-    private func removeIssue(_ argument: String?) {
-        guard let session = currentSession else { return }
-        guard let ref = argument.flatMap(IssueRef.init(url:)) ?? issues(of: session).first else {
-            return flash = "no issue on this session"
-        }
-        updateCurrent { session in
-            session.issues.removeAll { $0 == ref }
-            if !session.hiddenIssues.contains(ref) { session.hiddenIssues.append(ref) }
-        }
-        flash = "unlinked \(ref.repo.name)#\(ref.number)"
-    }
-
-    /// Fetches titles and states for the issues sessions link to: those not seen in ten minutes, and `force`.
+    /// Fetches titles and states for the issues tasks link to: those not seen in ten minutes, and `force`.
     func refreshIssueInfo(force: [IssueRef] = []) async {
         guard !isFixture else { return }
         let now = Date()
-        let wanted = Set(sessions.flatMap(issues(of:))).filter { ref in
+        let wanted = Set(tasks.flatMap(issues(of:))).filter { ref in
             now.timeIntervalSince(issueInfoFetchedAt[ref] ?? .distantPast) > 600
         }.union(force)
         guard !wanted.isEmpty, let fetched = try? await GitHub.issueInfo(Array(wanted)) else { return }
@@ -2429,7 +1539,7 @@ final class AppModel {
         issueInfo.merge(fetched) { _, new in new }
     }
 
-    private func jumpToPullSession() {
+    private func jumpToPullTask() {
         let ref: PullRef
         if let open = shownPull, overlay == .pr || reader != nil {
             ref = open
@@ -2441,11 +1551,11 @@ final class AppModel {
         }
         reader = nil
         overlay = nil
-        if let session = sessions.first(where: { $0.trackedPRs.contains(ref) }) {
-            view = .sessions
-            select(sessionID: session.id)
+        if let task = list.ordered.first(where: { $0.pull == ref }) {
+            view = .tasks
+            select(taskID: task.id)
         } else {
-            flash = "no session tracks \(ref)"
+            flash = "no task has \(ref)"
         }
     }
 
@@ -2454,7 +1564,7 @@ final class AppModel {
     /// The PR the overlay or reader is about.
     var shownPull: PullRef? { reader ?? (overlay == .pr ? overlayPull : nil) }
 
-    /// The PR under the cursor where `o` was pressed: a PRs row, a PR in the inbox, or the session's first PR.
+    /// The PR under the cursor where `o` was pressed: a PRs row, a PR in the inbox, or the task's PR.
     private var pullUnderCursor: PullRef? {
         let index = cursor(in: view)
         switch view {
@@ -2463,8 +1573,8 @@ final class AppModel {
             guard inboxRows.indices.contains(index), inboxRows[index].kind == .pr,
                   let number = inboxRows[index].number else { return nil }
             return PullRef(repo: inboxRows[index].repo, number: number)
-        case .sessions: return currentSession?.trackedPRs.first
-        default: return nil
+        case .tasks: return currentTask?.pull
+        case .issues: return nil
         }
     }
 
@@ -2479,11 +1589,11 @@ final class AppModel {
         }
     }
 
-    /// `go`: the PR or issue under the cursor, or in Sessions the session's PR overlay; again closes it.
+    /// `go`: the PR or issue under the cursor, or in Tasks the task's PR overlay; again closes it.
     private func toggleItemOverlay() {
         if issueReader != nil || reader != nil {
             closeReaderOrOverlay()
-        } else if view == .sessions {
+        } else if view == .tasks {
             togglePullOverlay()
         } else {
             openReader()
@@ -2518,20 +1628,13 @@ final class AppModel {
             overlay = nil
             return
         }
-        guard let first = currentSession?.trackedPRs.first else {
-            flash = "this session tracks no PR yet"
+        guard let pull = currentTask?.pull else {
+            flash = "this task has no PR yet"
             return
         }
-        overlayPull = overlayPull.flatMap { currentSession?.trackedPRs.contains($0) == true ? $0 : nil } ?? first
+        overlayPull = pull
         overlay = .pr
-        if let ref = overlayPull { fetchDetail(ref) }
-    }
-
-    private func cyclePull(by delta: Int) {
-        guard overlay == .pr, let prs = currentSession?.trackedPRs, !prs.isEmpty else { return }
-        let index = overlayPull.flatMap { prs.firstIndex(of: $0) } ?? 0
-        overlayPull = prs[((index + delta) % prs.count + prs.count) % prs.count]
-        if let ref = overlayPull { fetchDetail(ref) }
+        fetchDetail(pull)
     }
 
     private func closeReaderOrOverlay() {
@@ -2546,7 +1649,7 @@ final class AppModel {
         }
     }
 
-    /// `S`: a new session on the PR, its prompt naming the open review threads and failing checks.
+    /// `S`: a new task on the PR, its first prompt naming the open review threads and failing checks.
     private func startFromPull() {
         guard let ref = shownPull else { return }
         let detail = pullDetails[ref.description]
@@ -2562,7 +1665,7 @@ final class AppModel {
         }
         reader = nil
         overlay = nil
-        openStartWork(prompt: prompt)
+        openNewTask(title: detail?.title ?? "PR \(ref.number)", context: prompt)
     }
 
     /// Fetches a PR's detail off the main actor. Reports checks that went from failing to passing.
@@ -2572,7 +1675,6 @@ final class AppModel {
             guard let detail = try? await GitHub.pullDetail(ref) else { return }
             let failedBefore = pullDetails[ref.description]?.failingChecks.map(\.name) ?? []
             commit(.pullDetailFetched(detail))
-            trackLinked(detail)
             let fixed = failedBefore.filter { name in
                 !detail.failingChecks.contains { $0.name == name } && !detail.checks.pendingNames.contains(name)
             }
@@ -2580,12 +1682,12 @@ final class AppModel {
         }
     }
 
-    /// Details for the PRs active sessions track: the one on screen every time, the others only when the last sync
+    /// Details for the tasks' PRs: the one on screen every time, the others only when the last sync
     /// says their checks or threads moved, or every fifth poll.
     private func refreshTrackedDetails() {
         let open = [overlay == .pr ? overlayPull : nil, reader].compactMap(\.self)
         let now = Date()
-        let refs = Set(sessions.flatMap(\.trackedPRs)).filter { ref in
+        let refs = Set(list.ordered.compactMap(\.pull)).filter { ref in
             open.contains(ref) || syncSchedule.needsDetail(
                 pull: github.pull(ref), detail: pullDetails[ref.description], now: now
             )
@@ -2602,15 +1704,8 @@ final class AppModel {
         PullStatus.of(pull: github.pull(ref), detail: pullDetails[ref.description])
     }
 
-    /// The most urgent state among a session's PRs, for its sidebar row.
-    func pullStatus(of session: Session) -> PullStatus? {
-        session.trackedPRs.map(pullStatus(for:)).min { $0.urgency < $1.urgency }
-    }
-
-    /// The group a session is shown in.
-    func sessionGroup(_ session: Session) -> SessionGroup {
-        list.group(of: session.id) ?? SessionGroup.of(session)
-    }
+    /// Where the task's PR stands, for its sidebar row.
+    func pullStatus(of task: WorkTask) -> PullStatus? { task.pull.map(pullStatus(for:)) }
 
     // MARK: Diff overlay
 
@@ -2634,37 +1729,30 @@ final class AppModel {
             overlay = nil
             return
         }
-        guard currentSession != nil else {
-            flash = "no session"
+        guard currentTask != nil else {
+            flash = "no task"
             return
         }
         overlay = .diff
         loadDiff()
     }
 
-    /// Diffs every worktree of the current session (cross-repo sessions show each repo's files), off the main actor.
+    /// Diffs the current task's checkout against main, off the main actor.
     private func loadDiff() {
-        guard let session = currentSession else { return }
-        let targets = worktrees.filter { session.owns($0) }
-            .map { worktree in (worktree, repos.first { $0.repo == worktree.repo }?.defaultBranch ?? "main") }
-        guard !targets.isEmpty, !isFixture else {
-            diffFiles = isFixture ? Fixtures.diff : []
-            diffCommits = isFixture ? Fixtures.diffCommits : []
-            if !isFixture { flash = "no worktree for \(session.branch) yet" }
+        guard let task = currentTask else { return }
+        guard !isFixture else {
+            diffFiles = Fixtures.diff
+            diffCommits = Fixtures.diffCommits
             return
         }
+        let directory = task.directory
         let scope = diffScope
         diffLoading = true
         diffTask?.cancel()
         diffTask = Task {
             defer { diffLoading = false }
-            var files: [FileDiff] = []
-            for (worktree, base) in targets {
-                if let diff = try? await Git.diff(at: worktree.path, scope: scope, base: base, repo: worktree.repo) {
-                    files += diff
-                }
-            }
-            let commits = await (try? Git.commits(at: targets[0].0.path, base: targets[0].1)) ?? []
+            let files = await (try? Git.diff(at: directory, scope: scope, base: "main", repo: Kibana.repo)) ?? []
+            let commits = await (try? Git.commits(at: directory, base: "main")) ?? []
             guard !Task.isCancelled else { return }
             diffFiles = files
             diffCommits = commits
@@ -2732,20 +1820,14 @@ final class AppModel {
         flash = "copied \(location.path):\(location.line)"
     }
 
-    private func worktreePath(for file: FileDiff) -> String? {
-        guard let session = currentSession else { return nil }
-        return worktrees.first { session.owns($0) && $0.repo == (file.repo ?? session.repos.first) }?.path
-    }
-
     private func openDiffFile() {
-        guard let file = currentDiffFile, let root = worktreePath(for: file) else { return }
+        guard let file = currentDiffFile, let root = currentTask?.directory else { return }
         NSWorkspace.shared.open(URL(fileURLWithPath: root).appendingPathComponent(file.path))
     }
 
     /// Types a question about the hunk into the agent's pane, unsent, and switches to INSERT there to finish it.
     private func askAboutHunk() {
-        guard let location = diffLocation, let session = currentSession, let layout = layouts[session.id],
-              let (tabIndex, paneID) = agentPane(in: layout)
+        guard let location = diffLocation, let task = currentTask, let (tabIndex, paneID) = layouts[task.id]?.agentPane
         else { return }
         TerminalSurfaces.shared.typeText(
             "About \(location.path) around line \(location.line) (the hunk in my diff): ",
@@ -2798,9 +1880,7 @@ final class AppModel {
 
     private func resetCursor(_ view: AppView) {
         switch view {
-        case .sessions: cursor = 0
-        case .history: historyCursor = 0
-        case .repos: repoCursor = 0
+        case .tasks: cursor = 0
         case .inbox, .issues, .prs: itemCursor[view] = 0
         }
     }
@@ -2808,135 +1888,66 @@ final class AppModel {
     /// How many rows the current view's filter leaves.
     var filterMatches: Int {
         switch view {
-        case .sessions: list.ordered.count
-        case .history: historyRows.count
-        case .repos: worktreeRows.count
+        case .tasks: list.ordered.count
         case .inbox, .issues, .prs: itemIDs(view).count
         }
     }
 
-    // MARK: Start work
+    // MARK: New task
 
-    private func openStartWork(prompt: String) {
-        startWorkError = nil
-        let context = startContext
-        if view == .history { view = .sessions }
-        startWork = StartWorkForm(
-            repos: repos, lastWorked: StartWork.lastWorked(sessions: sessions, closed: history), context: context,
-            settings: settings, prompt: prompt, integration: integration
-        )
+    /// `o`: the new task dialog, `title` typed in already; `context` is the agent's first prompt.
+    private func openNewTask(title: String = "", context: String = "") {
+        newTask = NewTaskForm(title: title, context: context)
     }
 
-    /// What the cursor is on, as a hint for Start work's repo: the session, worktree, history entry, or the items
-    /// `s` would start from (else the one under the cursor).
-    private var startContext: StartContext? {
-        func items(_ found: [(repo: Repo, label: String)]) -> StartContext? {
-            guard let first = found.first else { return nil }
-            var ids: [String] = []
-            for item in found where !ids.contains(item.repo.slug) {
-                ids.append(item.repo.slug)
-            }
-            return StartContext(repos: ids, label: found.count == 1 ? first.label : "\(found.count) items")
-        }
-        switch view {
-        case .sessions:
-            return currentSession.map { session in
-                StartContext(
-                    repos: session.repos.map(\.slug), label: session.worktreeName
-                )
-            }
-        case .repos:
-            guard worktreeRows.indices.contains(repoCursor) else { return nil }
-            let row = worktreeRows[repoCursor]
-            return StartContext(
-                repos: [row.repo.slug], label: row.branch ?? row.repo.name
-            )
-        case .history:
-            return selectedHistory.map { entry in
-                StartContext(
-                    repos: entry.session.repos.map(\.slug),
-                    label: entry.session.worktreeName
-                )
-            }
-        case .inbox:
-            let ids = Set(actionIDs(.inbox))
-            return items(inboxRows.filter { ids.contains($0.id) }.map { item in
-                (item.repo, item.number.map { "\(item.repo.name)#\($0)" } ?? item.repo.name)
-            })
-        case .issues:
-            let ids = Set(actionIDs(.issues))
-            return items(issueRows.filter { ids.contains($0.id) }.map { ($0.repo, "\($0.repo.name)#\($0.number)") })
-        case .prs:
-            let ids = Set(actionIDs(.prs))
-            return items(pullRows.filter { ids.contains($0.id) }.map {
-                ($0.ref.repo, "\($0.ref.repo.name)#\($0.ref.number)")
-            })
-        }
-    }
+    func cancelNewTask() { newTask = nil }
 
-    private func handleStartWork(_ stroke: KeyStroke) {
-        guard var form = startWork else { return }
+    private func handleNewTask(_ stroke: KeyStroke) {
+        guard var form = newTask else { return }
         if stroke == KeyStroke("v", .command), let text = NSPasteboard.general.string(forType: .string) {
             form.paste(text)
-            startWork = form
+            newTask = form
             return
         }
         switch form.handle(stroke) {
         case .handled, .ignored:
-            startWork = form
+            newTask = form
         case .cancel:
-            startWork = nil
-        case let .start(plan):
-            startWork = form
-            begin(plan)
+            newTask = nil
+        case let .create(title, context):
+            newTask = nil
+            createTask(title: title, context: context)
         }
     }
 
-    private func begin(_ plan: StartWorkPlan) {
-        guard !startingWork else { return }
+    /// A new In Progress task with its agent in the main checkout, which takes your keys.
+    private func createTask(title: String, context: String) {
         guard !isFixture else {
             flash = "fixture: no IO"
-            startWork = nil
             return
         }
-        startingWork = true
-        let settings = settings
-        Task {
-            defer { startingWork = false }
-            do {
-                let changes = try await StartWork.execute(plan, settings: settings)
-                for case let .layoutChanged(_, layout) in changes {
-                    for pane in layout.tabs.flatMap(\.tree.panes) where pane.command != nil {
-                        TerminalSurfaces.shared.autostartPanes.insert(pane.id)
-                    }
-                }
-                commit(changes)
-                startWork = nil
-                view = .sessions
-                if case let .sessionUpserted(session)? = changes.first(where: {
-                    if case .sessionUpserted = $0 { true } else { false }
-                }) {
-                    select(sessionID: session.id)
-                }
-                // A session starts with its agent pane taking your keys.
-                if let tab = currentTab, let agent = tab.tree.panes.first(where: { $0.role == .agent }) {
-                    focusPane(agent.id)
-                }
-                enterInsert()
-                flash = "started \(plan.name)"
-            } catch {
-                flash = "start work failed: \(error)"
-                startWorkError = "start failed: \(error)"
+        let changes = NewTask.start(title: title, context: context, settings: settings, integration: integration)
+        for case let .layoutChanged(_, layout) in changes {
+            for pane in layout.panes where pane.command != nil {
+                TerminalSurfaces.shared.autostartPanes.insert(pane.id)
             }
         }
+        commit(changes)
+        view = .tasks
+        if case let .taskUpserted(task)? = changes.first { select(taskID: task.id) }
+        if let tab = currentTab, let agent = tab.tree.panes.first(where: { $0.role == .agent }) {
+            focusPane(agent.id)
+        }
+        enterInsert()
+        flash = "started \(title)"
     }
 
     // MARK: Panes and tabs
 
-    private func updateLayout(_ edit: (inout SessionLayout) -> Void) {
-        guard let id = currentSession?.id, var layout = layouts[id] else { return }
+    private func updateLayout(_ edit: (inout TaskLayout) -> Void) {
+        guard let id = currentTask?.id, var layout = layouts[id] else { return }
         edit(&layout)
-        commit(.layoutChanged(session: id, layout))
+        commit(.layoutChanged(task: id, layout))
     }
 
     private func updateTab(_ edit: (inout PaneTab) -> Void) {
@@ -2947,30 +1958,29 @@ final class AppModel {
     }
 
     private func split(_ axis: PaneTree.Axis) {
-        guard let session = currentSession else { return }
-        let directory = currentTab?.tree.panes.first?.directory ?? NSHomeDirectory()
-        updateTab { $0.split(axis, with: PaneSpec(role: .shell, title: "zsh \(session.branch)", directory: directory)) }
+        guard let task = currentTask else { return }
+        let directory = currentTab?.tree.panes.first?.directory ?? task.directory
+        updateTab { $0.split(axis, with: PaneSpec(role: .shell, title: "zsh", directory: directory)) }
     }
 
     private func closePane() {
-        guard let session = currentSession, let closing = currentTab?.focused else { return }
-        removePane(closing, in: session.id)
+        guard let task = currentTask, let closing = currentTab?.focused else { return }
+        removePane(closing, in: task.id)
     }
 
-    /// Takes a pane out of a session's layout (and its tab, when it was the tab's last). A session left with no
-    /// terminal at all asks what to do with it.
-    private func removePane(_ paneID: String, in sessionID: String) {
-        guard var layout = layouts[sessionID], layout.removePane(paneID) else { return }
-        commit(.layoutChanged(session: sessionID, layout))
+    /// Takes a pane out of a task's layout (and its tab, when it was the tab's last).
+    private func removePane(_ paneID: String, in taskID: String) {
+        guard var layout = layouts[taskID], layout.removePane(paneID) else { return }
+        commit(.layoutChanged(task: taskID, layout))
         TerminalSurfaces.shared.close(paneID: paneID)
-        if layout.tabs.isEmpty { sessionEmptied(sessionID) }
+        if layout.tabs.isEmpty { taskEmptied(taskID) }
     }
 
     /// A pane's terminal ended (its shell exited): the pane closes, as in any terminal.
     ///
-    /// Only one at a time, though. Exits arrive in a short batch first: when terminals in more than one session end
+    /// Only one at a time, though. Exits arrive in a short batch first: when terminals in more than one task end
     /// together, they were lost (heed quitting or being replaced, the terminal runtime failing), not closed, and no
-    /// session is touched; they come back on the next launch. And none count while heed quits.
+    /// task is touched; they come back on the next launch. And none count while heed quits.
     func paneExited(_ paneID: String) {
         guard !terminating else { return }
         exitedPanes.insert(paneID)
@@ -2983,22 +1993,20 @@ final class AppModel {
         }
     }
 
-    /// A batch of ended terminals: closed when they are all one session's, left alone when they span sessions.
+    /// A batch of ended terminals: closed when they are all one task's, left alone when they span tasks.
     func panesEnded(_ batch: Set<String>) {
         guard !terminating else { return }
-        let owners = batch.compactMap { pane in
-            layouts.first { $0.value.tabs.contains { $0.tree.panes.contains { $0.id == pane } } }
-                .map { (pane: pane, session: $0.key) }
-        }
-        guard Set(owners.map(\.session)).count <= 1 else {
+        let domain = currentDomain
+        let owners = batch.compactMap { pane in domain.task(ofPane: pane).map { (pane: pane, task: $0) } }
+        guard Set(owners.map(\.task)).count <= 1 else {
             NSLog(
-                "heed: \(owners.count) terminals in \(Set(owners.map(\.session)).count) sessions ended at once; sessions left as they were"
+                "heed: \(owners.count) terminals in \(Set(owners.map(\.task)).count) tasks ended at once; tasks left as they were"
             )
-            flash = "\(owners.count) terminals ended at once; sessions kept, they reopen on the next launch"
+            flash = "\(owners.count) terminals ended at once; tasks kept, they reopen on the next launch"
             return
         }
         for owner in owners {
-            removePane(owner.pane, in: owner.session)
+            removePane(owner.pane, in: owner.task)
         }
     }
 
@@ -3010,67 +2018,33 @@ final class AppModel {
 
     /// `tab.close`, or a tab's ×: every pane in it. A tab with the agent in it asks first.
     func closeTab(_ index: Int? = nil) {
-        guard let session = currentSession, var layout = layouts[session.id] else { return }
+        guard let task = currentTask, var layout = layouts[task.id] else { return }
         let index = index ?? layout.activeTab
         guard layout.tabs.indices.contains(index) else { return }
         let panes = layout.tabs[index].tree.panes
         let close: @MainActor () -> Void = { [weak self] in
-            guard let self, var layout = layouts[session.id], layout.tabs.indices.contains(index) else { return }
+            guard let self, var layout = layouts[task.id], layout.tabs.indices.contains(index) else { return }
             layout.removeTab(at: index)
-            commit(.layoutChanged(session: session.id, layout))
+            commit(.layoutChanged(task: task.id, layout))
             for pane in panes {
                 TerminalSurfaces.shared.close(paneID: pane.id)
             }
-            if layout.tabs.isEmpty { sessionEmptied(session.id) }
+            if layout.tabs.isEmpty { taskEmptied(task.id) }
         }
         guard panes.contains(where: { $0.role == .agent }) else { return close() }
         layout.activeTab = index
         ask(Confirmation(
             title: "Close the \(layout.tabs[index].title) tab?",
-            lines: ["The agent in it stops; the session and its worktree stay"],
+            lines: ["The agent in it stops; the task and its worktree stay"],
             accept: "Close"
         ) { close() })
     }
 
-    /// Every terminal of a session has gone. Delete it and its worktree, close it (worktree kept), or keep it with a
-    /// fresh shell.
-    private func sessionEmptied(_ id: String) {
-        if mode == .insert, currentSession?.id == id { engine.enter(.normal) }
-        guard let session = sessions.first(where: { $0.id == id }) else { return }
-        let (removals, kept, lines) = deletion(of: session)
-        // ↩ keeps the session: this dialog follows an exit, not a choice, so the safe answer is the default one.
-        // Deleting takes its own key.
-        ask(Confirmation(
-            title: "Every terminal in \(session.title) has closed.",
-            lines: ["Keep opens a new shell in it; Close and Delete move it to History"]
-                + lines.map { "Delete would \($0.prefix(1).lowercased())\($0.dropFirst())" },
-            kept: kept,
-            accept: "Keep",
-            cancel: "Keep",
-            destructive: false,
-            action: { [weak self] in self?.reopenShell(in: id) },
-            alternatives: [
-                .init(label: "Close, keep the worktree", key: "c") { [weak self] in self?.closeSession(id) },
-                .init(label: "Delete", key: "d", destructive: true) { [weak self] in
-                    self?.deleteSession(id, removals: removals, kept: kept)
-                },
-            ],
-            onCancel: { [weak self] in self?.reopenShell(in: id) }
-        ))
-    }
-
-    /// Keep: the session gets a shell tab again, in its worktree.
-    private func reopenShell(in id: String) {
-        guard let session = sessions.first(where: { $0.id == id }) else { return }
-        let directory = worktrees.first { session.owns($0) }?.path
-            ?? NSHomeDirectory()
-        var layout = layouts[id] ?? SessionLayout(tabs: [])
-        layout.tabs.append(PaneTab(title: "shell", tree: .leaf(PaneSpec(
-            role: .shell, title: "zsh \(session.branch)", directory: directory
-        ))))
-        layout.activeTab = layout.tabs.count - 1
-        commit(.layoutChanged(session: id, layout))
-        flash = "kept \(session.title), with a new shell"
+    /// Every terminal of a task has gone. The task stays (it ends in its note, not here); `t` opens a shell in it.
+    private func taskEmptied(_ id: String) {
+        if mode == .insert, currentTask?.id == id { engine.enter(.normal) }
+        guard let task = task(id) else { return }
+        flash = "every terminal in \(task.title) has closed; \(keyText(for: "tab.new")) opens a shell"
     }
 
     private func cycleTab(by delta: Int) {
@@ -3082,7 +2056,9 @@ final class AppModel {
     }
 
     private func newTab() {
-        let directory = currentTab?.tree.panes.first?.directory ?? NSHomeDirectory()
+        guard let task = currentTask else { return }
+        if layouts[task.id] == nil { commit(.layoutChanged(task: task.id, TaskLayout(tabs: []))) }
+        let directory = currentTab?.tree.panes.first?.directory ?? task.directory
         updateLayout { layout in
             layout.tabs.append(PaneTab(title: "shell", tree: .leaf(PaneSpec(
                 role: .shell, title: "zsh", directory: directory
@@ -3113,7 +2089,7 @@ final class AppModel {
     /// A command's key as text for hints: as bound, else `:command` (what still runs it).
     func keyText(for command: String) -> String { keyLabel(for: command) ?? ":\(command)" }
 
-    /// The key for a command as you have it bound: NORMAL first, then the view bindings (`Iw` lives in Sessions').
+    /// The key for a command as you have it bound: NORMAL first, then the view bindings.
     func keyLabel(for command: String) -> String? {
         if let normal = keyCap(for: command) { return normal }
         for (_, keymap) in engine.scopedKeymaps.sorted(by: { $0.key < $1.key }) {
@@ -3127,7 +2103,7 @@ final class AppModel {
     /// Reopens the main window after it was closed (set by the window from SwiftUI's openWindow).
     var reopenWindow: (() -> Void)?
 
-    /// The Dock badge and the menu bar item, from the sessions that need you.
+    /// The Dock badge and the menu bar item, from the tasks that need you.
     private func updateOutsideWindow() {
         // Fixtures stay out of the Dock and menu bar, unless HEED_OUTSIDE asks (to check them against fixture states).
         guard !isFixture || ProcessInfo.processInfo.environment["HEED_OUTSIDE"] != nil else { return }
@@ -3147,46 +2123,44 @@ final class AppModel {
         }
     }
 
-    /// A session chosen outside the window (the menu bar): Heed in front, on that session.
-    func show(sessionID: String) {
-        view = .sessions
-        select(sessionID: sessionID)
+    /// A task chosen outside the window (the menu bar): Heed in front, on that task.
+    func show(taskID: String) {
+        view = .tasks
+        select(taskID: taskID)
         activateHeed()
     }
 
     // MARK: Mouse
 
     /// Clicking into a terminal means typing there: focus that pane and enter INSERT. Without this a click left
-    /// NORMAL on, and the next letters ran as commands (x closes the session).
+    /// NORMAL on, and the next letters ran as commands (dd deleted a line of the list).
     func clickedPane(_ paneID: String) {
-        guard startWork == nil, resume == nil, firstRun == nil, !filtering else { return }
+        guard newTask == nil, resume == nil, firstRun == nil, !filtering else { return }
         if currentTab?.focused != paneID { focusPane(paneID) }
         enterInsert()
     }
 
     /// Whether a click on a list may act: not while a dialog or form has the keyboard.
     private var clicksReachLists: Bool {
-        startWork == nil && confirmation == nil && resume == nil && firstRun == nil && importPicker == nil
-            && pathImport == nil
+        newTask == nil && confirmation == nil && resume == nil && firstRun == nil && linkPicker == nil
     }
 
-    /// A click on a session in the sidebar or the rail selects it; a double-click also types into its agent pane.
-    func clickSession(_ id: String, insert: Bool = false) {
+    /// A click on a task in the sidebar or the rail selects it; a double-click also types into its agent pane.
+    func clickTask(_ id: String, insert: Bool = false) {
         guard clicksReachLists else { return }
         clickedOutsideTerminal()
-        select(sessionID: id)
-        guard insert, let layout = layouts[id], let (tabIndex, paneID) = agentPane(in: layout) else { return }
+        select(taskID: id)
+        guard insert, let (tabIndex, paneID) = layouts[id]?.agentPane else { return }
         selectTab(tabIndex)
         clickedPane(paneID)
     }
 
-    /// A click on a list row (Inbox, Issues, PRs, Watch, Repos, History) moves the cursor there; a double-click opens
-    /// it, as ↩ does.
+    /// A click on a list row (Inbox, Issues, PRs) moves the cursor there; a double-click opens it, as ↩ does.
     func clickRow(_ list: AppView, _ index: Int, open: Bool = false) {
         guard clicksReachLists, view == list else { return }
         clickedOutsideTerminal()
         setRow(index)
-        if open { openSelected() }
+        if open { openReader() }
     }
 
     /// A click outside any terminal (a list, the sidebar, the title bar) hands the keyboard back to Heed.
@@ -3210,7 +2184,7 @@ final class AppModel {
 
 /// The Issues chips (`t`).
 enum IssueFilter: String, CaseIterable {
-    case all = "All", assigned = "Assigned", mentioned = "Mentioned", watched = "Watched repos"
+    case all = "All", assigned = "Assigned", mentioned = "Mentioned"
 
     var next: IssueFilter {
         let all = Self.allCases
@@ -3222,7 +2196,6 @@ enum IssueFilter: String, CaseIterable {
         case .all: true
         case .assigned: issue.assigned
         case .mentioned: issue.mentioned
-        case .watched: !issue.involvesYou
         }
     }
 }
@@ -3251,7 +2224,7 @@ enum InboxFilter: String, CaseIterable {
 }
 
 enum HintTarget: Hashable {
-    case session(String)
+    case task(String)
     case pane(String)
     /// A row in a view's list, by position.
     case row(AppView, Int)

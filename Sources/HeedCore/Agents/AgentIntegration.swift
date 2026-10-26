@@ -3,19 +3,15 @@ import Foundation
 /// How Claude reports to Heed, and what Heed adds to its command line so it does. Hooks are passed per run
 /// (`--settings`), never written into the user's own Claude config. Other agents run without status.
 public enum AgentIntegration {
-    /// Extra arguments for launching `agent` in `session`, placed right after the agent's command: its hook wiring,
-    /// and the session id when Heed assigns it. When `resuming`, only the hook wiring.
+    /// Extra arguments for launching `agent` in an agent tab, placed right after the agent's command: its hook wiring,
+    /// and the tab's own Claude session id (`--session-id`), which Heed picks so the tab can resume from the start.
+    /// When `resuming`, only the hook wiring.
     public static func launchArguments(
-        agent: AgentProfile, sessionID: String, files: IntegrationFiles, resuming: Bool = false
+        agent: AgentProfile, claudeSessionID: String, files: IntegrationFiles?, resuming: Bool = false
     ) -> [String] {
-        var args: [String] = agent.name == "claude" ? ["--settings", files.claudeSettings] : []
-        if !resuming, let flag = agent.sessionIDFlag { args += [flag, sessionID] }
+        var args: [String] = agent.name == "claude" ? files.map { ["--settings", $0.claudeSettings] } ?? [] : []
+        if !resuming, let flag = agent.sessionIDFlag { args += [flag, claudeSessionID] }
         return args
-    }
-
-    /// The agent's own session id when Heed assigns it at launch, else nil until its start hook reports one.
-    public static func preassignedSessionID(agent: AgentProfile, sessionID: String) -> String? {
-        agent.sessionIDFlag == nil ? nil : sessionID
     }
 
     /// Whether the agent still has session `id` for `directory`: true or false when Heed can tell (claude keeps

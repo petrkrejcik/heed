@@ -2,7 +2,7 @@ import HeedCore
 import SwiftUI
 
 /// Settings (⌘,): a view of config.toml that writes single values back into it, comments and layout kept. Key
-/// bindings are shown but edited only in the file. design/screens/Agents.png, Colors.png.
+/// bindings are shown but edited only in the file. design/screens/Agents.png.
 struct SettingsView: View {
     @Environment(AppModel.self) private var model
     @State private var section: Section
@@ -16,17 +16,16 @@ struct SettingsView: View {
         /// `:settings.open <name>`: the first word of the section's title, or a short name.
         static func named(_ name: String) -> Section? {
             let key = name.lowercased()
-            let short: [String: Section] = [
-                "general": .general, "agents": .agents, "colors": .colors, "repos": .colors, "orgs": .colors,
-                "worktrees": .worktrees, "keys": .keys, "modes": .keys,
-            ]
+            let short: [String: Section] = ["general": .general, "agents": .agents, "keys": .keys, "modes": .keys]
             return short[key]
         }
 
-        case general = "General", agents = "Agents", colors = "Repos", worktrees = "Worktrees"
-        case keys = "Keys & modes"
+        case general = "General", agents = "Agents", keys = "Keys & modes"
 
         var id: String { rawValue }
+
+        /// The name `:settings.open` takes.
+        var name: String { rawValue.split(separator: " ").first.map { $0.lowercased() } ?? rawValue }
     }
 
     var body: some View {
@@ -77,8 +76,6 @@ struct SettingsView: View {
                     switch section {
                     case .general: GeneralSettings()
                     case .agents: AgentSettings()
-                    case .colors: OrgRepoSettings()
-                    case .worktrees: WorktreeSettings()
                     case .keys: KeySettings()
                     }
                 }
@@ -162,10 +159,10 @@ private struct GeneralSettings: View {
         let work = model.config.work
         VStack(alignment: .leading, spacing: 16) {
             Text("General").font(Theme.ui(17, weight: .semibold))
-            GroupLabel(title: "Sessions")
+            GroupLabel(title: "Tasks")
             Field(
                 label: "Resume on launch",
-                detail: "Ask lists the sessions that were open; Always resumes them; Never starts empty."
+                detail: "Ask lists the tasks whose agents were open; Always resumes them; Never starts empty."
             ) {
                 Picker("", selection: Binding(
                     get: { work.resumeOnLaunch },
@@ -179,11 +176,11 @@ private struct GeneralSettings: View {
             }
             Field(
                 label: "Continue prompt",
-                detail: "Typed into a resumed session that was mid-turn, once idle. Empty turns it off."
+                detail: "Typed into a resumed agent that was mid-turn, once idle. Empty turns it off."
             ) {
                 ConfigTextField(path: ["sessions", "continue_prompt"], value: work.continuePrompt)
             }
-            Field(label: "Shell split", detail: "New sessions open a shell beside the agent; off is one pane.") {
+            Field(label: "Shell split", detail: "New agent tabs open a shell beside the agent; off is one pane.") {
                 Toggle("", isOn: Binding(
                     get: { work.shellSplit }, set: { model.setConfig(["sessions", "shell_split"], .bool($0)) }
                 ))
@@ -210,7 +207,7 @@ private struct GeneralSettings: View {
             GroupLabel(title: "Outside the window")
             Field(
                 label: "Menu bar item",
-                detail: "How many sessions need you, those sessions and Open Heed. With it on, closing the window keeps Heed running."
+                detail: "How many tasks need you, those tasks and Open Heed. With it on, closing the window keeps Heed running."
             ) {
                 Toggle("", isOn: Binding(
                     get: { model.config.showMenuBarItem }, set: { model.setConfig(["ui", "menu_bar"], .bool($0)) }
@@ -220,7 +217,7 @@ private struct GeneralSettings: View {
             }
             Field(
                 label: "Dock state",
-                detail: "A badge on the Dock icon in the state's colour when sessions need you."
+                detail: "A badge on the Dock icon in the state's colour when tasks need you."
             ) {
                 Toggle("", isOn: Binding(
                     get: { model.config.showDockState }, set: { model.setConfig(["ui", "dock_state"], .bool($0)) }
@@ -238,20 +235,22 @@ private struct GeneralSettings: View {
                 }
                 .frame(width: 160)
             }
+            GroupLabel(title: "Pinned commands")
             Field(
-                label: "Issues",
-                detail: "For repos without their own setting: every open issue, or only yours (assigned or mentioning you)."
+                label: "[commands]",
+                detail: "Each opens as a tab in a task's worktree when the worktree is added. Edited in config.toml."
             ) {
-                Picker("", selection: Binding(
-                    get: { model.config.issues.fallback },
-                    set: { model.setConfig(["issues", "default"], .string($0.rawValue)) }
-                )) {
-                    Text("All issues").tag(IssueVisibility.all)
-                    Text("Only yours").tag(IssueVisibility.involved)
+                VStack(alignment: .leading, spacing: 4) {
+                    if work.commands.isEmpty {
+                        Text("None.").font(Theme.ui(12)).foregroundStyle(Theme.fg3)
+                    }
+                    ForEach(work.commands, id: \.name) { command in
+                        HStack(spacing: 10) {
+                            Text(command.name).font(Theme.mono(12))
+                            Text(command.command).font(Theme.mono(12)).foregroundStyle(Theme.fg2)
+                        }
+                    }
                 }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .frame(width: 220)
             }
             GroupLabel(title: "Tools")
             Field(label: "git", detail: "Empty detects it. A path, or a name looked up on the search path.") {
@@ -286,7 +285,7 @@ private struct AgentSettings: View {
                 Field(label: "Command") {
                     ConfigTextField(path: ["agents", agent.name, "command"], value: agent.command)
                 }
-                Field(label: "Prompt delivery", detail: "How Start work hands the prompt over.") {
+                Field(label: "Prompt delivery", detail: "How a new task hands its first prompt over.") {
                     Picker("", selection: Binding(
                         get: { agent.prompt },
                         set: { model.setConfig(["agents", agent.name, "prompt"], .string($0.rawValue)) }
@@ -297,12 +296,9 @@ private struct AgentSettings: View {
                     .labelsHidden()
                     .frame(width: 300)
                 }
-                Field(label: "Plan first", detail: "Arguments added when Start work's “Plan first” is on.") {
-                    ConfigTextField(path: ["agents", agent.name, "plan"], value: agent.planArguments ?? "")
-                }
                 Field(
                     label: "Resume",
-                    detail: "{id} is the agent's own session id. Empty: sessions start fresh after a restart."
+                    detail: "{id} is the agent tab's own Claude session id. Empty: agents start fresh after a restart."
                 ) {
                     ConfigTextField(path: ["agents", agent.name, "resume"], value: agent.resumeArguments ?? "")
                 }
@@ -325,40 +321,6 @@ private struct AgentSettings: View {
     }
 }
 
-private struct WorktreeSettings: View {
-    @Environment(AppModel.self) private var model
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("Worktrees").font(Theme.ui(17, weight: .semibold))
-            Field(label: "Worktree root", detail: "New worktrees go to <root>/<repo>/<name>.") {
-                ConfigTextField(path: ["worktrees", "root"], value: model.config.work.worktreeRoot)
-            }
-            Field(label: "Repo roots", detail: "Comma separated; scanned two levels deep.") {
-                RootsField(roots: model.config.work.repoRoots)
-            }
-        }
-    }
-}
-
-private struct RootsField: View {
-    @Environment(AppModel.self) private var model
-    let roots: [String]
-    @State private var text = ""
-
-    var body: some View {
-        TextField("", text: $text)
-            .textFieldStyle(.roundedBorder)
-            .font(Theme.mono(12.5))
-            .onAppear { text = roots.joined(separator: ", ") }
-            .onSubmit {
-                let list = text.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
-                    .filter { !$0.isEmpty }
-                model.setConfig(["worktrees", "repo_roots"], .array(list.map { .string($0) }))
-            }
-    }
-}
-
 private struct KeySettings: View {
     @Environment(AppModel.self) private var model
 
@@ -367,7 +329,7 @@ private struct KeySettings: View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Keys & modes").font(Theme.ui(17, weight: .semibold))
             Text(
-                "Bindings are edited in config.toml ([keys.normal], [keys.repos], ...): every binding names a command, the same names : completes."
+                "Bindings are edited in config.toml ([keys.normal], [keys.tasks], ...): every binding names a command, the same names : completes."
             )
             .font(Theme.ui(12))
             .foregroundStyle(Theme.fg3)

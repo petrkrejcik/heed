@@ -32,9 +32,11 @@ struct ResumeView: View {
                         .font(Theme.ui(12))
                         .foregroundStyle(Theme.fg3)
                 }
-                Text("\(form.candidates.count) sessions were open when Heed quit. Parked ones stay closed.")
-                    .font(Theme.ui(12.5))
-                    .foregroundStyle(Theme.fg2)
+                Text(
+                    "\(form.candidates.count) task\(form.candidates.count == 1 ? " was" : "s were") open when Heed quit. Idle ones stay closed."
+                )
+                .font(Theme.ui(12.5))
+                .foregroundStyle(Theme.fg2)
             }
             .padding(22)
 
@@ -44,7 +46,7 @@ struct ResumeView: View {
 
             HStack(alignment: .top, spacing: 28) {
                 VStack(alignment: .leading, spacing: 8) {
-                    SectionHeader(title: "After resuming a session that was mid-turn")
+                    SectionHeader(title: "After resuming an agent that was mid-turn")
                     Text(model.settings.continuePrompt.isEmpty ? "(off)" : model.settings.continuePrompt)
                         .font(Theme.mono(12))
                         .padding(.horizontal, 10)
@@ -57,8 +59,9 @@ struct ResumeView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     SectionHeader(title: "What comes back")
                     Text("""
-                    Worktrees, tabs and split layout, and every shell in its old directory. Processes inside shells \
-                    do not survive a restart, so tests and watchers need starting again.
+                    Tabs and split layout, and every shell in its old directory. Each agent tab resumes its own \
+                    Claude session. Processes inside shells do not survive a restart, so Kibana, tests and watchers \
+                    need starting again.
                     """)
                     .font(Theme.ui(12))
                     .foregroundStyle(Theme.fg2)
@@ -82,7 +85,7 @@ struct ResumeView: View {
                 .padding(.vertical, 8)
                 .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Theme.line))
                 HStack(spacing: 6) {
-                    Text("Resume \(form.selected.count) session\(form.selected.count == 1 ? "" : "s")")
+                    Text("Resume \(form.selected.count) task\(form.selected.count == 1 ? "" : "s")")
                         .fontWeight(.medium)
                     KeyCap(text: "↩")
                 }
@@ -106,12 +109,12 @@ struct ResumeView: View {
             Image(systemName: selected ? "checkmark.square.fill" : "square")
                 .font(.system(size: 14))
                 .foregroundStyle(selected ? Theme.fg : Theme.fg3)
-            StateGlyph(state: candidate.session.state.state, guessed: candidate.session.state.source == .guessed)
+            StateGlyph(state: candidate.state.state, guessed: candidate.state.source == .guessed)
                 .padding(.top, 2)
             VStack(alignment: .leading, spacing: 3) {
-                Text(candidate.session.title).font(Theme.ui(13, weight: .medium)).lineLimit(1)
+                Text(candidate.task.title).font(Theme.ui(13, weight: .medium)).lineLimit(1)
                 Text(
-                    "\(candidate.session.agent) · \(candidate.paneCount) pane\(candidate.paneCount == 1 ? "" : "s") · \(candidate.summary)"
+                    "\(candidate.panes.count) agent\(candidate.panes.count == 1 ? "" : "s") · \(candidate.paneCount) pane\(candidate.paneCount == 1 ? "" : "s") · \(candidate.summary)"
                 )
                 .font(Theme.ui(11.5))
                 .foregroundStyle(Theme.fg3)
@@ -128,10 +131,10 @@ struct ResumeView: View {
                 ))
                 .fixedSize()
             VStack(alignment: .leading, spacing: 4) {
-                Text(candidate.command)
+                Text(candidate.panes.map(\.display).joined(separator: "\n"))
                     .font(Theme.mono(11.5))
                     .foregroundStyle(selected ? Theme.fg : Theme.fg3)
-                    .lineLimit(2)
+                    .lineLimit(candidate.panes.count)
                     .truncationMode(.middle)
                     .padding(.horizontal, 10)
                     .padding(.vertical, 6)

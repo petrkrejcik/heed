@@ -9,10 +9,10 @@ struct Sidebar: View {
         let list = model.list
         VStack(spacing: 0) {
             HStack {
-                SectionHeader(title: "Sessions")
+                SectionHeader(title: "Tasks")
                 Spacer()
                 CollapseButton(systemImage: "sidebar.left", key: "zs") { model.toggleSidebar() }
-                FilterPill(view: .sessions)
+                FilterPill(view: .tasks)
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 14)
@@ -23,53 +23,45 @@ struct Sidebar: View {
                         ForEach(list.sections, id: \.group) { section in
                             VStack(alignment: .leading, spacing: 0) {
                                 groupHeader(section, pins: list.pins.count)
-                                ForEach(section.sessions) { session in
-                                    let index = list.ordered.firstIndex(of: session) ?? 0
-                                    SessionRow(
-                                        session: session,
+                                ForEach(section.tasks) { task in
+                                    let index = list.ordered.firstIndex(of: task) ?? 0
+                                    TaskRow(
+                                        task: task,
+                                        rollup: list.rollup(of: task.id),
                                         number: list.lineNumber(of: index, cursor: model.cursor),
                                         isCursor: index == model.cursor,
-                                        pinNumber: list.pins.firstIndex(of: session).map { $0 + 1 },
-                                        hint: model.hintLabel(for: .session(session.id)),
-                                        pull: model.pullStatus(of: session)
+                                        pinNumber: list.pins.firstIndex(of: task).map { $0 + 1 },
+                                        hint: model.hintLabel(for: .task(task.id)),
+                                        pull: model.pullStatus(of: task)
                                     )
                                     .contentShape(Rectangle())
-                                    .onTapGesture { model.clickSession(session.id) }
+                                    .onTapGesture { model.clickTask(task.id) }
                                     .simultaneousGesture(TapGesture(count: 2).onEnded {
-                                        model.clickSession(session.id, insert: true)
+                                        model.clickTask(task.id, insert: true)
                                     })
-                                    .id(session.id)
+                                    .id(task.id)
                                 }
                             }
                         }
                     }
                 }
                 .onChange(of: model.cursor) {
-                    if let id = model.currentSession?.id { proxy.scrollTo(id) }
+                    if let id = model.currentTask?.id { proxy.scrollTo(id) }
                 }
             }
 
-            if model.sessions.isEmpty {
+            if list.ordered.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("No sessions yet.").foregroundStyle(Theme.fg2)
+                    Text("No tasks yet.").foregroundStyle(Theme.fg2)
                     HStack(spacing: 6) {
-                        KeyCap(text: "o")
-                        Text("start work").foregroundStyle(Theme.fg3)
+                        KeyCap(text: model.keyCap(for: "task.new") ?? ":task.new")
+                        Text("new task").foregroundStyle(Theme.fg3)
                     }
                 }
                 .font(Theme.ui(12.5))
                 .padding(16)
             }
             Spacer(minLength: 0)
-            Theme.line.frame(height: 1)
-            HStack {
-                Text("\(model.repos.count) repos · \(model.worktreeCount) worktrees").foregroundStyle(Theme.fg2)
-                Spacer()
-                KeyCap(text: "gr")
-            }
-            .font(Theme.ui(12))
-            .padding(.horizontal, 16)
-            .frame(height: 40)
         }
         .frame(width: width)
         .background(Theme.bg2)
@@ -77,16 +69,16 @@ struct Sidebar: View {
     }
 
     /// Needs you in amber; the rest quiet.
-    static func tint(_ group: SessionGroup) -> Color {
+    static func tint(_ group: TaskGroup) -> Color {
         group == .needsYou ? Theme.block : Theme.fg3
     }
 
-    private func groupHeader(_ section: SessionList.Section, pins: Int) -> some View {
+    private func groupHeader(_ section: TaskList.Section, pins: Int) -> some View {
         HStack(spacing: 6) {
             if section.group == .pinned {
                 Image(systemName: "pin.fill").font(.system(size: 9)).foregroundStyle(Theme.fg3)
             }
-            let count = section.group == .pinned ? "\(pins)/\(SessionGroup.maxPins)" : "\(section.sessions.count)"
+            let count = section.group == .pinned ? "\(pins)/\(TaskGroup.maxPins)" : "\(section.tasks.count)"
             SectionHeader(
                 title: "\(section.group.rawValue) · \(count)",
                 tint: Self.tint(section.group)
@@ -100,13 +92,14 @@ struct Sidebar: View {
     }
 }
 
-struct SessionRow: View {
-    let session: Session
+/// One task: its title and worktree folder, the most urgent agent's glyph, Kibana when it runs, and its PR.
+struct TaskRow: View {
+    let task: WorkTask
+    let rollup: TaskRollup
     let number: Int
     let isCursor: Bool
     let pinNumber: Int?
     let hint: String?
-    /// The most urgent state among the session's PRs.
     var pull: PullStatus?
 
     var body: some View {
@@ -116,30 +109,42 @@ struct SessionRow: View {
                 .foregroundStyle(isCursor ? Theme.fg : Theme.fg3)
                 .frame(width: 22, alignment: .trailing)
                 .padding(.top, 1)
-            StateGlyph(state: session.state.state, guessed: session.state.source == .guessed)
-                .padding(.top, 2)
+            Group {
+                if let agent = rollup.agent {
+                    StateGlyph(state: agent.state, guessed: agent.source == .guessed)
+                } else {
+                    StateGlyph(state: .exited)
+                }
+            }
+            .padding(.top, 2)
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 6) {
-                    Text(session.worktreeName)
+                    Text(task.title)
                         .font(Theme.ui(13, weight: .medium))
                         .lineLimit(1)
-                        .truncationMode(.middle)
-                        .help(session.title)
+                        .truncationMode(.tail)
+                        .help(task.title)
                     Spacer(minLength: 4)
                     if let pinNumber { KeyCap(text: "'\(pinNumber)") }
-                    if let pull { PullMark(status: pull, compact: true) }
-                    if !session.trackedPRs.isEmpty {
-                        Text("\(session.trackedPRs.count) PR")
-                            .font(Theme.mono(10.5))
-                            .foregroundStyle(Theme.fg2)
-                            .padding(.horizontal, 6)
-                            .background(RoundedRectangle(cornerRadius: 4).fill(Theme.chip))
+                    if rollup.kibanaRunning, let port = task.port { KibanaMark(port: port) }
+                    if let ref = task.pull {
+                        HStack(spacing: 4) {
+                            if let pull { PullMark(status: pull, compact: true) }
+                            Text(verbatim: "#\(ref.number)").font(Theme.mono(10.5)).foregroundStyle(Theme.fg2)
+                        }
                     }
                 }
-                FlowChips(repos: session.involvedRepos)
-                Text("\(session.agent) · \(session.activity)")
-                    .font(Theme.ui(11.5))
+                Text(task.worktreeName ?? "main checkout")
+                    .font(Theme.mono(11))
                     .foregroundStyle(Theme.fg3)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                if !activity.isEmpty {
+                    Text(activity)
+                        .font(Theme.ui(11.5))
+                        .foregroundStyle(Theme.fg3)
+                        .lineLimit(1)
+                }
             }
         }
         .padding(.leading, 6)
@@ -150,15 +155,25 @@ struct SessionRow: View {
             if let hint { HintBadge(label: hint).padding(.leading, 8).padding(.top, 8) }
         }
     }
+
+    /// "2 agents · running jest · 2m"; a single agent just says what it does.
+    private var activity: String {
+        let count = rollup.agentCount > 1 ? "\(rollup.agentCount) agents" : nil
+        return [count, rollup.activity.isEmpty ? nil : rollup.activity].compactMap(\.self).joined(separator: " · ")
+    }
 }
 
-private struct FlowChips: View {
-    let repos: [Repo]
+/// Kibana running for a task: a K and its port.
+struct KibanaMark: View {
+    let port: Int
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            ForEach(repos, id: \.self) { RepoChip(repo: $0) }
+        HStack(spacing: 3) {
+            Image(systemName: "k.square.fill").font(.system(size: 10))
+            Text(verbatim: "\(port)").font(Theme.mono(10.5))
         }
+        .foregroundStyle(Theme.done)
+        .help("Kibana running on localhost:\(port)")
     }
 }
 
@@ -177,8 +192,8 @@ struct HintBadge: View {
     }
 }
 
-/// The collapsed sidebar: one row per session with its number, state and pin, so moving and jumping still work.
-struct SessionRail: View {
+/// The collapsed sidebar: one row per task with its number, agent glyph and pin, so moving and jumping still work.
+struct TaskRail: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
@@ -188,14 +203,15 @@ struct SessionRail: View {
                 .padding(.vertical, 12)
             ListScroll {
                 VStack(spacing: 2) {
-                    ForEach(Array(list.ordered.enumerated()), id: \.element.id) { index, session in
+                    ForEach(Array(list.ordered.enumerated()), id: \.element.id) { index, task in
                         let isCursor = index == model.cursor
+                        let agent = list.rollup(of: task.id).agent
                         VStack(spacing: 4) {
                             Text("\(list.lineNumber(of: index, cursor: model.cursor))")
                                 .font(Theme.mono(10, weight: isCursor ? .bold : .regular))
                                 .foregroundStyle(isCursor ? Theme.fg : Theme.fg3)
-                            StateGlyph(state: session.state.state, guessed: session.state.source == .guessed)
-                            if let pin = list.pins.firstIndex(of: session) {
+                            StateGlyph(state: agent?.state ?? .exited, guessed: agent?.source == .guessed)
+                            if let pin = list.pins.firstIndex(of: task) {
                                 Text("'\(pin + 1)").font(Theme.mono(9)).foregroundStyle(Theme.fg3)
                             }
                         }
@@ -203,13 +219,13 @@ struct SessionRail: View {
                         .padding(.vertical, 8)
                         .background(isCursor ? Theme.bg3 : .clear)
                         .overlay(alignment: .topLeading) {
-                            if let hint = model.hintLabel(for: .session(session.id)) { HintBadge(label: hint) }
+                            if let hint = model.hintLabel(for: .task(task.id)) { HintBadge(label: hint) }
                         }
-                        .help(session.title)
+                        .help(task.title)
                         .contentShape(Rectangle())
-                        .onTapGesture { model.clickSession(session.id) }
+                        .onTapGesture { model.clickTask(task.id) }
                         .simultaneousGesture(TapGesture(count: 2).onEnded {
-                            model.clickSession(session.id, insert: true)
+                            model.clickTask(task.id, insert: true)
                         })
                     }
                 }

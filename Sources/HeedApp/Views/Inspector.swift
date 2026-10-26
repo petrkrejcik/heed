@@ -1,26 +1,31 @@
 import HeedCore
 import SwiftUI
 
-/// The right column: the session's worktree, its PRs, and the agent's hook events.
+/// The right column: the task (its status, checkout and note), its PR and issue, and its agents' hook events.
 struct Inspector: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            if let session = model.currentSession {
+            if let task = model.currentTask {
                 section {
                     HStack {
-                        SectionHeader(title: "Worktree")
+                        SectionHeader(title: "Task")
                         Spacer()
                         CollapseButton(systemImage: "sidebar.right", key: "zi") { model.toggleInspector() }
                     }
-                    ForEach(model.worktrees
-                        .filter { session.owns($0) })
-                    { worktree in
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(Paths.abbreviate(worktree.path)).font(Theme.mono(12)).foregroundStyle(Theme.fg)
-                            if let status = worktree.status { WorktreeStatusLine(status: status) }
+                    VStack(alignment: .leading, spacing: 5) {
+                        field("status", task.status.rawValue, tint: task.status == .blocked ? Theme.block : Theme.fg)
+                        field("checkout", Paths.abbreviate(task.directory))
+                        if let branch = task.branch { field("branch", branch) }
+                        if let port = task.port {
+                            field(
+                                "kibana", task.running ? "running on :\(port)" : "not running (:\(port))",
+                                tint: task.running ? Theme.done : Theme.fg3
+                            )
                         }
+                        if let epic = task.epic { field("epic", epic) }
+                        if let note = task.notePath { field("note", (note as NSString).lastPathComponent) }
                     }
                 }
                 section {
@@ -29,10 +34,10 @@ struct Inspector: View {
                         Spacer()
                         KeyCap(text: "gB")
                     }
-                    let links = model.links(of: session)
-                    if links.isEmpty { emptyLinks(session) }
+                    let links = model.links(of: task)
+                    if links.isEmpty { emptyLinks(task) }
                     ForEach(links, id: \.self) { link in
-                        LinkCard(session: session, link: link)
+                        LinkCard(task: task, link: link)
                             .contentShape(Rectangle())
                             // A click opens it here (the PR overlay, the issue reader); ⌘-click on GitHub.
                             .onTapGesture {
@@ -42,18 +47,23 @@ struct Inspector: View {
                     }
                 }
                 section {
-                    SectionHeader(title: "Agent events")
-                    let log = model.events[session.id] ?? []
-                    if log.isEmpty {
+                    SectionHeader(title: "Agents")
+                    let panes = (model.layouts[task.id]?.panes ?? []).filter { $0.role == .agent }
+                    if panes.isEmpty {
+                        Text("No agent tab.").font(Theme.ui(11.5)).foregroundStyle(Theme.fg3)
+                    }
+                    ForEach(Array(panes.enumerated()), id: \.element.id) { index, pane in
+                        let agent = model.agents[pane.id] ?? AgentTab()
                         HStack(spacing: 8) {
-                            StateGlyph(state: session.state.state, guessed: session.state.source == .guessed)
-                            Text(session.state.state.rawValue).foregroundStyle(Theme.fg)
-                            Text(session.state.reason ?? (session.state.source == .guessed ? "not reported yet" : ""))
+                            StateGlyph(state: agent.state.state, guessed: agent.state.source == .guessed)
+                            Text(panes.count > 1 ? "agent \(index + 1)" : "agent").foregroundStyle(Theme.fg)
+                            Text(agent.activity.isEmpty ? agent.state.state.rawValue : agent.activity)
                                 .foregroundStyle(Theme.fg3)
                                 .lineLimit(1)
                         }
                         .font(Theme.mono(11))
                     }
+                    let log = model.events[task.id] ?? []
                     ForEach(Array(log.prefix(8).enumerated()), id: \.offset) { _, event in
                         HStack(spacing: 8) {
                             Text(event.at, format: .dateTime.hour().minute().second()).foregroundStyle(Theme.fg3)
@@ -72,25 +82,32 @@ struct Inspector: View {
         .overlay(alignment: .leading) { Theme.line.frame(width: 1) }
     }
 
-    /// No PR and no issue yet: what comes next. A pushed branch offers the compare page that opens a PR.
-    @ViewBuilder private func emptyLinks(_ session: Session) -> some View {
-        let pushed = model.worktrees.contains { session.owns($0) && $0.status?.upstream != nil }
-        if pushed, let repo = session.repos.first {
+    private func field(_ name: String, _ value: String, tint: Color = Theme.fg) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Text(name).foregroundStyle(Theme.fg3).frame(width: 64, alignment: .leading)
+            Text(value).foregroundStyle(tint).lineLimit(1).truncationMode(.middle)
+        }
+        .font(Theme.mono(11.5))
+    }
+
+    /// No PR and no issue yet: what comes next. A branch offers the compare page that opens a PR.
+    @ViewBuilder private func emptyLinks(_ task: WorkTask) -> some View {
+        if let branch = task.branch, task.worktree != nil {
             VStack(alignment: .leading, spacing: 6) {
-                Text("Branch pushed, no PR yet.").font(Theme.ui(11.5)).foregroundStyle(Theme.fg3)
+                Text("No PR yet.").font(Theme.ui(11.5)).foregroundStyle(Theme.fg3)
                 Text("Open a PR on GitHub ↗")
                     .font(Theme.ui(11.5, weight: .medium))
                     .foregroundStyle(Theme.busy)
                     .contentShape(Rectangle())
                     .onTapGesture {
-                        if let url = URL(string: IssueLinks.compareURL(repo: repo, branch: session.branch)) {
+                        if let url = URL(string: IssueLinks.compareURL(repo: Kibana.repo, branch: branch)) {
                             NSWorkspace.shared.open(url)
                         }
                     }
             }
         } else {
-            Text("No PR or issue yet. PRs are found by branch name, or `heed pr add <url>` from the agent; issues by "
-                + "the prompt's \"Closes #12\", or `heed issue add <url>`.")
+            Text("No PR or issue yet. An agent's `gh pr create` links its PR; `heed pr add <url>` or "
+                + "`heed issue add <url>` link one by hand.")
                 .font(Theme.ui(11.5))
                 .foregroundStyle(Theme.fg3)
                 .fixedSize(horizontal: false, vertical: true)
@@ -103,27 +120,6 @@ struct Inspector: View {
             .padding(.vertical, 14)
             .frame(maxWidth: .infinity, alignment: .leading)
             .overlay(alignment: .bottom) { Theme.line.frame(height: 1) }
-    }
-}
-
-/// `base main ↑3 ↓0 ~2`: ahead, behind, changed.
-struct WorktreeStatusLine: View {
-    let status: WorktreeStatus
-    var showUpstream = true
-
-    var body: some View {
-        HStack(spacing: 8) {
-            if showUpstream {
-                Text(status.upstream.map { "↥ \($0)" } ?? "no upstream").foregroundStyle(Theme.fg3).lineLimit(1)
-            } else if status.upstream == nil {
-                Text("local").foregroundStyle(Theme.block)
-            }
-            Text("↑\(status.ahead)").foregroundStyle(status.ahead > 0 ? Theme.done : Theme.fg3)
-            Text("↓\(status.behind)").foregroundStyle(status.behind > 0 ? Theme.busy : Theme.fg3)
-            Text("~\(status.changedFiles + status.untrackedFiles)")
-                .foregroundStyle(status.isDirty ? Theme.block : Theme.fg3)
-        }
-        .font(Theme.mono(11.5))
     }
 }
 
@@ -146,12 +142,12 @@ struct StateTag: View {
     }
 }
 
-/// One of a session's links in the inspector: a PR (its state, checks, review and what holds it back from green) or
+/// One of a task's links in the inspector: a PR (its state, checks, review and what holds it back from green) or
 /// an issue (its title and state).
 private struct LinkCard: View {
     @Environment(AppModel.self) private var model
-    let session: Session
-    let link: SessionLink
+    let task: WorkTask
+    let link: TaskLink
 
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
@@ -175,7 +171,7 @@ private struct LinkCard: View {
             Spacer()
             if let pull { StateTag(state: pull.state, draft: pull.isDraft) }
         }
-        Text(pull?.title ?? session.title).font(Theme.ui(13, weight: .medium)).lineLimit(2)
+        Text(pull?.title ?? task.title).font(Theme.ui(13, weight: .medium)).lineLimit(2)
         if let pull {
             HStack(spacing: 8) {
                 CheckBar(checks: pull.checks)

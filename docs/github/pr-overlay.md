@@ -1,23 +1,21 @@
 ---
-description: A session's pull requests, read in place: review threads, failing checks, and what holds each back from green.
+description: A task's pull request, read in place: review threads, failing checks, and what holds it back from green.
 ---
 
 # The PR overlay
 
-In Sessions, `go` opens the PR overlay over the session's pull requests: its description, the unresolved review
-threads with the code they are on, and the failing checks. `]p` and `[p` move between the session's PRs; `go` again,
-or `⎋`, goes back to the session.
+In Tasks, `go` opens the PR overlay over the task's pull request: its description, the unresolved review threads with
+the code they are on, and the failing checks. `go` again, or `⎋`, goes back to the task.
 
 ![The PR overlay: the description, review threads and failing checks, and beside them the green rules](../images/shots/github/pr-overlay.png)
 
 Heed only reads: it sends nothing to the agent and changes nothing on GitHub. You decide what the agent fixes: tell
-it in its pane, or start a new session with `S`, whose prompt lists the open threads and failing checks.
+it in its pane, or make a new task with `S`, whose first prompt lists the open threads and failing checks.
 
 | Key | |
 |---|---|
-| `S` | Start a new session from this PR |
-| `]p` / `[p` | The session's next / previous PR |
-| `gS` | Jump to the session working on it |
+| `S` | New task from this PR |
+| `gS` | Jump to the task working on it |
 | `gB` | Open it on GitHub |
 | `r` | Sync now |
 
@@ -38,8 +36,8 @@ left to object to in the code. Each rule shows what it found:
 
 ## The state of a PR
 
-The same state shows wherever a PR does: next to a session's PR count in the sidebar, on the inspector's PR card
-(with the first rule holding it back), in the PRs view's **State** column, and by the PR number in Repos.
+The same state shows wherever a PR does: by the PR number on a task's sidebar row, on the inspector's PR card (with
+the first rule holding it back), and in the PRs view's **State** column.
 
 | Mark | |
 |---|---|
@@ -51,5 +49,5 @@ The same state shows wherever a PR does: next to a session's PR count in the sid
 | ✓ passing | checks pass by the last sync; the details are not fetched yet |
 | merged / closed | done |
 
-Details are fetched for the PRs your sessions track: the one on screen every time, the others when the last sync says
-their checks or threads moved.
+Details are fetched for your tasks' PRs: the one on screen every time, the others when the last sync says their
+checks or threads moved.

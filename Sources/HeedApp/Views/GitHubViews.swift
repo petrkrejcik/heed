@@ -81,7 +81,7 @@ private struct PickedPanel: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            SectionHeader(title: count > 1 ? "Start session from \(count) items" : "Start session from this item")
+            SectionHeader(title: count > 1 ? "New task from \(count) items" : "New task from this item")
             Text(model.itemsPromptPreview.isEmpty ? "Nothing selected." : model.itemsPromptPreview)
                 .font(Theme.mono(12))
                 .foregroundStyle(Theme.fg2)
@@ -90,15 +90,14 @@ private struct PickedPanel: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(RoundedRectangle(cornerRadius: 8).fill(Theme.pane))
                 .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Theme.line))
-            Text("Start work opens with this prompt; repo, worktree and agent are guessed there.")
+            Text("The new task dialog opens with this as the agent's first prompt; you type the title.")
                 .font(Theme.ui(11.5))
                 .foregroundStyle(Theme.fg3)
                 .fixedSize(horizontal: false, vertical: true)
             Spacer()
             Theme.line.frame(height: 1)
-            keyRow("s", "start one session")
-            keyRow("a", "add to the current session instead")
-            if model.view == .inbox { keyRow("m", "mark read, no session") }
+            keyRow("s", "new task")
+            if model.view == .inbox { keyRow("x", "mark read, no task") }
             keyRow("space v", "pick · pick a range")
             keyRow("o", "open in the browser")
         }
@@ -251,16 +250,14 @@ struct IssuesView: View {
         let filter = model.filter(for: .issues)
         if !filter.isEmpty { return "Nothing matches /\(filter)." }
         switch model.issueFilter {
-        case .all: return "No open issues assigned to you, mentioning you, or in repos showing all issues."
+        case .all: return "No open issues assigned to you or mentioning you."
         case .assigned: return "No open issues assigned to you."
         case .mentioned: return "No open issues mentioning you."
-        case .watched: return "No repos show all issues. w on an issue (I in Repos) turns it on for its repo."
         }
     }
 }
 
-/// The Issues repo column: repos with issues showing, most first. An eye marks repos that show every open issue;
-/// the rest show only issues assigned to you or mentioning you.
+/// The Issues repo column: repos with issues showing, most first.
 private struct IssueRepoColumn: View {
     @Environment(AppModel.self) private var model
 
@@ -280,11 +277,6 @@ private struct IssueRepoColumn: View {
             Theme.line.frame(height: 1)
             VStack(alignment: .leading, spacing: 8) {
                 keyRow("⇥", "next repo")
-                keyRow("w", "all issues / only yours")
-                HStack(spacing: 8) {
-                    Image(systemName: "eye").font(.system(size: 11)).foregroundStyle(Theme.fg2).frame(width: 18)
-                    Text("shows all open issues").font(Theme.ui(12)).foregroundStyle(Theme.fg2)
-                }
             }
             .padding(16)
         }
@@ -299,9 +291,6 @@ private struct IssueRepoColumn: View {
             if let repo { OrgTile(org: repo.org, color: repo.color, size: 16) }
             Text(name).font(Theme.mono(12.5)).foregroundStyle(selected ? Theme.fg : Theme.fg2)
                 .lineLimit(1).truncationMode(.middle)
-            if let repo, model.config.issues.visibility(repo) == .all {
-                Image(systemName: "eye").font(.system(size: 10)).foregroundStyle(Theme.fg3)
-            }
             Spacer()
             Text("\(count)").font(Theme.mono(11.5)).foregroundStyle(Theme.fg3)
         }
@@ -370,7 +359,7 @@ struct PullRequestsView: View {
                             pull: rows[index],
                             index: index,
                             cursor: cursor,
-                            session: model.sessions.first { $0.trackedPRs.contains(rows[index].ref) },
+                            agent: model.task(for: rows[index].ref).flatMap(model.agentState(of:)),
                             status: model.pullStatus(for: rows[index].ref),
                             isPicked: model.pickedIDs(.prs).contains(rows[index].id)
                         )
@@ -386,7 +375,8 @@ private struct PullRow: View {
     let pull: PullRequest
     let index: Int
     let cursor: Int
-    let session: Session?
+    /// The agent state of the task that has this PR.
+    let agent: ObservedState?
     let status: PullStatus
     let isPicked: Bool
 
@@ -402,7 +392,7 @@ private struct PullRow: View {
             VStack(alignment: .leading, spacing: 3) {
                 Text(pull.title).font(Theme.ui(13)).lineLimit(1)
                 HStack(spacing: 5) {
-                    if let session { StateGlyph(state: session.state.state, size: 10) }
+                    if let agent { StateGlyph(state: agent.state, size: 10) }
                     Text(pull.headBranch).font(Theme.mono(11)).foregroundStyle(Theme.fg3).lineLimit(1)
                     if pull.isDraft { Text("draft").font(Theme.mono(10.5)).foregroundStyle(Theme.fg3) }
                 }
@@ -486,17 +476,18 @@ private struct PullDetail: View {
             )
             .font(Theme.ui(12.5))
             .foregroundStyle(Theme.fg2)
-            if let session = model.sessions.first(where: { $0.trackedPRs.contains(pull.ref) }) {
+            if let task = model.task(for: pull.ref) {
                 HStack(spacing: 8) {
-                    StateGlyph(state: session.state.state, guessed: session.state.source == .guessed)
-                    Text(session.title).font(Theme.ui(12.5))
+                    let agent = model.agentState(of: task)
+                    StateGlyph(state: agent?.state ?? .exited, guessed: agent?.source == .guessed)
+                    Text(task.title).font(Theme.ui(12.5))
                     Spacer()
                     KeyCap(text: "gS")
                 }
                 .padding(10)
                 .background(RoundedRectangle(cornerRadius: 8).fill(Theme.bg3))
             } else {
-                Text("No session tracks this PR. Sessions pick PRs up by branch, or via heed pr add.")
+                Text("No task has this PR. A task gets its PR when its agent opens one, or via heed pr add.")
                     .font(Theme.ui(12))
                     .foregroundStyle(Theme.fg3)
                     .fixedSize(horizontal: false, vertical: true)
@@ -516,7 +507,7 @@ private struct PullDetail: View {
     }
 }
 
-/// An issue, read in the app (`go` or ↩ on an issue): what you would start a session from.
+/// An issue, read in the app (`go` or ↩ on an issue): what you would start a task from.
 struct IssueReaderView: View {
     @Environment(AppModel.self) private var model
 
@@ -560,8 +551,7 @@ struct IssueReaderView: View {
                     .background(RoundedRectangle(cornerRadius: 8).fill(Theme.bg2))
                     .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Theme.line))
                     HStack(spacing: 14) {
-                        HStack(spacing: 6) { KeyCap(text: "s"); Text("start a session from it") }
-                        HStack(spacing: 6) { KeyCap(text: "a"); Text("add it to this session") }
+                        HStack(spacing: 6) { KeyCap(text: "s"); Text("start a task from it") }
                         HStack(spacing: 6) { KeyCap(text: "gB"); Text("open on GitHub") }
                     }
                     .font(Theme.ui(12))

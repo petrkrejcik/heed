@@ -20,16 +20,17 @@ public struct HookMessage: Codable, Equatable, Sendable {
     public enum Kind: Codable, Equatable, Sendable {
         case state(AgentState, reason: String?)
         case notify(String)
+        /// `heed pr add <url>`, or a PR the agent's tool call created: a PR for the task.
         case prAdd(url: String)
-        /// `heed issue add <url>`: an issue the session works on.
+        /// `heed issue add <url>`: an issue the task works on.
         case issueAdd(url: String)
-        case title(String)
-        /// The agent's own session id, captured from its start hook, so the session can be resumed later.
+        /// Claude's own session id, captured from its start hook, so the agent tab can be resumed later.
         case agentSession(id: String, agent: String)
-        /// A pinned task finished in its pane with this exit code.
-        case taskExit(code: Int)
+        /// A pinned command finished in its pane with this exit code.
+        case commandExit(code: Int)
     }
 
+    /// The task id (`HEED_SESSION_ID`; the name is the hook protocol's).
     public var session: String
     public var pane: String?
     public var kind: Kind
@@ -64,9 +65,8 @@ public enum HookCommandLine {
            heed notify "<message>"
            heed pr add <url>
            heed issue add <url>
-           heed title "<title>"
            heed agent-session <agent> <id>
-           heed task-exit <code>
+           heed command-exit <code>
            heed hook claude <event>         (reads Claude's hook JSON on stdin)
            heed tools                       (where git and gh are found, as the app finds them)
     Reads \(HeedEnvironment.sessionID) and \(HeedEnvironment.socket) from the environment (set in every Heed pane).
@@ -119,14 +119,11 @@ public enum HookCommandLine {
                 throw UsageError(description: "heed issue add: expected an issue url")
             }
             return .issueAdd(url: url)
-        case "title":
-            guard let title = args.popFirst() else { throw UsageError(description: "heed title: expected a title") }
-            return .title(title)
-        case "task-exit":
+        case "command-exit":
             guard let code = args.popFirst().flatMap({ Int($0) }) else {
-                throw UsageError(description: "heed task-exit: expected an exit code")
+                throw UsageError(description: "heed command-exit: expected an exit code")
             }
-            return .taskExit(code: code)
+            return .commandExit(code: code)
         case "agent-session":
             guard let agent = args.popFirst(), let id = args.popFirst() else {
                 throw UsageError(description: "heed agent-session: expected <agent> <id>")

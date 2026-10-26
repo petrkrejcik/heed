@@ -82,7 +82,7 @@ enum OrgPalette: String, CaseIterable, Sendable {
     /// The chip background: 16% of the swatch over the chip base, as in the design.
     var background: Color { swatch.opacity(0.16) }
 
-    /// A stable automatic color for an org that has none configured.
+    /// A stable color for an org, from its name.
     static func automatic(for name: String) -> OrgPalette {
         let sum = name.unicodeScalars.reduce(0) { $0 &+ Int($1.value) }
         return allCases[sum % allCases.count]
@@ -102,24 +102,8 @@ extension Color {
 }
 
 extension Repo {
-    /// The repo's color from config (`[repos."org/name"] color`), else one picked from the org's name.
-    @MainActor var color: OrgPalette { Palette.shared.color(for: self) }
-}
-
-/// Repo colors from config, observed so chips redraw when config.toml changes.
-@MainActor
-@Observable
-final class Palette {
-    static let shared = Palette()
-    private(set) var repos: [String: OrgPalette] = [:]
-
-    func apply(_ config: HeedConfig) {
-        repos = config.repos.compactMapValues { $0.color.flatMap(OrgPalette.init(rawValue:)) }
-    }
-
-    func color(for repo: Repo) -> OrgPalette {
-        repos[repo.slug] ?? OrgPalette.automatic(for: repo.org.lowercased())
-    }
+    /// The repo's color, picked from the org's name.
+    var color: OrgPalette { OrgPalette.automatic(for: org.lowercased()) }
 }
 
 /// Org avatars as images, observed so tiles redraw when one arrives. Disk reads and downloads run off the main

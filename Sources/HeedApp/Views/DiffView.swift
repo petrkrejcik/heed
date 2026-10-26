@@ -1,7 +1,7 @@
 import HeedCore
 import SwiftUI
 
-/// `gd` over a session: commits, files grouped by repo, and the diff (design/screens/Diff.png).
+/// `gd` over a task: commits, files, and the diff (design/screens/Diff.png).
 struct DiffOverlayView: View {
     @Environment(AppModel.self) private var model
 

@@ -24,22 +24,21 @@ Single keys are kept for what you do many times an hour; anything rarer is two k
 | Keys | |
 |---|---|
 | `j` `k` `h` `l` `G` `/` `f` | Move, filter, jump |
-| `⌃d` `⌃u`, `{` `}` | Half a page; the previous or next group (a sidebar group, a repo, a day) |
-| `↩` `o` `i` `v` `x` `m` | Open, start work, type into the agent, select, done with it, pin |
+| `⌃d` `⌃u`, `{` `}` | Half a page; the previous or next group (a sidebar group, a repo) |
+| `↩` `o` `i` `v` `m` | Open, new task, type into the agent, select, pin |
 | `r` | Refresh the view you are in |
 | `g…` | Go somewhere: views (`gm` Inbox), overlays (`go`, `gd`), tabs (`gt`), the browser (`gB`), the repo on GitHub (`gR`) |
-| `z…` | Toggles: `zz` park, `zi` inspector, `zs` sidebar |
+| `z…` | Toggles: `zi` inspector, `zs` sidebar |
 | `'…` | Jump to a pin (`'1`–`'9`), or back (`''`) |
-| `]…` `[…` | Next or previous of a kind: `]p` PR, `]f` file |
+| `]…` `[…` | Next or previous of a kind: `]f` file |
 | `⌃w…` | Panes |
-| `dd` | Remove (it asks first) |
 
-A key means the same thing in every view where it means anything: `x` closes a session and marks an Inbox item read;
-`o` always starts work, picking the repo under the cursor in Repos.
+A key means the same thing in every view where it means anything: `o` always makes a new task, and `s` makes one from
+what you picked.
 
 ## Views have their own keys
 
-Some keys only mean something in one view: `s` starts a session in the Inbox, `dd` removes a worktree in Repos. Those
+Some keys only mean something in one view: `s` makes a new task in the Inbox, `x` marks an Inbox item read. Those
 come first there; elsewhere the same key is free or means something else. The status bar always lists the keys that
 matter in the view you are in, and `?` shows every key.
 
