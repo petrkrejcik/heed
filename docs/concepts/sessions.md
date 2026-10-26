@@ -11,7 +11,7 @@ A session is one task: an agent working in a git worktree, the terminals around 
 A session has:
 
 - **A prompt and a title.** What you asked for, kept for History and for starting again.
-- **An agent.** claude, codex, cursor, pi, opencode, gemini or your own, with its own session id so it can resume.
+- **An agent.** claude, or your own command (which runs without a state), with its own session id so it can resume.
 - **One worktree per repo.** Usually one repo; a cross-repo session gets a worktree in each, on the same branch.
 - **Panes and tabs.** The agent's terminal, and any shells or tasks you open beside it.
 - **Tracked pull requests.** Picked up from what the agent opens, or added by URL.

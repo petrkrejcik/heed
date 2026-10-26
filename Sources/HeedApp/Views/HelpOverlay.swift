@@ -155,7 +155,7 @@ struct HelpOverlay: View {
             HStack(spacing: 12) {
                 StateGlyph(state: .working, guessed: true)
                 Text("guessed").font(Theme.ui(12.5, weight: .medium)).frame(width: 90, alignment: .leading)
-                Text("Dotted ring: read from terminal output, trust it less.").font(Theme.ui(12.5))
+                Text("Dotted ring: not reported by the agent yet, trust it less.").font(Theme.ui(12.5))
                     .foregroundStyle(Theme.fg2)
             }
             .padding(.vertical, 9)

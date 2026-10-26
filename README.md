@@ -11,7 +11,7 @@
 
 <p align="center">
   A native macOS app that feels like a TUI, with vim modes and keys, for running coding agents.<br>
-  heed hosts Claude, Codex, Cursor, pi, opencode and gemini in real terminals, taps you only when one needs you,<br>
+  heed hosts Claude Code in real terminals, taps you only when one needs you,<br>
   then gets their pull requests green and merged.
 </p>
 
@@ -44,8 +44,8 @@ Or [download the latest release](https://github.com/heed-build/heed/releases/lat
 
 ## What it does
 
-- **Every agent, one window.** Claude, Codex, Cursor, pi, opencode, gemini or any command, each in a real libghostty
-  terminal with tabs and splits. Agents report their state through hooks (working, idle, blocked, asking, done), so
+- **Claude, one window.** Claude (or any command, without a state), each in a real libghostty terminal with tabs and
+  splits. Claude reports its state through hooks (working, idle, blocked, asking, done), so
   heed knows who needs you, and `ga` jumps there.
 - **Start work in one line.** Press `o`, describe the task: heed picks the repo, makes a worktree named after it and
   starts the agent with your prompt. Sessions resume where you left them after a restart.

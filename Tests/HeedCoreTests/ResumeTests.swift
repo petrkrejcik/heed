@@ -19,17 +19,16 @@ struct ResumeTests {
     @Test func modesFollowTheStateTheSessionWasIn() {
         let domain = Domain(sessions: [
             session("w", .working), session("b", .blocked), session("a", .asking), session("d", .done),
-            session("p", .working, parked: true), session("g", .working, agent: "gemini"),
+            session("p", .working, parked: true), session("u", .working, agent: "unknown"),
             session("n", .working, agentID: nil),
         ])
         let candidates = Resume.candidates(domain: domain, settings: .default, integration: nil)
         let modes = Dictionary(uniqueKeysWithValues: candidates.map { ($0.id, $0.mode) })
         #expect(modes == [
             "w": .resumeThenContinue, "b": .resumeOnly, "a": .resumeOnly, "d": .leftClosed,
-            "g": .resumeThenContinue, "n": .startFresh,
+            "n": .startFresh,
         ])
         #expect(candidates.first { $0.id == "w" }?.command == "claude --resume aid")
-        #expect(candidates.first { $0.id == "g" }?.command == "gemini --resume aid")
         #expect(candidates.first { $0.id == "n" }?.command == "claude 'do n'")
     }
 
@@ -75,7 +74,7 @@ struct ResumeTests {
             directory: "/Users/me/code/wt/r/.x",
             home: home
         ) == false)
-        #expect(AgentIntegration.hasSession(agent: "codex", id: "abc", directory: "/", home: home) == nil)
+        #expect(AgentIntegration.hasSession(agent: "mytool", id: "abc", directory: "/", home: home) == nil)
     }
 }
 

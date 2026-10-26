@@ -76,23 +76,18 @@ public enum Import {
         session.worktreePaths = [worktree.path]
         var command: String?
         if let agent {
-            let env = integration.map { AgentIntegration.launchEnvironment(agent: agent, files: $0) } ?? [:]
             let hooks = { (resuming: Bool) in
                 integration.map {
                     AgentIntegration.launchArguments(agent: agent, sessionID: session.id, files: $0, resuming: resuming)
                 } ?? []
             }
-            // Cursor reads hooks from a file in the worktree.
-            if agent.name == "cursor", let heed = integration?.heedBinary {
-                try? AgentIntegration.installCursorHooks(worktree: worktree.path, heed: heed)
-            }
             if let resume,
-               let line = agent.resumeCommand(id: resume.id, extraArguments: hooks(true), environment: env)
+               let line = agent.resumeCommand(id: resume.id, extraArguments: hooks(true))
             {
                 command = line
                 session.record("imported · resumed \(agent.name) session", at: now)
             } else {
-                command = agent.launchCommand(prompt: "", extraArguments: hooks(false), environment: env)
+                command = agent.launchCommand(prompt: "", extraArguments: hooks(false))
                 session.record("imported · \(agent.name) started fresh", at: now)
             }
         } else {

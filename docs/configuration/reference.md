@@ -120,9 +120,9 @@ gh = ""
 # Directories searched first, for git, gh and agent commands alike.
 path = []
 
-# Agents. Built-ins (claude, codex, cursor, pi, opencode, gemini) can be overridden field by field; any other name
-# is a custom agent. Fields: command, prompt (argument | stdin | paste | file), plan, resume ("{id}" is the
-# agent's session id), and [agents.<name>.profiles] of name = command line.
+# Agents. The built-in claude can be overridden field by field; any other name is a custom agent, which runs
+# without status (only claude reports its state). Fields: command, prompt (argument | stdin | paste | file), plan,
+# resume ("{id}" is the agent's session id), and [agents.<name>.profiles] of name = command line.
 [agents.claude]
 command = "claude"
 plan = "--permission-mode plan"
@@ -131,10 +131,6 @@ resume = "--resume {id}"
 # [agents.mytool]
 # command = "mytool"
 # prompt = "argument"
-# Agents without hooks get their state read from the screen; patterns per state refine it (regex):
-# [agents.mytool.patterns]
-# blocked = "Allow this\?"
-# working = "Thinking"
 
 # Org and repo colors: teal, pink, lime, orange, periwinkle, sky. Repos inherit their org's.
 # [orgs.elastic]

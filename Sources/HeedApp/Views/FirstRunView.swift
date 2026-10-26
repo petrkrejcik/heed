@@ -65,9 +65,7 @@ struct FirstRunView: View {
                     }
                     if report.agents.isEmpty { Text("Looking on your PATH…").foregroundStyle(Theme.fg3) }
                     Text("""
-                    Nothing in your own agent config changes. Heed passes its hooks per run (claude --settings, codex -c, \
-                    pi -e, opencode's config env var); for cursor it writes .cursor/hooks.json into worktrees it creates, \
-                    kept out of git.
+                    Nothing in your own Claude config changes. Heed passes its hooks per run (claude --settings).
                     """)
                     .font(Theme.ui(12))
                     .foregroundStyle(Theme.fg2)

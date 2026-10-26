@@ -44,12 +44,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if fixture == "resume" { model.showResumeForFixture() }
             if fixture == "firstrun" {
                 model.showFirstRun(report: FirstRunReport(githubUser: "you", agents: [
-                    .init(name: "claude", path: "/Users/you/.local/bin/claude"), .init(
-                        name: "codex",
-                        path: "/opt/homebrew/bin/codex"
-                    ),
-                    .init(name: "cursor", path: nil), .init(name: "pi", path: nil),
-                    .init(name: "opencode", path: "/opt/homebrew/bin/opencode"), .init(name: "gemini", path: nil),
+                    .init(name: "claude", path: "/Users/you/.local/bin/claude"),
                 ]))
             }
             return model

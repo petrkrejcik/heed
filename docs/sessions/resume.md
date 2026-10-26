@@ -16,7 +16,7 @@ under `[sessions]`:
 
 ![The resume dialog: sessions that were open, which can resume, and which agent sessions are gone](../images/shots/sessions/resume.png)
 
-Resuming uses each agent's own resume (`claude --resume <id>`, `codex resume <id>`, …) with the session id Heed kept.
+Resuming uses the agent's own resume (`claude --resume <id>`) with the session id Heed kept.
 If the agent no longer has that session, Heed says so and starts the agent fresh with the original prompt.
 
 ## The continue prompt

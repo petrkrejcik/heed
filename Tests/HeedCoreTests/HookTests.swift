@@ -107,111 +107,22 @@ struct HookServerTests {
     }
 }
 
-struct ScreenGuessTests {
-    @Test func commonPromptsAreRecognised() {
-        let patterns = ScreenGuess.patterns(for: AgentProfile(name: "x", command: "x"))
-        #expect(ScreenGuess.guess("some output\nDo you want to proceed?\n❯ 1. Yes", patterns: patterns) == .blocked)
-        #expect(ScreenGuess.guess("✻ Thinking… (esc to interrupt)", patterns: patterns) == .working)
-        #expect(ScreenGuess.guess("Error: rate limit reached, retrying", patterns: patterns) == .limited)
-        #expect(ScreenGuess.guess("all done\n$ ", patterns: patterns) == nil)
-    }
-
-    @Test func onlyTheLastLinesCount() {
-        let patterns = ScreenGuess.patterns(for: AgentProfile(name: "x", command: "x"))
-        let screen = "Do you want to proceed?\n" + String(repeating: "line\n", count: 20)
-        #expect(ScreenGuess.guess(screen, patterns: patterns) == nil)
-    }
-
-    @Test func customPatternsReplaceAState() throws {
-        let (config, problems) = ConfigLoader.decode("""
-        [agents.mytool]
-        command = "mytool"
-        [agents.mytool.patterns]
-        working = "Pondering"
-        bogus = "x"
-        blocked = "(unclosed"
-        """)
-        #expect(Set(problems.map(\.path)) == ["agents.mytool.patterns.bogus", "agents.mytool.patterns.blocked"])
-        let agent = try #require(config?.work.agent("mytool"))
-        let patterns = ScreenGuess.patterns(for: agent)
-        #expect(ScreenGuess.guess("Pondering deeply", patterns: patterns) == .working)
-        #expect(ScreenGuess.guess("esc to interrupt", patterns: patterns) == nil)
-    }
-}
-
 struct AgentIntegrationTests {
-    private let files = IntegrationFiles(directory: URL(fileURLWithPath: "/s"), heedBinary: "/app/heed")
+    private let files = IntegrationFiles(directory: URL(fileURLWithPath: "/s"))
 
-    private func plan(_ agent: String, prompt: String = "go") -> String? {
-        StartWorkPlan(
-            prompt: prompt,
-            repos: [],
-            name: "n",
-            agent: AgentProfile.builtIn.first { $0.name == agent },
-            sessionID: "S1",
-            integration: files
-        ).command
+    private func plan(_ agent: AgentProfile?, prompt: String = "go") -> String? {
+        StartWorkPlan(prompt: prompt, repos: [], name: "n", agent: agent, sessionID: "S1", integration: files).command
     }
 
-    @Test func eachAgentLaunchesWithItsWiring() throws {
-        #expect(plan("claude") == "claude --settings /s/claude-hooks.json --session-id S1 go")
-        #expect(plan("pi") == "pi -e /s/heed-pi.js --session-id S1 go")
-        #expect(plan("gemini") == "gemini --session-id S1 -i go")
-        #expect(plan("opencode") ==
-            #"OPENCODE_CONFIG_CONTENT='{"plugin":["file:///s/heed-opencode.js"]}' opencode --prompt go"#)
-        #expect(plan("cursor") == "cursor-agent go")
-        let codex = try #require(plan("codex"))
-        #expect(codex.hasPrefix("codex --dangerously-bypass-hook-trust -c "))
-        #expect(codex
-            .contains(
-                #"hooks.PermissionRequest=[{hooks=[{type="command",command="/app/heed hook codex PermissionRequest",timeout=15}]}]"#
-            ))
-        #expect(codex.hasSuffix(" go"))
+    @Test func onlyClaudeGetsHookWiring() {
+        #expect(AgentProfile.builtIn.map(\.name) == ["claude"])
+        #expect(plan(AgentProfile.builtIn[0]) == "claude --settings /s/claude-hooks.json --session-id S1 go")
+        #expect(plan(AgentProfile(name: "mytool", command: "mytool")) == "mytool go")
     }
 
-    @Test func hookMappingsPerAgent() throws {
-        #expect(try HookCommandLine.parse(["hook", "codex", "PermissionRequest"]) {
-            Data(#"{"tool_name":"Bash","tool_input":{"command":"rm -rf x"}}"#.utf8)
-        } == [.state(.blocked, reason: "Bash(rm -rf x)")])
-        #expect(try HookCommandLine.parse(["hook", "codex", "SessionStart"]) { Data(#"{"session_id":"c1"}"#.utf8) }
-            .first == .agentSession(id: "c1", agent: "codex"))
-        #expect(try HookCommandLine.parse(["hook", "cursor", "stop"]) { Data(#"{"status":"aborted"}"#.utf8) }
-            == [.state(.idle, reason: "aborted")])
-        #expect(try HookCommandLine.parse(["hook", "pi", "start", "p1", "startup"]) {
-            Issue.record("pi must not read stdin")
-            return Data()
-        } == [.agentSession(id: "p1", agent: "pi"), .state(.idle, reason: "startup")])
-        #expect(try HookCommandLine.parse(["hook", "opencode", "session.status", "o1", "retry"]) { Data() }
-            == [.state(.limited, reason: "retrying")])
-        #expect(try HookCommandLine.parse(["hook", "opencode", "permission.asked", "o1", "bash"]) { Data() }
-            == [.state(.blocked, reason: "bash")])
-    }
-
-    @Test func cursorHooksGoIntoTheWorktreeAndStayOutOfGit() async throws {
-        let repo = FileManager.default.temporaryDirectory.appendingPathComponent("heed-cursor-\(UUID().uuidString)")
-            .path
-        let worktree = repo + "-wt"
-        defer {
-            try? FileManager.default.removeItem(atPath: repo)
-            try? FileManager.default.removeItem(atPath: worktree)
+    @Test func hooksOfOtherAgentsAreRejected() {
+        #expect(throws: HookCommandLine.UsageError.self) {
+            try HookCommandLine.parse(["hook", "codex", "Stop"]) { Data("{}".utf8) }
         }
-        try FileManager.default.createDirectory(atPath: repo, withIntermediateDirectories: true)
-        for args in [
-            ["init", "-q", "-b", "main"],
-            ["config", "user.email", "t@t"],
-            ["config", "user.name", "t"],
-            ["commit", "-q", "--allow-empty", "-m", "first"],
-            ["worktree", "add", "-q", "-b", "f", worktree],
-        ] {
-            _ = try await ProcessRunner.output("git", ["-C", repo] + args)
-        }
-        try AgentIntegration.installCursorHooks(worktree: worktree, heed: "/app/heed")
-        try AgentIntegration.installCursorHooks(worktree: worktree, heed: "/app/heed")
-        let hooks = try String(contentsOfFile: worktree + "/.cursor/hooks.json", encoding: .utf8)
-        #expect(hooks.contains("/app/heed hook cursor stop"))
-        let status = try await Git.status(at: worktree)
-        #expect(!status.isDirty)
-        let exclude = try String(contentsOfFile: repo + "/.git/info/exclude", encoding: .utf8)
-        #expect(exclude.components(separatedBy: ".cursor/hooks.json").count == 2)
     }
 }

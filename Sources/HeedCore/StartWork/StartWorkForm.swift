@@ -84,7 +84,7 @@ public struct StartWorkForm: Sendable {
         setPrompt(prompt)
     }
 
-    /// `:agent codex`: that agent, chosen.
+    /// `:agent claude`: that agent, chosen.
     @discardableResult
     public mutating func choose(agent name: String) -> Bool {
         guard let index = agents.firstIndex(where: { $0?.name == name.lowercased() }) else { return false }

@@ -1,4 +1,4 @@
-/// Short forms accepted on the `:` line, mapped onto canonical command names: `:start`, `:pr 2841`, `:agent codex`,
+/// Short forms accepted on the `:` line, mapped onto canonical command names: `:start`, `:pr 2841`, `:agent claude`,
 /// `:track <url>`, `:import <path>`. Anything else is taken as a command name as typed.
 public enum CommandAliases {
     public static func resolve(_ line: String) -> CommandInvocation {

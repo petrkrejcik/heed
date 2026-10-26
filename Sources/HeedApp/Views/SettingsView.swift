@@ -332,14 +332,7 @@ private struct AgentSettings: View {
     }
 
     private func stateSource(_ name: String) -> String {
-        switch name {
-        case "claude": "full hooks (passed with --settings)"
-        case "codex": "hooks (passed with -c)"
-        case "cursor": "project hooks (written into the worktree)"
-        case "pi": "extension (passed with -e)"
-        case "opencode": "plugin (passed with OPENCODE_CONFIG_CONTENT)"
-        default: "read from the terminal"
-        }
+        name == "claude" ? "full hooks (passed with --settings)" : "not reported"
     }
 
     private func integration(_: String) -> String {

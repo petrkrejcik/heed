@@ -5,7 +5,7 @@ import SwiftUI
 /// docs/images/shots; pages reference them as `../images/shots/<id>.png`.
 @MainActor
 enum Shots {
-    static let all: [Shot] = landing + home + gettingStarted + concepts + sessions + startWork + agents + pilot +
+    static let all: [Shot] = landing + home + gettingStarted + concepts + sessions + startWork + pilot +
         github + worktrees + diff + history + keyboard + outside + configuration
 
     /// Types a sentence (spaces become <Space>).
@@ -17,9 +17,6 @@ enum Shots {
         githubUser: "you",
         agents: [
             .init(name: "claude", path: "/Users/you/.local/bin/claude"),
-            .init(name: "codex", path: "/opt/homebrew/bin/codex"),
-            .init(name: "cursor", path: nil), .init(name: "pi", path: nil),
-            .init(name: "opencode", path: "/opt/homebrew/bin/opencode"), .init(name: "gemini", path: nil),
         ],
         tools: ToolReport(
             shell: "/opt/homebrew/bin/fish", shellPath: ["/opt/homebrew/bin", "/usr/bin"],
@@ -130,10 +127,6 @@ enum Shots {
     ]
 
     static let short = CGSize(width: 1440, height: 640)
-
-    static let agents: [Shot] = [
-        Shot(id: "agents/guessed", size: short, keys: "2j", crop: .sidebar),
-    ]
 
     static let pilot: [Shot] = [
         Shot(id: "watch/inspector", crop: .inspector),

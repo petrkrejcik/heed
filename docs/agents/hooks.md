@@ -1,52 +1,31 @@
 ---
-description: How agents report their state to Heed, and what Heed passes to each one per run.
+description: How Claude reports its state to Heed, and what Heed passes to it per run.
 ---
 
 # Hooks
 
-Agents report what they are doing through hooks: small commands the agent runs at moments like "about to use a tool"
+Claude reports what it is doing through hooks: small commands it runs at moments like "about to use a tool"
 or "finished the turn". Heed's hook is its bundled `heed` helper, which sends one line to the app over a local socket
 and exits; it never slows the agent down and never fails a tool call.
 
-Heed passes its hooks **per run**, on the command line it types into the agent's pane. Nothing in your own agent
+Heed passes its hooks **per run**, on the command line it types into the agent's pane:
+`--settings ~/Library/Application Support/Heed/claude-hooks.json` and `--session-id <id>`. Nothing in your own Claude
 configuration is edited.
-
-| Agent | What Heed passes |
-|---|---|
-| claude | `--settings ~/Library/Application Support/Heed/claude-hooks.json` and `--session-id <id>` |
-| codex | `-c hooks.<Event>=[…]` for each event, and `--dangerously-bypass-hook-trust` so they run |
-| cursor | Writes `.cursor/hooks.json` into worktrees it creates, excluded from git through `.git/info/exclude` |
-| pi | `-e …/heed-pi.js`, an extension that calls the helper |
-| opencode | `OPENCODE_CONFIG_CONTENT` with a plugin, `…/heed-opencode.js` |
 
 The command preview at the bottom of [Start work](../start-work/agent-and-options.md) shows exactly what will run.
 
-## What each reports
+## What it reports
 
-| State | claude | opencode | codex | pi | cursor |
-|---|---|---|---|---|---|
-| working | ✓ | ✓ | ✓ | ✓ | ✓ |
-| idle | ✓ | ✓ | ✓ | ✓ | |
-| blocked | ✓ | ✓ | ✓ | | |
-| asking | ✓ | ✓ | | | |
-| done | ✓ | ✓ | ✓ | ✓ | ✓ |
-| limited | ✓ | ✓ | | | |
-
-Anything left blank is [read from the screen](screen-reading.md).
+Every state: working, idle, blocked, asking, done, limited and exited. Other agents report nothing; their sessions show
+the state Heed assumed when they started.
 
 ## Pull requests the agent opens
 
 The same hooks tell Heed when the agent opens a pull request, so its session tracks it at once, in whatever repo it is
 (see [Tracking PRs](../github/tracking-prs.md)). Heed reads the output of the tool call that ran `gh pr create` (or
 `hub pull-request`, or `gh api …/pulls` as a POST), or of a GitHub MCP `create_pull_request`, and takes the PR link
-from it. A PR the agent only reads or links to is not taken.
-
-| Agent | Where it comes from |
-|---|---|
-| claude, codex | `PostToolUse`: the tool's input and response |
-| cursor | `afterShellExecution` (command and output), `afterMCPExecution`, `postToolUse` |
-| pi | the extension's `tool_result` handler |
-| opencode | the plugin's `tool.execute.before` / `tool.execute.after` hooks |
+from it (Claude's `PostToolUse` hook: the tool's input and response). A PR the agent only reads or links to is not
+taken.
 
 ## Inside a pane
 

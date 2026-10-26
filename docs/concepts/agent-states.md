@@ -20,10 +20,9 @@ Every session shows its agent's state, and the sidebar sorts by it: whatever nee
 
 ## Reported or guessed
 
-Most agents report their state through [hooks](../agents/hooks.md): Heed passes them a small command to call as they
-work. For states an agent cannot report, Heed reads its terminal and guesses from what is on screen
-([Reading the screen](../agents/screen-reading.md)). A guessed state is drawn with a dotted ring, and a reported state
-always wins over a guess.
+Claude reports its state through [hooks](../agents/hooks.md): Heed passes it a small command to call as it works.
+Until the first hook arrives (a session just started, imported or resuming), Heed assumes a state and draws it with a
+dotted ring. Other agents never report, so their sessions keep the assumed state.
 
 ## Where states show
 

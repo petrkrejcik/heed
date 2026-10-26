@@ -90,11 +90,8 @@ final class AppModel {
     private var hookServer: HookServer?
     /// Where the per-run hook files live. Screenshots show a made-up home, never the real one.
     let integration = ShotMode.active
-        ? IntegrationFiles(
-            directory: URL(fileURLWithPath: "/Users/you/Library/Application Support/Heed"),
-            heedBinary: "/Applications/Heed.app/Contents/Helpers/heed"
-        )
-        : IntegrationFiles.default(heedBinary: Helper.path ?? "true")
+        ? IntegrationFiles(directory: URL(fileURLWithPath: "/Users/you/Library/Application Support/Heed"))
+        : IntegrationFiles.default()
     /// The latest hook events per session, newest first: shown in the inspector, not persisted (agents own history).
     private(set) var events: [String: [AgentEvent]] = [:]
 
@@ -253,63 +250,8 @@ final class AppModel {
         store = DomainStore(domain: cached, file: file)
         await offerResume(domain: cached)
         startGitHubSync()
-        startScreenReading()
         await refreshRepos()
         if !isFixture { _ = await cleanUpRunLeftovers() }
-    }
-
-    // MARK: Screen reading
-
-    private var screenTask: Task<Void, Never>?
-
-    /// Once a second, reads the agent pane of sessions whose agent does not report every state, and guesses the
-    /// missing ones from the screen. Matching runs off the main actor; a guess never overrides a reported state.
-    private func startScreenReading() {
-        screenTask?.cancel()
-        screenTask = Task { [weak self] in
-            while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(1))
-                await self?.readScreens()
-            }
-        }
-    }
-
-    private func readScreens() async {
-        var work: [(String, String, ScreenGuess.Patterns, Set<AgentState>)] = []
-        for session in sessions {
-            guard let agent = settings.agent(session.agent) else { continue }
-            let reported = ScreenGuess.reported(by: agent.name)
-            guard reported.count < 7, let layout = layouts[session.id], let (_, paneID) = agentPane(in: layout),
-                  let text = TerminalSurfaces.shared.visibleText(paneID: paneID)
-            else { continue }
-            work.append((session.id, text, ScreenGuess.patterns(for: agent), reported))
-        }
-        guard !work.isEmpty else { return }
-        let guesses = await Task.detached(priority: .utility) {
-            work.map { id, text, patterns, reported -> (String, AgentState?) in
-                // Only states the agent cannot report are guessed, so such a guess may replace a reported state.
-                let state = ScreenGuess.guess(text, patterns: patterns)
-                return (id, state.flatMap { reported.contains($0) ? nil : $0 })
-            }
-        }.value
-        var changes: [DomainChange] = []
-        for (id, guess) in guesses {
-            guard var session = sessions.first(where: { $0.id == id }) else { continue }
-            let next: ObservedState
-            if let guess {
-                next = ObservedState(guess, source: .guessed, reason: "from the screen")
-            } else if session.state.source == .guessed, [.blocked, .asking, .limited].contains(session.state.state) {
-                // The prompt left the screen: the agent is past it.
-                next = ObservedState(.working, source: .guessed, reason: "from the screen")
-            } else {
-                continue
-            }
-            guard next.state != session.state.state || next.source != session.state.source else { continue }
-            session.state = next
-            session.activity = "\(next.state.rawValue) · guessed"
-            changes.append(.sessionUpserted(session))
-        }
-        commit(changes)
     }
 
     // MARK: GitHub
@@ -642,7 +584,7 @@ final class AppModel {
         }
         switch message.kind {
         case let .state(state, reason):
-            session.state = session.state.accepting(ObservedState(state, source: .reported, reason: reason))
+            session.state = ObservedState(state, source: .reported, reason: reason)
             session.activity = reason.map { "\(state.rawValue) · \($0)" } ?? state.rawValue
             session.lastActivity = message.sentAt
             events[session.id] = AgentEvent.log(
@@ -1142,7 +1084,7 @@ final class AppModel {
         case "session.back": goBack()
         case "pin.jump": jumpToPin(Int(command.arguments.first ?? "") ?? 1)
         case "work.start" where command.arguments.first == "--agent":
-            // `:agent codex`: Start work with that agent chosen.
+            // `:agent claude`: Start work with that agent chosen.
             let name = command.arguments.dropFirst().first ?? ""
             openStartWork(prompt: "")
             if startWork?.choose(agent: name) == false {
@@ -3215,7 +3157,6 @@ final class AppModel {
         let command = agent.launchCommand(
             prompt: Runs.prompt(prompt, prBranch: prBranch, branch: branch),
             extraArguments: AgentIntegration.launchArguments(agent: agent, sessionID: agentSession, files: integration),
-            environment: AgentIntegration.launchEnvironment(agent: agent, files: integration),
             model: settings.model
         )
         let pane = PaneSpec(

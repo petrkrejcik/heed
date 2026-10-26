@@ -239,13 +239,6 @@ struct HookCommandLineTests {
         let decoded = try HookMessage.decode(line: line.dropLast())
         #expect(decoded.kind == message.kind)
     }
-
-    @Test func guessesNeverOverrideReports() {
-        let reported = ObservedState(.working)
-        #expect(reported.accepting(ObservedState(.blocked, source: .guessed)) == reported)
-        #expect(reported.accepting(ObservedState(.exited, source: .guessed)).state == .exited)
-        #expect(reported.accepting(ObservedState(.done)).state == .done)
-    }
 }
 
 struct InsertEscapeTests {

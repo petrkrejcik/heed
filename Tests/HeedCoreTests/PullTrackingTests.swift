@@ -42,38 +42,18 @@ struct PullTrackingTests {
             == ["https://github.com/o/r/pull/3"])
     }
 
-    @Test func eachAgentsHookReportsIt() {
+    @Test func claudesHookReportsIt() {
         let made = "https://github.com/o/companion/pull/4"
         let claude = AgentIntegration.claudeHook(event: "PostToolUse", input: [
             "tool_name": "Bash", "tool_input": ["command": "gh pr create -R o/companion --fill"],
             "tool_response": ["stdout": made + "\n", "stderr": ""],
         ])
         #expect(added(claude) == [made])
-        let codex = AgentIntegration.codexHook(event: "PostToolUse", input: [
-            "tool_name": "Bash", "tool_input": ["command": "gh pr create"], "tool_response": made,
-        ])
-        #expect(added(codex) == [made])
         let mcp = AgentIntegration.claudeHook(event: "PostToolUse", input: [
             "tool_name": "mcp__github__create_pull_request", "tool_input": ["title": "x"],
             "tool_response": [["type": "text", "text": #"{"html_url":"\#(made)"}"#]],
         ])
         #expect(added(mcp) == [made])
-        #expect(added(AgentIntegration.cursorHook(
-            event: "afterShellExecution", input: ["command": "gh pr create", "output": made]
-        )) == [made])
-        #expect(added(AgentIntegration.cursorHook(
-            event: "afterMCPExecution", input: ["tool_name": "create_pull_request", "result_json": made]
-        )) == [made])
-        #expect(added(AgentIntegration.cursorHook(
-            event: "postToolUse", input: [
-                "tool_name": "Shell",
-                "tool_input": #"{"command":"gh pr create"}"#,
-                "tool_output": made,
-            ]
-        )) == [made])
-        #expect(added(AgentIntegration.piHook(event: "pr", sessionID: "x", detail: made)) == [made])
-        #expect(added(AgentIntegration.opencodeHook(event: "pr", sessionID: "x", detail: made)) == [made])
-        #expect(AgentIntegration.piHook(event: "pr", sessionID: "x", detail: "not a url").isEmpty)
         // Reading a PR is not opening one.
         #expect(added(AgentIntegration.claudeHook(event: "PostToolUse", input: [
             "tool_name": "Bash", "tool_input": ["command": "gh pr view 4"], "tool_response": ["stdout": made],

@@ -162,8 +162,7 @@ public struct StartWorkPlan: Hashable, Sendable {
         let extra = integration.map {
             AgentIntegration.launchArguments(agent: agent, sessionID: sessionID, files: $0)
         } ?? []
-        let env = integration.map { AgentIntegration.launchEnvironment(agent: agent, files: $0) } ?? [:]
-        return agent.launchCommand(prompt: prompt, planFirst: planFirst, extraArguments: extra, environment: env)
+        return agent.launchCommand(prompt: prompt, planFirst: planFirst, extraArguments: extra)
     }
 
     public var title: String {
@@ -344,11 +343,6 @@ public enum StartWork {
             }
             return result.sorted { $0.0 < $1.0 }.map(\.1)
         }
-        if plan.agent?.name == "cursor", let heed = plan.integration?.heedBinary {
-            for worktree in created {
-                try? AgentIntegration.installCursorHooks(worktree: worktree.path, heed: heed)
-            }
-        }
         var session = Session(
             id: plan.sessionID, title: plan.title, prompt: plan.prompt, repos: plan.repos.map(\.repo),
             branch: plan.name,
@@ -442,19 +436,13 @@ public enum Reopen {
             let stillThere = session.agentSessionID.map {
                 AgentIntegration.hasSession(agent: agent.name, id: $0, directory: paths[0]) != false
             } ?? false
-            let env = integration.map { AgentIntegration.launchEnvironment(agent: agent, files: $0) } ?? [:]
-            if agent.name == "cursor", let heed = integration?.heedBinary {
-                for path in paths {
-                    try? AgentIntegration.installCursorHooks(worktree: path, heed: heed)
-                }
-            }
             if stillThere, let id = session.agentSessionID,
-               let resume = agent.resumeCommand(id: id, extraArguments: hooks(true), environment: env)
+               let resume = agent.resumeCommand(id: id, extraArguments: hooks(true))
             {
                 command = resume
                 session.record("reopened", at: now)
             } else {
-                command = agent.launchCommand(prompt: session.prompt, extraArguments: hooks(false), environment: env)
+                command = agent.launchCommand(prompt: session.prompt, extraArguments: hooks(false))
                 session.record("reopened · started fresh", at: now)
             }
         } else {

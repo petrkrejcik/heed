@@ -52,17 +52,17 @@ public extension Fixtures {
           3. No, tell Claude what to do
         """,
         "s3-agent": """
-        {bold}codex{/} {dim}· ingest-backpressure{/}
+        {bold}claude{/} {dim}· ingest-backpressure{/}
 
-        Three questions before I change
-        the stage:
+        {violet}●{/} Three questions before I change
+          the stage:
 
           {violet}1.{/} Block producers when the buffer
              is full, or drop the oldest?
           {violet}2.{/} Is 10k events a good default?
           {violet}3.{/} Add a metric for time blocked?
 
-        {dim}› answer, or press enter to let me choose{/}
+        {dim}Enter to select · ↑/↓ to navigate · Esc to cancel{/}
         """,
         "s4-agent": """
         {bold}>{/} Arrowheads detach at small zoom.
@@ -80,9 +80,10 @@ public extension Fixtures {
         {dim}Total cost: $0.42 · 18 turns{/}
         """,
         "s6-agent": """
-        {bold}opencode{/} {dim}· docs-nav-spike{/}
+        {bold}claude{/} {dim}· docs-nav-spike{/}
 
-        {dim}idle · waiting for your next prompt{/}
+        {green}●{/} Spike done: the nav reads from
+          the toc tree. PR #2852 is open.
         """,
     ]
 

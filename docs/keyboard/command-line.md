@@ -19,7 +19,7 @@ Short forms work too:
 | Typed | Runs |
 |---|---|
 | `:start <prompt>` | Start work with that prompt |
-| `:agent codex` | Start work with that agent |
+| `:agent claude` | Start work with that agent |
 | `:pr 2841` | Read pull request 2841 |
 | `:track <url>` | Track a pull request in this session (`gU` takes the URL on the clipboard) |
 | `:inbox`, `:prs`, … | Switch view |

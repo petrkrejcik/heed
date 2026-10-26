@@ -49,7 +49,6 @@ toc:
     children:
       - file: index.md
       - file: hooks.md
-      - file: screen-reading.md
       - file: custom-agents.md
   - folder: github
     children:

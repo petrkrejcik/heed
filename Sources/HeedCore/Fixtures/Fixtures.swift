@@ -74,10 +74,9 @@ public enum Fixtures {
             ),
             Session(
                 id: "s3", title: "Backpressure in ingest stage", repos: [ingest], branch: "ingest-backpressure",
-                agent: "codex", agentSessionID: "91be40d2-7a35-4c68-b2f9-13e5a8d07c46", state: ObservedState(
-                    .asking,
-                    source: .guessed
-                ), activity: "3 questions waiting", trackedPRs: [PullRef(repo: ingest, number: 31)]
+                agent: "claude", agentSessionID: "91be40d2-7a35-4c68-b2f9-13e5a8d07c46",
+                state: ObservedState(.asking, reason: "3 questions"), activity: "3 questions waiting",
+                trackedPRs: [PullRef(repo: ingest, number: 31)]
             ),
             Session(
                 id: "s4", title: "Sequence diagram arrowheads", repos: [mermaider], branch: "sequence-arrowheads",
@@ -92,7 +91,7 @@ public enum Fixtures {
                 )]
             ),
             Session(
-                id: "s6", title: "Docs nav spike", repos: [docsBuilder], branch: "docs-nav-spike", agent: "opencode",
+                id: "s6", title: "Docs nav spike", repos: [docsBuilder], branch: "docs-nav-spike", agent: "claude",
                 agentSessionID: "b36c9d71-04fa-42e8-8a3d-7e1c5b2f9d60",
                 state: ObservedState(.idle), activity: "idle 2h", trackedPRs: [PullRef(repo: docsBuilder, number: 2852)]
             ),
@@ -728,8 +727,8 @@ public enum Fixtures {
             entry("Fix toc ordering", docsBuilder, "claude", hoursAgo: 1, minutes: 130, .merged, pr: 2810),
             entry("Fix redirect typos", docsContent, "claude", hoursAgo: 3, minutes: 41, .merged, pr: 1912),
             entry("Bump spec tests to 0.17", editorconfig, "claude", hoursAgo: 26, minutes: 65, .merged, pr: 412),
-            entry("Flowchart label wrapping", mermaider, "opencode", hoursAgo: 28, minutes: 26, .abandoned),
-            entry("Docs nav spike v1", docsBuilder, "opencode", hoursAgo: 30, minutes: 220, .closed, pr: 2790),
+            entry("Flowchart label wrapping", mermaider, "claude", hoursAgo: 28, minutes: 26, .abandoned),
+            entry("Docs nav spike v1", docsBuilder, "claude", hoursAgo: 30, minutes: 220, .closed, pr: 2790),
             entry("Snippet include performance", docsBuilder, "claude", hoursAgo: 120, minutes: 175, .merged, pr: 2781),
             entry("Parser fuzzing harness", mermaider, "claude", hoursAgo: 130, minutes: 90, .cleanedUp),
         ]

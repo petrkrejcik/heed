@@ -1,4 +1,4 @@
-/// What an agent is doing, as reported by its hooks (or guessed from its terminal when it has no hook for it).
+/// What an agent is doing, as reported by its hooks.
 /// Each state has its own glyph shape, not only a color.
 public enum AgentState: String, CaseIterable, Sendable, Codable {
     /// Prompt submitted or a tool is running. Spinner ring.
@@ -34,9 +34,9 @@ public enum AgentState: String, CaseIterable, Sendable, Codable {
 
 /// Where a state came from. Guessed states get a dotted ring so they are trusted less.
 public enum StateSource: String, Sendable, Codable {
-    /// The agent's hook, extension, plugin or event stream reported it.
+    /// The agent's hook reported it.
     case reported
-    /// Read from terminal output, or inferred from the process.
+    /// Assumed by Heed until the first hook arrives (a session just started, imported or resuming).
     case guessed
 }
 
@@ -49,11 +49,5 @@ public struct ObservedState: Hashable, Sendable, Codable {
         self.state = state
         self.source = source
         self.reason = reason
-    }
-
-    /// A guess never overrides what a hook reported for the same turn, except to say the process is gone.
-    public func accepting(_ next: ObservedState) -> ObservedState {
-        if next.source == .guessed, source == .reported, next.state != .exited, state != .exited { return self }
-        return next
     }
 }

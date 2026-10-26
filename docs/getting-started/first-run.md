@@ -13,7 +13,7 @@ signing in to `gh` or installing an agent in another terminal shows up without a
 - **Tools**: where `git` and `gh` are, found through your login shell's PATH and the usual install locations. See
   [Finding git and gh](../configuration/tools.md).
 - **Repos**: the repositories under `~/Projects` and `~/code` (change them with `repo_roots`).
-- **Agents**: which of claude, codex, cursor, pi, opencode and gemini are installed.
+- **Agents**: whether claude is installed.
 
 Nothing in your own agent configuration changes: Heed passes its hooks to each agent per run. See
 [Hooks](../agents/hooks.md).

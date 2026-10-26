@@ -10,8 +10,6 @@ description: Where Heed keeps its configuration, cache and other files.
 | `~/Library/Application Support/Heed/domain.json` | Sessions, worktrees and the last GitHub sync, cached for a fast start |
 | `~/Library/Application Support/Heed/heed.sock` | The socket hooks report to |
 | `~/Library/Application Support/Heed/claude-hooks.json` | The hook settings passed to claude per run |
-| `~/Library/Application Support/Heed/heed-pi.js` | The extension passed to pi |
-| `~/Library/Application Support/Heed/heed-opencode.js` | The plugin passed to opencode |
 | `~/Library/Caches/Heed/avatars` | Org avatars |
 | `<worktree>/.cursor/hooks.json` | cursor's hooks, in worktrees Heed creates; excluded from git |
 

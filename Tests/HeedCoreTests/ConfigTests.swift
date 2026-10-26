@@ -88,7 +88,7 @@ struct ConfigTests {
         [agents.mytool]
         command = "mytool --fast"
         prompt = "stdin"
-        [agents.codex]
+        [agents.claude]
         resume = ""
         [orgs.elastic]
         color = "teal"
@@ -106,7 +106,7 @@ struct ConfigTests {
         #expect(config.work.worktreeRoot == "~/wt")
         #expect(config.work.resumeOnLaunch == .always)
         #expect(config.work.agent("mytool")?.prompt == .stdin)
-        #expect(config.work.agent("codex")?.resumeArguments == nil)
+        #expect(config.work.agent("claude")?.resumeArguments == nil)
         #expect(config.orgColors["elastic"] == "teal")
         #expect(config.repos["elastic/docs-builder"]?.tasks.first?.1 == "dotnet test")
         let built = config.keymaps()

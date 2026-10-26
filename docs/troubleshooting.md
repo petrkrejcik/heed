@@ -21,9 +21,8 @@ instead of shown. `gh auth refresh`, or authorizing the GitHub CLI for that org 
 
 ## An agent's state is wrong or missing
 
-Check the agent is started by Heed (its pane's command line includes Heed's hooks; see [Hooks](agents/hooks.md)). States
-it cannot report are guessed from its screen, drawn with a dotted ring; add patterns for your agent under
-`[agents.<name>.patterns]` ([Reading the screen](agents/screen-reading.md)).
+Only Claude reports its state. Check it is started by Heed (its pane's command line includes Heed's hooks; see
+[Hooks](agents/hooks.md)). Other agents run without a state.
 
 ## The Start work panel closes right away, or tiles
 
