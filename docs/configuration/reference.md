@@ -44,6 +44,10 @@ gh = ""
 # Directories searched first, for git, gh and agent commands alike.
 path = []
 
+[pk]
+# The python of pk's virtualenv. Tasks are pk's notes: Heed reads and changes them through `python -m pk.bridge`.
+python = "~/www/pk/.venv/bin/python"
+
 # The agent: claude, overridden field by field. Fields: command, prompt (argument | stdin | paste | file), plan,
 # resume ("{id}" is the agent's session id), and [agents.claude.profiles] of name = command line. Other agents run
 # in a plain terminal tab, without status.

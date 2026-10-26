@@ -10,6 +10,8 @@ public enum DefaultKeys {
         ("<C-d>", "row.halfpage.down"), ("<C-u>", "row.halfpage.up"), ("}", "group.next"), ("{", "group.prev"),
         ("h", "pane.left"), ("l", "pane.right"),
         ("o", "task.new"), ("ga", "task.attention"), ("m", "task.pin"), ("''", "task.back"),
+        ("dd", "task.status done"), ("db", "task.status blocked"), ("di", "task.status in-progress"),
+        ("dr", "task.status review"), ("W", "task.worktree"), ("K", "kibana.run"),
         ("'1", "pin.jump 1"), ("'2", "pin.jump 2"), ("'3", "pin.jump 3"), ("'4", "pin.jump 4"), ("'5", "pin.jump 5"),
         ("'6", "pin.jump 6"), ("'7", "pin.jump 7"), ("'8", "pin.jump 8"), ("'9", "pin.jump 9"),
         ("<C-w>v", "pane.split.right"), ("<C-w>s", "pane.split.below"), ("<C-w>z", "pane.zoom"),
@@ -47,6 +49,7 @@ public enum DefaultKeys {
 
     /// Bindings that only apply in one view, keyed by view name.
     public static let scoped: [String: [(String, String)]] = [
+        "tasks": [("r", "tasks.refresh")],
         "inbox": [
             ("<Space>", "select.toggle"), ("s", "items.start"), ("x", "items.read"),
             ("t", "items.filter"), ("r", "github.sync"),

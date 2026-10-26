@@ -59,6 +59,9 @@ final class TerminalSurfaces {
     /// PATH for new panes: the detected search path (an app opened from Finder has a minimal one).
     var searchPath = ProcessInfo.processInfo.environment["PATH"] ?? "/usr/bin:/bin"
 
+    /// Whether the pane's terminal exists, so text typed into it lands somewhere.
+    func hasTerminal(_ paneID: String) -> Bool { views[paneID] != nil }
+
     func view(for pane: PaneSpec, sessionID: String) -> NSView {
         if let existing = views[pane.id] {
             existing.removeFromSuperview()

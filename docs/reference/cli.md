@@ -19,6 +19,9 @@ after three seconds.
 | `heed command-exit <code>` | Report a pinned command's exit code |
 | `heed hook <agent> <event>` | An agent's hook: reads its JSON on stdin |
 | `heed tools` | Where `git` and `gh` are found (see [Finding git and gh](../configuration/tools.md)) |
+| `heed pk paths\|list\|new <title>\|watch` | Heed's view of pk's tasks, for scripts: pk's paths, every task, a new task, or the sidebar printed each time it changes. `--python <path>` overrides `[pk] python` |
+
+`heed tools` and `heed pk` talk to no app and have no time limit.
 
 It reads `HEED_SESSION_ID` (the task id), `HEED_PANE_ID` and `HEED_SOCKET` from the environment, which every Heed pane
 sets; run elsewhere, it does nothing. The pane id is how a task's agent tabs report apart.

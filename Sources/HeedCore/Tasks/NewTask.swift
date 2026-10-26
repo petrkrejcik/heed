@@ -68,13 +68,14 @@ public enum NewTask {
     /// Makes ids for new tasks and agent tabs; screenshots pin it so command lines never change between runs.
     public nonisolated(unsafe) static var newID: () -> String = { UUID().uuidString.lowercased() }
 
-    /// A new In Progress task with one agent tab in the main checkout, its Claude session id picked up front. The
-    /// changes are the task, its layout and its agent tab. `agent` nil opens a shell instead.
+    /// The task pk just created, with one agent tab where it works (the main checkout, for a new task), its Claude
+    /// session id picked up front. The changes are the task, its layout and its agent tab. Without Claude, a shell.
     public static func start(
-        title: String, context: String = "", settings: WorkSettings, integration: IntegrationFiles?,
+        _ task: WorkTask, context: String = "", settings: WorkSettings, integration: IntegrationFiles?,
         now: Date = Date()
     ) -> [DomainChange] {
-        var task = WorkTask(id: newID(), title: title, status: .inProgress, lastActivity: now)
+        var task = task
+        task.lastActivity = now
         let tab = agentTab(
             in: task.directory, prompt: context, agent: settings.claude, shellSplit: settings.shellSplit,
             integration: integration
@@ -85,6 +86,36 @@ public enum NewTask {
         ]
         if let agent = tab.agent { changes.append(.agentChanged(pane: agent.pane, agent.tab)) }
         return changes
+    }
+
+    /// What an agent in a new worktree is told: the note is the handover, since a running Claude cannot change folder.
+    public static func handoverPrompt(note: String) -> String { "Read the task note at \(note) and continue." }
+
+    /// What the old agent is asked before the worktree is made.
+    public static func notePrompt(note: String) -> String {
+        "Update the task note at \(note): write the plan and what you learned so far. Reply ok when done."
+    }
+
+    /// The tabs a task gets with its new worktree, added after the ones it has: `bootstrap` (pk's command line) in a
+    /// terminal so its progress shows, a tab per pinned command, then a new agent on `prompt`. Every pane starts
+    /// its command at once. The agent's tab comes last; it is the one to show.
+    public static func worktreeTabs(
+        worktree: String, prompt: String, bootstrap: String, settings: WorkSettings, integration: IntegrationFiles?
+    ) -> (tabs: [PaneTab], agent: (pane: String, tab: AgentTab)?) {
+        let setup = PaneTab(id: newID(), title: "bootstrap", tree: .leaf(PaneSpec(
+            id: newID(), role: .shell, title: "bootstrap", directory: worktree, command: bootstrap
+        )))
+        let pinned = settings.commands.map { pinned in
+            PaneTab(id: newID(), title: pinned.name, tree: .leaf(PaneSpec(
+                id: newID(), role: .command, title: pinned.name, directory: worktree,
+                command: "\(pinned.command); \"${\(HeedEnvironment.binary):-true}\" command-exit $?"
+            )))
+        }
+        let agent = agentTab(
+            in: worktree, prompt: prompt, agent: settings.claude, shellSplit: settings.shellSplit,
+            integration: integration
+        )
+        return ([setup] + pinned + [agent.tab], agent.agent)
     }
 
     /// A tab running `agent` on `prompt` in `directory`, with its own Claude session id, and a shell split beside it

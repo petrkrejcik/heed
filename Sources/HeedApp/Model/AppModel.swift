@@ -113,6 +113,28 @@ final class AppModel {
     /// The repo picked in the Issues repo column; nil is all of them.
     private(set) var issueRepo: Repo?
 
+    // pk
+    /// pk's bridge: the real pk, or in fixtures a fake one that answers from memory (no process, no disk).
+    private var pk: PkBridge
+    private var pkSync: PkSync?
+    /// Where pk keeps things (vault, main checkout, ports file); nil until pk answered.
+    private(set) var pkPaths: PkPaths?
+    /// Panes draw their terminals once tool detection (zmx sessions to reattach) and pk's paths (the main checkout)
+    /// are in; until then the window shows the cached tasks with empty panes.
+    private(set) var terminalsReady: Bool
+    /// Add worktree, step 2: agent tabs asked to update their task's note, by task id. The worktree follows on that
+    /// tab's next idle after it started working, after three minutes, or on the key again.
+    private var worktreeWaits: [String: WorktreeWait] = [:]
+    /// When each task last asked pk for its PR (on an agent going idle), so gh is not asked every turn.
+    private var prSyncedAt: [String: Date] = [:]
+    private var kibanaProbe: Task<Void, Never>?
+
+    struct WorktreeWait {
+        var pane: String
+        var sawWorking = false
+        var timer: Task<Void, Never>
+    }
+
     // Resume on launch
     private(set) var resume: ResumeForm?
     /// Resumed agent tabs (pane ids) that were mid-turn: they get the continue prompt once they report idle.
@@ -185,6 +207,8 @@ final class AppModel {
     init(domain: Domain, settings: WorkSettings = .default, isFixture: Bool) {
         self.settings = settings
         self.isFixture = isFixture
+        pk = isFixture ? FakePk(tasks: domain.tasks).bridge : Self.livePk(python: HeedConfig.defaultPkPython)
+        terminalsReady = isFixture
         let built = Keymaps.build()
         engine = ModeEngine(keymaps: built.keymaps, scoped: built.scoped)
         keyProblems = built.problems
@@ -201,23 +225,103 @@ final class AppModel {
 
     // MARK: Domain
 
-    /// Starts from the cache, then refreshes from git. The window is already up showing whatever the cache holds.
+    /// Draws the cache first, then tasks come from pk. Panes get their terminals once tools are detected and pk said
+    /// where the main checkout is.
     func start(cache file: URL) async {
         startConfig()
-        if !isFixture { await detectTools() }
         startHooks()
         let integration = integration
         Task.detached(priority: .utility) {
             do { try integration.write() } catch { NSLog("heed: could not write hook files: \(error)") }
         }
         let cached = await DomainStore.load(from: file)
-        // Before any pane is drawn: which panes still have a live zmx session to reattach to.
-        await TerminalSurfaces.shared.refreshLivePanes()
         replace(with: cached)
-        loadAvatars()
         store = DomainStore(domain: cached, file: file)
-        await offerResume(domain: cached)
+        await detectTools()
+        await startPk()
+        // Before any terminal is made: which panes still have a live zmx session to reattach to.
+        await TerminalSurfaces.shared.refreshLivePanes()
+        terminalsReady = true
+        loadAvatars()
+        startKibanaProbe()
+        await offerResume(domain: currentDomain)
         startGitHubSync()
+    }
+
+    // MARK: pk
+
+    /// The real pk, run with the detected PATH so it finds git and gh even when Heed was opened from Finder.
+    private static func livePk(python: String) -> PkBridge {
+        PkBridge.live(python: Paths.expand(python)) {
+            await ["PATH": ToolLocator.shared.report().pathVariable]
+        }
+    }
+
+    /// Asks pk where things are, then keeps the tasks in step with its notes (and the ports file) from there on.
+    private func startPk() async {
+        guard !isFixture else { return }
+        await pkSync?.stop()
+        let sync = PkSync(
+            bridge: pk,
+            tasks: { [weak self] in await MainActor.run { self?.tasks ?? [] } },
+            apply: { [weak self] changes in await MainActor.run { self?.applyFromPk(changes) } },
+            report: { [weak self] message in await MainActor.run { self?.flash = message } }
+        )
+        pkSync = sync
+        if let paths = await sync.start() {
+            pkPaths = paths
+            Kibana.configuredMain = paths.kibanaMain
+        }
+    }
+
+    /// What pk found. A task that went (its note deleted, or no longer a task) takes its terminals with it.
+    private func applyFromPk(_ changes: [DomainChange]) {
+        for case let .taskRemoved(id) in changes {
+            worktreeWaits.removeValue(forKey: id)?.timer.cancel()
+            for pane in layouts[id]?.panes ?? [] {
+                TerminalSurfaces.shared.close(paneID: pane.id)
+            }
+        }
+        commit(changes)
+    }
+
+    /// One task as pk returned it after a change Heed asked for, with a line in its timeline.
+    private func upsert(_ fresh: PkTask, record: String? = nil) -> WorkTask? {
+        guard var task = WorkTask(fresh, keeping: fresh.id.flatMap(task)) else {
+            flash = "pk returned \(fresh.title) without a task id"
+            return nil
+        }
+        if let record { task.record(record) }
+        commit(.taskUpserted(task))
+        return task
+    }
+
+    /// `r` in Tasks: every task from pk again.
+    private func refreshTasks() {
+        Task {
+            if let pkSync {
+                await pkSync.refresh()
+            } else if let listed = try? await pk.list() {
+                applyFromPk(TaskSync.reconcile(listed.tasks, into: tasks))
+            }
+            flash = "tasks read from pk"
+        }
+    }
+
+    /// "Kibana running" is whether the task's port listens: probed every few seconds for the listed tasks, so it
+    /// shows however Kibana was started. The ports themselves are pk's.
+    private func startKibanaProbe() {
+        kibanaProbe?.cancel()
+        kibanaProbe = Task { [weak self] in
+            while !Task.isCancelled {
+                guard let self else { return }
+                let ports = Set(list.ordered.compactMap(\.port))
+                let listening = await PortProbe.listening(ports)
+                let changes = TaskSync.running(listening: listening, probed: ports, in: tasks)
+                if !changes.isEmpty { commit(changes) }
+                try? await Task.sleep(for: .seconds(3))
+            }
+        }
     }
 
     // MARK: GitHub
@@ -432,6 +536,10 @@ final class AppModel {
         configProblems = problems
         guard let decoded else { return }
         let toolsChanged = decoded.tools != config.tools
+        if decoded.pkPython != config.pkPython, !isFixture {
+            pk = Self.livePk(python: decoded.pkPython)
+            if pkSync != nil { Task { await startPk() } }
+        }
         config = decoded
         settings = decoded.work
         if !isFixture {
@@ -541,17 +649,26 @@ final class AppModel {
                 task.record("sent “\(settings.continuePrompt)”")
             }
             changes.append(.agentChanged(pane: pane, agent))
+            if worktreeWaits[task.id]?.pane == pane {
+                if state == .working {
+                    worktreeWaits[task.id]?.sawWorking = true
+                } else if state == .idle || state == .done, worktreeWaits[task.id]?.sawWorking == true {
+                    commit([.taskUpserted(task)] + changes)
+                    return createWorktree(for: task.id)
+                }
+            }
+            if state == .idle || state == .done { syncPull(of: task) }
         case let .prAdd(url):
-            // Sent by the agent's hooks when it opened a PR (or by `heed pr add`). A task has one PR.
+            // Sent by the agent's hooks when it opened a PR (or by `heed pr add`). A task has one PR; pk writes it.
             guard task.pr == nil, let pull = PullRef(url: url) else { return }
-            task.pr = url
-            task.record("opened PR #\(pull.number)")
-            fetchDetail(pull)
+            link(task, url, record: "opened PR #\(pull.number)") { [weak self] in self?.fetchDetail(pull) }
+            return
         case let .issueAdd(url):
             guard task.issue == nil, let issue = IssueRef(url: url) else { return }
-            task.issue = url
-            task.record("linked \(issue.repo.name)#\(issue.number)")
-            Task { await refreshIssueInfo(force: [issue]) }
+            link(task, url, record: "linked \(issue.repo.name)#\(issue.number)") { [weak self] in
+                Task { await self?.refreshIssueInfo(force: [issue]) }
+            }
+            return
         case let .agentSession(id, _):
             guard let pane else { return }
             var agent = agents[pane] ?? AgentTab()
@@ -566,6 +683,35 @@ final class AppModel {
             return
         }
         commit([.taskUpserted(task)] + changes)
+    }
+
+    /// Writes an issue or PR link into the task's note through pk, then shows what pk wrote.
+    private func link(_ task: WorkTask, _ url: String, record: String, then: @escaping @MainActor () -> Void) {
+        Task {
+            do {
+                _ = try await upsert(pk.link(task.id, url), record: record)
+                then()
+            } catch {
+                flash = "could not link \(url) to \(task.title): \(error)"
+            }
+        }
+    }
+
+    /// An agent went idle in a task with a branch and no PR yet: pk looks for a PR opened from the branch. At most
+    /// every two minutes per task.
+    private func syncPull(of task: WorkTask) {
+        guard !isFixture, task.pr == nil, let branch = task.branch, branch != "main" else { return }
+        let now = Date()
+        guard now.timeIntervalSince(prSyncedAt[task.id] ?? .distantPast) > 120 else { return }
+        prSyncedAt[task.id] = now
+        Task {
+            guard let linked = try? await pk.syncPRs(task.id) else { return }
+            for fresh in linked {
+                guard let pull = fresh.pr.flatMap(PullRef.init(url:)) else { continue }
+                _ = upsert(fresh, record: "PR #\(pull.number) found for \(branch)")
+                fetchDetail(pull)
+            }
+        }
     }
 
     func flush() async { await store?.flush() }
@@ -836,6 +982,11 @@ final class AppModel {
         case "task.back": goBack()
         case "pin.jump": jumpToPin(Int(command.arguments.first ?? "") ?? 1)
         case "task.new": openNewTask(title: command.arguments.joined(separator: " "))
+        case "task.status": setStatus(command.arguments.joined(separator: " "))
+        case "task.worktree": addWorktree()
+        case "task.review": startReview(command.arguments.first)
+        case "tasks.refresh": refreshTasks()
+        case "kibana.run": runKibana()
         case "resume": Task { await offerResume(domain: currentDomain, asked: true) }
         case "task.open": openTask(matching: command.arguments.joined(separator: " "))
         case "tab.go":
@@ -1036,21 +1187,204 @@ final class AppModel {
         select(taskID: pins[number - 1].id)
     }
 
+    /// Pins or unpins in the note, through pk; the cursor stays on the task as it moves group.
     private func togglePin() {
         guard let task = currentTask else { return }
         if !task.pinned, list.pins.count >= TaskGroup.maxPins {
             flash = "already \(TaskGroup.maxPins) pins; unpin one first"
             return
         }
-        updateCurrent { $0.pinned.toggle() }
+        Task {
+            do {
+                if let pinned = try await upsert(pk.pin(task.id, !task.pinned)) { select(taskID: pinned.id) }
+            } catch {
+                flash = "could not \(task.pinned ? "unpin" : "pin") \(task.title): \(error)"
+            }
+        }
     }
 
-    /// Edits the current task and keeps the cursor on it, even when the edit moves it to another group.
-    private func updateCurrent(_ edit: (inout WorkTask) -> Void) {
-        guard var task = currentTask else { return }
-        edit(&task)
-        commit(.taskUpserted(task))
-        select(taskID: task.id)
+    // MARK: Task status
+
+    /// `:status done`, `dd`: the status goes into the note through pk. Done and Dropped end the task: they ask first,
+    /// then close its terminals (a review's worktree goes too, when nothing would be lost).
+    private func setStatus(_ text: String) {
+        guard let task = currentTask else { return flash = "no task here" }
+        guard let status = TaskStatus.named(text) else {
+            return flash = "no status \(text.isEmpty ? "given" : text): done, blocked, in progress, review, todo, dropped"
+        }
+        guard status != task.status else { return flash = "\(task.title) is already \(status)" }
+        guard status.endsTask else { return applyStatus(status, to: task) }
+        let agents = layouts[task.id]?.panes.count { $0.role == .agent } ?? 0
+        let terminals = layouts[task.id]?.panes.count ?? 0
+        ask(Confirmation(
+            title: "Mark \(task.title) \(status)?",
+            lines: ["It leaves the sidebar; the note stays"]
+                + (terminals == 0 ? [] : [
+                    agents > 0 ? "Its terminals close and \(agents == 1 ? "its agent stops" : "its \(agents) agents stop")"
+                        : "Its terminals close",
+                ])
+                + (task.isReview && task.worktreeName != nil
+                    ? ["Its review worktree is removed, unless it has uncommitted or unpushed work"] : []),
+            accept: status.rawValue, destructive: agents > 0
+        ) { [weak self] in self?.applyStatus(status, to: task) })
+    }
+
+    private func applyStatus(_ status: TaskStatus, to task: WorkTask) {
+        Task {
+            let result: PkStatusResult
+            do {
+                result = try await pk.setStatus(task.id, status)
+            } catch {
+                return flash = "could not set \(task.title) to \(status): \(error)"
+            }
+            let onScreen = currentTask?.id == task.id
+            _ = upsert(result.task, record: "status \(status)")
+            if status.endsTask { closeTerminals(of: task.id, onScreen: onScreen) }
+            if !result.blockers.isEmpty {
+                flash = "\(task.title) is \(status); its worktree stays: \(result.blockers.joined(separator: ", "))"
+            } else if let removed = result.removedWorktree {
+                flash = "\(task.title) is \(status); removed \(Paths.abbreviate(removed))"
+            } else {
+                flash = "\(task.title) is \(status)"
+            }
+        }
+    }
+
+    /// A task that ended: every terminal in it closes and its tabs go. The task itself stays (it is a note).
+    private func closeTerminals(of id: String, onScreen: Bool) {
+        guard let layout = layouts[id], !layout.tabs.isEmpty else { return }
+        if onScreen { clickedOutsideTerminal() }
+        commit(.layoutChanged(task: id, TaskLayout(tabs: [])))
+        for pane in layout.panes {
+            TerminalSurfaces.shared.close(paneID: pane.id)
+        }
+    }
+
+    // MARK: Worktrees and reviews
+
+    /// `W`: the task gets a worktree. Its agent first writes what it knows into the note (the handover); the worktree
+    /// follows when that agent is idle again, after three minutes, or on `W` again. Then a bootstrap tab, the pinned
+    /// commands and a new agent in the worktree that reads the note.
+    private func addWorktree() {
+        guard let task = currentTask else { return flash = "no task here" }
+        if worktreeWaits[task.id] != nil { return createWorktree(for: task.id) }
+        guard task.worktree == nil else {
+            return flash = task.worktreeName.map { "\(task.title) already has the worktree \($0)" }
+                ?? "\(task.title) works in the main checkout"
+        }
+        guard let note = task.notePath
+        else { return flash = "\(task.title) has no note yet; \(keyText(for: "tasks.refresh")) reads it" }
+        guard !isFixture, let pane = focusedAgentPane(of: task.id), TerminalSurfaces.shared.hasTerminal(pane) else {
+            return createWorktree(for: task.id)
+        }
+        TerminalSurfaces.shared.typeLine(NewTask.notePrompt(note: note), paneID: pane)
+        let timer = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(180))
+            guard !Task.isCancelled, self?.worktreeWaits[task.id] != nil else { return }
+            self?.flash = "the agent did not finish in 3 minutes; adding the worktree anyway"
+            self?.createWorktree(for: task.id)
+        }
+        worktreeWaits[task.id] = WorktreeWait(pane: pane, timer: timer)
+        var updated = task
+        updated.record("asked the agent to update the note")
+        commit(.taskUpserted(updated))
+        flash = "the agent is writing the note; the worktree follows when it is done (\(keyText(for: "task.worktree")) again: now)"
+    }
+
+    /// The agent tab keys go to: the focused pane of the shown tab when it is an agent, else the task's first agent.
+    private func focusedAgentPane(of id: String) -> String? {
+        guard let layout = layouts[id] else { return nil }
+        if layout.tabs.indices.contains(layout.activeTab) {
+            let tab = layout.tabs[layout.activeTab]
+            if tab.tree.panes.first(where: { $0.id == tab.focused })?.role == .agent { return tab.focused }
+        }
+        return layout.panes.first { $0.role == .agent }?.id
+    }
+
+    private func createWorktree(for id: String) {
+        worktreeWaits.removeValue(forKey: id)?.timer.cancel()
+        guard let task = task(id) else { return }
+        flash = "creating the worktree for \(task.title)…"
+        Task {
+            do {
+                let fresh = try await pk.addWorktree(id)
+                guard let worktree = fresh.worktree else { return flash = "pk recorded no worktree on \(task.title)" }
+                addWorkTabs(
+                    to: fresh, worktree: worktree,
+                    prompt: NewTask.handoverPrompt(note: fresh.notePath ?? task.notePath ?? ""),
+                    record: "worktree \((worktree as NSString).lastPathComponent)"
+                )
+            } catch {
+                flash = "could not add a worktree to \(task.title): \(error)"
+            }
+        }
+    }
+
+    /// `:review 299044`: pk makes the review task and imports the PR into a worktree; then the same tabs as a new
+    /// worktree, with an agent told what to review.
+    private func startReview(_ argument: String?) {
+        guard let number = argument.flatMap({ Int($0.trimmingCharacters(in: CharacterSet(charactersIn: "#"))) }),
+              number > 0
+        else { return flash = ":review <PR number>" }
+        flash = "importing PR \(number) for review…"
+        Task {
+            do {
+                let fresh = try await pk.newReview(number)
+                guard let worktree = fresh.worktree, let task = upsert(fresh) else { return }
+                view = .tasks
+                select(taskID: task.id)
+                let pr = task.pr ?? PullRef(repo: Kibana.repo, number: number).url
+                addWorkTabs(
+                    to: fresh, worktree: worktree,
+                    prompt: "Review \(pr). The task note is at \(task.notePath ?? "?").",
+                    record: "review of PR \(number) in \((worktree as NSString).lastPathComponent)"
+                )
+            } catch {
+                flash = "could not start the review of PR \(number): \(error)"
+            }
+        }
+    }
+
+    /// After the task's tabs: `pk kbn bootstrap`, the pinned commands and a new agent, all in `worktree`, every one
+    /// starting at once. The agent's tab is shown, and typed into when the task is still the one on screen.
+    private func addWorkTabs(to fresh: PkTask, worktree: String, prompt: String, record: String) {
+        guard let task = upsert(fresh, record: record) else { return }
+        let built = NewTask.worktreeTabs(
+            worktree: worktree, prompt: prompt, bootstrap: pk.commandLine(["kbn", "bootstrap"]), settings: settings,
+            integration: integration
+        )
+        var layout = layouts[task.id] ?? TaskLayout(tabs: [])
+        layout.tabs += built.tabs
+        layout.activeTab = layout.tabs.count - 1
+        autostart(built.tabs.flatMap(\.tree.panes))
+        var changes: [DomainChange] = [.layoutChanged(task: task.id, layout)]
+        if let agent = built.agent { changes.append(.agentChanged(pane: agent.pane, agent.tab)) }
+        commit(changes)
+        flash = "\(task.title): worktree \((worktree as NSString).lastPathComponent), bootstrapping"
+        guard view == .tasks, currentTask?.id == task.id else { return }
+        if let agent = built.agent { focusPane(agent.pane) }
+        enterInsert()
+    }
+
+    /// Panes whose command should run when their terminal opens. Fixtures never start anything.
+    private func autostart(_ panes: [PaneSpec]) {
+        guard !isFixture else { return }
+        for pane in panes where pane.command != nil {
+            TerminalSurfaces.shared.autostartPanes.insert(pane.id)
+        }
+    }
+
+    /// `K`: `pk kbn` in a new tab of the task, where it works. pk picks the port; the Kibana icon follows the probe.
+    private func runKibana() {
+        guard let task = currentTask else { return flash = "no task here" }
+        if task.running, let port = task.port { return flash = "Kibana already runs on :\(port) for \(task.title)" }
+        let pane = PaneSpec(role: .shell, title: "kibana", directory: task.directory, command: pk.commandLine(["kbn"]))
+        autostart([pane])
+        var layout = layouts[task.id] ?? TaskLayout(tabs: [])
+        layout.tabs.append(PaneTab(title: "kibana", tree: .leaf(pane)))
+        layout.activeTab = layout.tabs.count - 1
+        commit(.layoutChanged(task: task.id, layout))
+        enterInsert()
     }
 
     // MARK: Confirmation
@@ -1277,14 +1611,28 @@ final class AppModel {
             flash = ":task.open <words> goes to the first task matching them"
             return
         }
-        guard let task = list.ordered.first(where: { task in
+        let matches = { (task: WorkTask) in
             FilterQuery.matches(words, [task.title, task.worktreeName ?? "", task.branch ?? ""])
-        }) else {
-            flash = "no task matches \(words)"
-            return
         }
-        view = .tasks
-        select(taskID: task.id)
+        if let task = list.ordered.first(where: matches) {
+            view = .tasks
+            return select(taskID: task.id)
+        }
+        guard let todo = tasks.first(where: { $0.status == .toDo && matches($0) }) else {
+            return flash = "no task matches \(words)"
+        }
+        flash = "starting \(todo.title)…"
+        Task {
+            do {
+                let result = try await pk.setStatus(todo.id, .inProgress)
+                _ = upsert(result.task, record: "status In Progress")
+                view = .tasks
+                select(taskID: todo.id)
+                flash = "\(todo.title) is In Progress"
+            } catch {
+                flash = "could not start \(todo.title): \(error)"
+            }
+        }
     }
 
     /// PRs that mention this one: shown in the reader, never linked to a task.
@@ -1920,26 +2268,33 @@ final class AppModel {
         }
     }
 
-    /// A new In Progress task with its agent in the main checkout, which takes your keys.
+    /// pk writes the note (In Progress, `context` under Notes); the task gets an agent in the main checkout, which
+    /// takes your keys.
     private func createTask(title: String, context: String) {
-        guard !isFixture else {
-            flash = "fixture: no IO"
-            return
-        }
-        let changes = NewTask.start(title: title, context: context, settings: settings, integration: integration)
-        for case let .layoutChanged(_, layout) in changes {
-            for pane in layout.panes where pane.command != nil {
-                TerminalSurfaces.shared.autostartPanes.insert(pane.id)
+        flash = "creating \(title)…"
+        Task {
+            let created: PkTask
+            do {
+                created = try await pk.new(title: title, context: context)
+            } catch {
+                return flash = "could not create \(title): \(error)"
             }
+            guard let task = WorkTask(created, keeping: nil) else {
+                return flash = "pk returned \(created.title) without a task id"
+            }
+            let changes = NewTask.start(task, context: context, settings: settings, integration: integration)
+            for case let .layoutChanged(_, layout) in changes {
+                autostart(layout.panes)
+            }
+            commit(changes)
+            view = .tasks
+            select(taskID: task.id)
+            if let tab = currentTab, let agent = tab.tree.panes.first(where: { $0.role == .agent }) {
+                focusPane(agent.id)
+            }
+            enterInsert()
+            flash = "started \(task.title)"
         }
-        commit(changes)
-        view = .tasks
-        if case let .taskUpserted(task)? = changes.first { select(taskID: task.id) }
-        if let tab = currentTab, let agent = tab.tree.panes.first(where: { $0.role == .agent }) {
-            focusPane(agent.id)
-        }
-        enterInsert()
-        flash = "started \(title)"
     }
 
     // MARK: Panes and tabs
@@ -2053,6 +2408,7 @@ final class AppModel {
             guard count > 0 else { return }
             layout.activeTab = ((layout.activeTab + delta) % count + count) % count
         }
+        autoInsert()
     }
 
     private func newTab() {
@@ -2065,10 +2421,22 @@ final class AppModel {
             ))))
             layout.activeTab = layout.tabs.count - 1
         }
+        autoInsert()
     }
 
     func selectTab(_ index: Int) {
         updateLayout { $0.activeTab = index }
+        autoInsert()
+    }
+
+    /// Going to a tab whose focused pane is a terminal hands it your keys, so you can type at once.
+    private func autoInsert() {
+        guard view == .tasks, overlay == nil, reader == nil, issueReader == nil, confirmation == nil,
+              let tab = currentTab,
+              let pane = tab.tree.panes.first(where: { $0.id == tab.focused }) ?? tab.tree.panes.first,
+              pane.role.isTerminal
+        else { return }
+        enterInsert()
     }
 
     /// The key bound to `command` in NORMAL (first binding), as key-cap text: what the title bar shows per view.

@@ -9,6 +9,13 @@ public struct PaneSpec: Hashable, Sendable, Codable, Identifiable {
         /// A pinned command (`[commands]`: test, build); its exit code sets the tab's glyph.
         case command
 
+        /// A pane that shows a terminal and takes keys in INSERT.
+        public var isTerminal: Bool {
+            switch self {
+            case .agent, .shell, .command: true
+            }
+        }
+
         /// A role this build no longer has (a cached `helper` pane) comes back as a shell.
         public init(from decoder: Decoder) throws {
             self = try Role(rawValue: decoder.singleValueContainer().decode(String.self)) ?? .shell

@@ -49,8 +49,26 @@ public struct TaskStatus: RawRepresentable, Hashable, Sendable, Codable, CustomS
     public static let done = TaskStatus(rawValue: "Done")
     public static let dropped = TaskStatus(rawValue: "Dropped")
 
+    public static let all: [TaskStatus] = [.toDo, .inProgress, .readyForReview, .blocked, .done, .dropped]
+
     /// Whether the sidebar lists a task with this status. Pinned tasks show whatever their status.
     public var isActive: Bool { self == .inProgress || self == .blocked }
+
+    /// Done and Dropped end a task: setting one from Heed asks first and closes its terminals.
+    public var endsTask: Bool { self == .done || self == .dropped }
+
+    /// A status as typed after `:status`: the name in any case, or a short form (`todo`, `wip`, `review`, `drop`).
+    public static func named(_ text: String) -> TaskStatus? {
+        let key = text.lowercased().split(whereSeparator: { $0 == " " || $0 == "-" }).joined(separator: " ")
+        if let exact = all.first(where: { $0.rawValue.lowercased() == key }) { return exact }
+        switch key {
+        case "todo": return .toDo
+        case "progress", "wip", "inprogress", "doing": return .inProgress
+        case "review", "ready", "ready for review": return .readyForReview
+        case "drop": return .dropped
+        default: return nil
+        }
+    }
 
     public var description: String { rawValue }
 }

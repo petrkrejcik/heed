@@ -28,6 +28,7 @@ toc:
       - file: index.md
       - file: sidebar.md
       - file: new-task.md
+      - file: status-and-worktrees.md
       - file: moving-around.md
       - file: typing-into-agents.md
       - file: panes-and-tabs.md

@@ -69,6 +69,7 @@ public enum HookCommandLine {
            heed command-exit <code>
            heed hook claude <event>         (reads Claude's hook JSON on stdin)
            heed tools                       (where git and gh are found, as the app finds them)
+           heed pk <paths|list|new|watch>   (pk's tasks, as the app reads them; heed pk --help)
     Reads \(HeedEnvironment.sessionID) and \(HeedEnvironment.socket) from the environment (set in every Heed pane).
     """
 

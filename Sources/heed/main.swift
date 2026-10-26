@@ -9,7 +9,7 @@ let environment = ProcessInfo.processInfo.environment
 let arguments = Array(CommandLine.arguments.dropFirst())
 
 // A hook must never hold up an agent: whatever happens (a stdin that never closes, a stuck socket), give up quietly.
-if arguments.first != "tools" {
+if arguments.first != "tools", arguments.first != "pk" {
     signal(SIGALRM) { _ in _exit(0) }
     alarm(3)
 }
@@ -32,6 +32,11 @@ if arguments.first == "tools" {
     }
     print("PATH    \(report.pathVariable)")
     exit(report.tools.allSatisfy { $0.path != nil } ? 0 : 1)
+}
+
+// `heed pk`: the app's pk adapter from a terminal (scripts/e2e-pk.sh runs it against a throwaway vault).
+if arguments.first == "pk" {
+    await exit(PkCommandLine.run(Array(arguments.dropFirst())))
 }
 
 let kinds: [HookMessage.Kind]

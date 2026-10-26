@@ -9,6 +9,9 @@ the work is about.
 
 ![A task: its row in the sidebar, its tabs and panes, and the inspector with its PR, issue and agents](../images/shots/concepts/task.png)
 
+Each task is a note in your Obsidian vault, read and written through pk (see
+[Status, worktrees and reviews](../tasks/status-and-worktrees.md)).
+
 A task has:
 
 - **A title and a status.** In Progress or Blocked tasks are listed in the sidebar. To Do tasks stay on the Kanban;

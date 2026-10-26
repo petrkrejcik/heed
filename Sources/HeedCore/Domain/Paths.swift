@@ -14,9 +14,12 @@ public enum Paths {
     public nonisolated(unsafe) static var home = NSHomeDirectory()
 }
 
-/// The fork works on Kibana only, so its repo and main checkout are fixed.
+/// The fork works on Kibana only, so its repo is fixed. Its main checkout is pk's (`paths.get`, which honours
+/// `PK_KIBANA_MAIN`).
 public enum Kibana {
     public static let repo = Repo(org: "elastic", name: "kibana")
-    /// `~/www/kibana`: where tasks without a worktree run their agents.
-    public static var mainCheckout: String { Paths.home + "/www/kibana" }
+    /// Set once pk said where the main checkout is.
+    public nonisolated(unsafe) static var configuredMain: String?
+    /// Where tasks without a worktree run their agents: pk's answer, else `~/www/kibana` until it arrives.
+    public static var mainCheckout: String { configuredMain ?? Paths.home + "/www/kibana" }
 }

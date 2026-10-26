@@ -4,8 +4,9 @@ description: A new task takes only a title, and starts claude in the Kibana chec
 
 # New task
 
-`o` (or `:new <title>`) opens the New task dialog. It asks for one thing: a title. `↩` creates the task, In Progress,
-and starts claude on it in the main Kibana checkout, `~/www/kibana`, with its own Claude session.
+`o` (or `:new <title>`) opens the New task dialog. It asks for one thing: a title. `↩` has pk write the task's note,
+In Progress, and starts claude on it in the main Kibana checkout, `~/www/kibana`, with its own Claude session. When
+it needs a branch, `W` gives it a worktree (see [Status, worktrees and reviews](status-and-worktrees.md)).
 
 ![The New task dialog: a title field, and where claude starts](../images/shots/tasks/new-task.png)
 

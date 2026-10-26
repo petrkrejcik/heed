@@ -17,6 +17,10 @@ public struct HeedConfig: Equatable, Sendable {
     public var scopedKeys: [String: [(String, String)]]
     public var githubPollSeconds: Int
     public var tools = ToolSettings()
+    /// `[pk] python`: the python of pk's virtualenv; Heed runs `<python> -m pk.bridge` with it.
+    public var pkPython = HeedConfig.defaultPkPython
+
+    public static let defaultPkPython = "~/www/pk/.venv/bin/python"
 
     public static let `default` = HeedConfig(
         work: .default, insertEscape: DefaultKeys.insertEscape, keys: [:], scopedKeys: [:], githubPollSeconds: 60
@@ -40,6 +44,7 @@ public struct HeedConfig: Equatable, Sendable {
             flat(lhs.scopedKeys) == flat(rhs.scopedKeys),
             lhs.githubPollSeconds == rhs.githubPollSeconds,
             lhs.tools == rhs.tools,
+            lhs.pkPython == rhs.pkPython,
         ]
         return !same.contains(false)
     }
@@ -158,6 +163,14 @@ public enum ConfigLoader {
         if let gh = string(["tools", "gh"]) { config.tools.gh = gh }
         if let zmx = string(["tools", "zmx"]) { config.tools.zmx = zmx }
         if let path = strings(["tools", "path"]) { config.tools.path = path }
+        // [pk]
+        if let python = string(["pk", "python"]) {
+            if python.isEmpty {
+                problems.append(ConfigProblem(path: "pk.python", message: "expected the path of pk's python"))
+            } else {
+                config.pkPython = python
+            }
+        }
         // [commands]
         config.work.commands = pairs(["commands"]).map { PinnedCommand(name: $0.0, command: $0.1) }
 
@@ -248,6 +261,10 @@ public enum ConfigLoader {
     gh = ""
     # Directories searched first, for git, gh and agent commands alike.
     path = []
+
+    [pk]
+    # The python of pk's virtualenv. Tasks are pk's notes: Heed reads and changes them through `python -m pk.bridge`.
+    python = "~/www/pk/.venv/bin/python"
 
     # The agent: claude, overridden field by field. Fields: command, prompt (argument | stdin | paste | file), plan,
     # resume ("{id}" is the agent's session id), and [agents.claude.profiles] of name = command line. Other agents run

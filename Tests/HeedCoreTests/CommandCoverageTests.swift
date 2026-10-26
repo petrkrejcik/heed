@@ -21,7 +21,19 @@ struct CommandCoverageTests {
     }
 
     @Test func aliasesNameRealCommands() {
-        for line in ["new", "pr 12", "tasks", "inbox", "help", "q"] {
+        for line in [
+            "new",
+            "pr 12",
+            "tasks",
+            "inbox",
+            "help",
+            "q",
+            "task x",
+            "status done",
+            "pin",
+            "review 1",
+            "worktree",
+        ] {
             let name = CommandAliases.resolve(line).name
             #expect(Commands.spec(name) != nil, "\(line) → \(name)")
         }

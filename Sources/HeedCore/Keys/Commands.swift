@@ -37,11 +37,26 @@ public enum Commands {
         .init("task.filter", "filter the current view (typed in the status bar)", .move),
         .init("filter.clear", "clear the current view's filter", .move),
         .init("task.attention", "next task needing you", .move),
-        .init("task.pin", "pin / unpin task", .move),
+        .init("task.pin", "pin / unpin task (in its note)", .move),
         .init("task.back", "back to previous task", .move),
-        .init("task.open", "go to the task matching these words", .move, arguments: "<words>"),
+        .init(
+            "task.open", "go to the task matching these words; a To Do one becomes In Progress", .move,
+            arguments: "<words>"
+        ),
         .init("pin.jump", "jump to pinned task", .move, arguments: "<1-9>"),
         .init("task.new", "new task: only a title", .move, arguments: "[title]"),
+        .init(
+            "task.status", "set the task's status in its note (done and dropped close its terminals)", .move,
+            arguments: "<done|blocked|in progress|review|todo|dropped>"
+        ),
+        .init(
+            "task.worktree",
+            "add a worktree: the agent updates the note, then the worktree, bootstrap and a new agent (again: stop waiting)",
+            .move
+        ),
+        .init("task.review", "review a PR: a task, its worktree, bootstrap and an agent", .move, arguments: "<number>"),
+        .init("tasks.refresh", "read every task from pk again", .move),
+        .init("kibana.run", "run Kibana for this task in a new tab (pk kbn)", .move),
         .init("resume", "pick up where you left off: the agents to resume, as on launch", .move),
         // Panes & tabs
         .init("pane.left", "focus pane left", .panes),

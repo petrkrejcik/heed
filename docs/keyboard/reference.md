@@ -25,11 +25,16 @@ This page is generated from the code (`mise run shots`).
 | `task.filter` | `/` | filter the current view (typed in the status bar) |
 | `filter.clear` |  | clear the current view's filter |
 | `task.attention` | `ga` | next task needing you |
-| `task.pin` | `m` | pin / unpin task |
+| `task.pin` | `m` | pin / unpin task (in its note) |
 | `task.back` | `''` | back to previous task |
-| `task.open` `<words>` |  | go to the task matching these words |
+| `task.open` `<words>` |  | go to the task matching these words; a To Do one becomes In Progress |
 | `pin.jump` `<1-9>` | `'1`, `'2`, `'3`, `'4`, `'5`, `'6`, `'7`, `'8`, `'9` | jump to pinned task |
 | `task.new` `[title]` | `o` | new task: only a title |
+| `task.status` `<done|blocked|in progress|review|todo|dropped>` | `dd`, `db`, `di`, `dr` | set the task's status in its note (done and dropped close its terminals) |
+| `task.worktree` | `W` | add a worktree: the agent updates the note, then the worktree, bootstrap and a new agent (again: stop waiting) |
+| `task.review` `<number>` |  | review a PR: a task, its worktree, bootstrap and an agent |
+| `tasks.refresh` | `r` (tasks) | read every task from pk again |
+| `kibana.run` | `K` | run Kibana for this task in a new tab (pk kbn) |
 | `resume` |  | pick up where you left off: the agents to resume, as on launch |
 
 ## Panes & tabs

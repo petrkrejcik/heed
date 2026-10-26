@@ -6,6 +6,11 @@ public enum CommandAliases {
         let args = typed.arguments
         switch typed.name {
         case "new": return CommandInvocation(name: "task.new", arguments: args)
+        case "task": return CommandInvocation(name: "task.open", arguments: args)
+        case "status": return CommandInvocation(name: "task.status", arguments: args)
+        case "pin": return CommandInvocation(name: "task.pin", arguments: args)
+        case "review": return CommandInvocation(name: "task.review", arguments: args)
+        case "worktree": return CommandInvocation(name: "task.worktree", arguments: args)
         case "pr": return CommandInvocation(name: "open.reader", arguments: ["pr"] + args)
         case "help": return CommandInvocation(name: "overlay.help")
         case "q", "quit": return CommandInvocation(name: "app.quit")

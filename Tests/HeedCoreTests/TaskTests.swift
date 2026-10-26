@@ -292,10 +292,12 @@ struct NewTaskTests {
     @Test func startingATaskOpensClaudeInTheMainCheckoutWithItsOwnSessionID() throws {
         let now = Date(timeIntervalSince1970: 1_000_000)
         let changes = NewTask.start(
-            title: "Fix image upload 403", context: "Read the issue.", settings: .default, integration: nil, now: now
+            WorkTask(id: "pk-1", title: "Fix image upload 403"), context: "Read the issue.", settings: .default,
+            integration: nil, now: now
         )
         let domain = Domain.empty.applying(changes)
         let task = try #require(domain.tasks.first)
+        #expect(task.id == "pk-1")
         #expect(task.title == "Fix image upload 403")
         #expect(task.status == .inProgress)
         #expect(task.worktree == nil)
@@ -315,7 +317,7 @@ struct NewTaskTests {
     @Test func aShellSplitSitsBesideTheAgent() {
         var settings = WorkSettings.default
         settings.shellSplit = true
-        let domain = Domain.empty.applying(NewTask.start(title: "t", settings: settings, integration: nil))
+        let domain = Domain.empty.applying(NewTask.start(WorkTask(title: "t"), settings: settings, integration: nil))
         let panes = domain.layouts.values.first?.panes ?? []
         #expect(panes.map(\.role) == [.agent, .shell])
         #expect(domain.layouts.values.first?.tabs.first?.focused == panes.first?.id)
@@ -323,7 +325,7 @@ struct NewTaskTests {
 
     @Test func withoutClaudeItOpensAShell() {
         let settings = WorkSettings(agents: [])
-        let domain = Domain.empty.applying(NewTask.start(title: "t", settings: settings, integration: nil))
+        let domain = Domain.empty.applying(NewTask.start(WorkTask(title: "t"), settings: settings, integration: nil))
         #expect(domain.layouts.values.first?.panes.map(\.role) == [.shell])
         #expect(domain.agents.isEmpty)
         #expect(domain.tasks.first?.timeline.last?.text.hasPrefix("started · shell") == true)

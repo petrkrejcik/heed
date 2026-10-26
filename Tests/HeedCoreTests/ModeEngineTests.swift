@@ -173,11 +173,12 @@ struct ScopedKeyTests {
     }
 
     @Test func removedKeysAreGone() {
-        // History (x, dd), Start work (O), Repos and import went with their views.
+        // History (x, dd), Start work (O), Repos and import went with their views. dd is back as Done, which asks.
         let normal = Set(DefaultKeys.normal.map(\.0))
-        for keys in ["x", "dd", "O", "gh", "gr", "zz", "]p", "[p", "gU"] {
+        for keys in ["x", "O", "gh", "gr", "zz", "]p", "[p", "gU"] {
             #expect(!normal.contains(keys), "\(keys) is still bound")
         }
+        #expect(DefaultKeys.normal.contains { $0 == ("dd", "task.status done") })
         for scope in ["sessions", "repos", "history"] {
             #expect(DefaultKeys.scoped[scope] == nil, "\(scope) still has keys")
         }

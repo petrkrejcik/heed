@@ -24,7 +24,7 @@ public struct ProcessError: Error, Sendable, CustomStringConvertible {
 public enum ProcessRunner {
     public static func run(
         _ executable: String, _ arguments: [String], in directory: String? = nil,
-        environment: [String: String]? = nil, timeout: Duration = .seconds(30), input: URL? = nil
+        environment: [String: String]? = nil, timeout: Duration = .seconds(30), input: URL? = nil, stdin: Data? = nil
     ) async throws -> ProcessResult {
         let command = ([executable] + arguments).joined(separator: " ")
         // A bare name is resolved through tool detection (an app opened from Finder has a minimal PATH) and runs with
@@ -53,8 +53,11 @@ public enum ProcessRunner {
         let stderr = Pipe()
         process.standardOutput = stdout
         process.standardError = stderr
-        // A file to read from (an upload over ssh), else nothing: a command must never wait on input.
-        if let input, let handle = try? FileHandle(forReadingFrom: input) {
+        // A file or bytes to read from (a bridge request), else nothing: a command must never wait on input.
+        let feed = stdin.map { _ in Pipe() }
+        if let feed {
+            process.standardInput = feed
+        } else if let input, let handle = try? FileHandle(forReadingFrom: input) {
             process.standardInput = handle
         } else {
             process.standardInput = FileHandle.nullDevice
@@ -70,6 +73,15 @@ public enum ProcessRunner {
             try process.run()
         } catch {
             throw ProcessError(command: command, result: nil, reason: "could not start (\(error.localizedDescription))")
+        }
+        if let feed, let stdin {
+            // Written off the caller, then closed, so the command sees the end of its input. A command that exits
+            // without reading must not take Heed down with SIGPIPE.
+            _ = fcntl(feed.fileHandleForWriting.fileDescriptor, F_SETNOSIGPIPE, 1)
+            Task.detached {
+                try? feed.fileHandleForWriting.write(contentsOf: stdin)
+                try? feed.fileHandleForWriting.close()
+            }
         }
 
         let timedOut = Flag()

@@ -187,6 +187,9 @@ private struct PaneView: View {
 
             if ShotMode.active {
                 FakeTerminal(pane: pane)
+            } else if !model.terminalsReady {
+                // The PATH and zmx sessions are not known yet; a terminal made now would start with the wrong ones.
+                Theme.pane
             } else {
                 TerminalPane(
                     pane: pane,

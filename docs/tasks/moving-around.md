@@ -15,7 +15,7 @@ Moving between tasks works like moving in vim.
 | `ga` | The next task that needs you (an agent blocked or asking) |
 | `''` | The task you were on before |
 | `'1` … `'9` | Pinned task 1 to 9 |
-| `:task.open <words>` | The first task matching the words |
+| `:task <words>` | The first task matching the words (a matching To Do task is set In Progress) |
 
 ![After 2j: the cursor two rows down, the numbers counting from it](../images/shots/tasks/moving.png)
 
