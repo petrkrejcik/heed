@@ -102,7 +102,7 @@ public enum NewTask {
 
     /// What the old agent is asked before the worktree is made.
     public static func notePrompt(note: String) -> String {
-        "Update the task note at \(note): write the plan and what you learned so far. Reply ok when done."
+        "Update the task note at \(note): write what you learned so far. Reply ok when done."
     }
 
     /// What `W` types into the task's agent once the worktree exists: Claude moves the running session there, so the

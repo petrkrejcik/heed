@@ -42,7 +42,7 @@ is set In Progress and opened.
 
 A new task works in the main Kibana checkout. When it is ready for a branch of its own, `W`:
 
-1. Heed asks the task's agent to write the plan and what it learned into the note.
+1. Heed asks the task's agent to write what it learned into the note.
 2. When the agent's turn ends (or after three minutes; `W` again skips the wait), pk creates the worktree and its
    branch, named from the title.
 3. The same agent moves to the worktree (Heed types Claude's `/cd <worktree>` into it), so the conversation carries
