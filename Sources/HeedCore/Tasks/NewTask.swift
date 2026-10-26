@@ -91,6 +91,15 @@ public enum NewTask {
     /// What an agent in a new worktree is told: the note is the handover, since a running Claude cannot change folder.
     public static func handoverPrompt(note: String) -> String { "Read the task note at \(note) and continue." }
 
+    /// The Kibana PR `:review` means: `300162`, `#300162`, or the PR's URL (any tab of it). Nil for anything else,
+    /// including another repo's PR.
+    public static func reviewNumber(_ text: String) -> Int? {
+        let text = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let ref = PullRef(url: text) { return ref.repo == Kibana.repo ? ref.number : nil }
+        guard let number = Int(text.hasPrefix("#") ? String(text.dropFirst()) : text), number > 0 else { return nil }
+        return number
+    }
+
     /// What the old agent is asked before the worktree is made.
     public static func notePrompt(note: String) -> String {
         "Update the task note at \(note): write the plan and what you learned so far. Reply ok when done."

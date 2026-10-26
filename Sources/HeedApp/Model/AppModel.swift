@@ -900,6 +900,10 @@ final class AppModel {
             handleNewTask(stroke)
             return true
         }
+        if mode == .command, stroke == KeyStroke("v", .command) {
+            commandText += pastedLine()
+            return true
+        }
         let before = engine.mode
         let outcome = engine.handle(stroke)
         switch outcome {
@@ -1323,9 +1327,9 @@ final class AppModel {
     /// `:review 299044`: pk makes the review task and imports the PR into a worktree; then the same tabs as a new
     /// worktree, with an agent told what to review.
     private func startReview(_ argument: String?) {
-        guard let number = argument.flatMap({ Int($0.trimmingCharacters(in: CharacterSet(charactersIn: "#"))) }),
-              number > 0
-        else { return flash = ":review <PR number>" }
+        guard let number = argument.flatMap(NewTask.reviewNumber) else {
+            return flash = ":review <number or elastic/kibana PR URL>"
+        }
         flash = "importing PR \(number) for review…"
         Task {
             do {
@@ -2217,6 +2221,8 @@ final class AppModel {
             text = FilterQuery.droppingLastWord(text)
         case KeyStroke("Space"):
             text += " "
+        case KeyStroke("v", .command):
+            text += pastedLine()
         default:
             guard !stroke.isNamed, stroke.modifiers.isEmpty else { return }
             text += stroke.key
@@ -2249,6 +2255,12 @@ final class AppModel {
     }
 
     func cancelNewTask() { newTask = nil }
+
+    /// The clipboard's text on one line, for the command line and the filter.
+    private func pastedLine() -> String {
+        let text = NSPasteboard.general.string(forType: .string) ?? ""
+        return text.split(whereSeparator: \.isNewline).joined(separator: " ").trimmingCharacters(in: .whitespaces)
+    }
 
     private func handleNewTask(_ stroke: KeyStroke) {
         guard var form = newTask else { return }

@@ -248,6 +248,19 @@ struct PkConfigTests {
     }
 }
 
+struct ReviewNumberTests {
+    @Test func aNumberOrAKibanaPRURL() {
+        #expect(NewTask.reviewNumber("300162") == 300_162)
+        #expect(NewTask.reviewNumber("#300162") == 300_162)
+        #expect(NewTask.reviewNumber(" https://github.com/elastic/kibana/pull/300162 ") == 300_162)
+        #expect(NewTask.reviewNumber("https://github.com/elastic/kibana/pull/300162/files?w=1") == 300_162)
+        #expect(NewTask.reviewNumber("https://github.com/elastic/elasticsearch/pull/1") == nil)
+        #expect(NewTask.reviewNumber("https://github.com/elastic/kibana/issues/300162") == nil)
+        #expect(NewTask.reviewNumber("0") == nil)
+        #expect(NewTask.reviewNumber("soon") == nil)
+    }
+}
+
 struct WorktreeTabsTests {
     @Test func bootstrapThenPinnedCommandsThenTheAgent() throws {
         var settings = WorkSettings.default

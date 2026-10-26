@@ -52,8 +52,9 @@ The old agent stays where it was; close it when you no longer need it.
 
 ## Reviewing a PR
 
-`:review <number>` makes the task "Review PR <number> - <title>" with the PR checked out in a worktree, then opens the
-`bootstrap` tab and an agent asked to review it. Marking the review Done removes its worktree.
+`:review <number>` (or the PR's URL; `⌘V` pastes into the command line) makes the task "Review PR <number> -
+<title>" with the PR checked out in a worktree, then opens the `bootstrap` tab and an agent asked to review it.
+Marking the review Done removes its worktree.
 
 ## Running Kibana
 

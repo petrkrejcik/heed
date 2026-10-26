@@ -13,12 +13,15 @@ description: Running any command by name from the command line.
 | `⇥` | Complete |
 | `↩` | Run |
 | `⎋` | Close |
+| `⌘V` | Paste (on one line) |
 
 Short forms work too:
 
 | Typed | Runs |
 |---|---|
 | `:new <title>` | New task with that title |
+| `:review 2841` | Review pull request 2841 (its URL works too) |
+| `:task <words>`, `:status <name>`, `:pin` | Go to a task, set its status, pin it |
 | `:pr 2841` | Read pull request 2841 |
 | `:tasks`, `:inbox`, `:prs`, … | Switch view |
 | `:help` | Every key |
