@@ -194,6 +194,9 @@ final class AppModel {
         engine = ModeEngine(keymaps: built.keymaps, scoped: built.scoped)
         keyProblems = built.problems
         if isFixture {
+            // UserDefaults reads the real Mac's preferences even with HOME pointed elsewhere.
+            inspectorVisible = true
+            sidebarCollapsed = false
             config.issues = Fixtures.issueRules
             zmxHealth = ZmxHealth(path: "/opt/homebrew/bin/zmx", version: "0.8.1")
             issueInfo = Fixtures.issueInfo
