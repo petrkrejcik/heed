@@ -248,6 +248,26 @@ struct PkConfigTests {
     }
 }
 
+struct MovingAgentTests {
+    @Test func theAgentMovesAndTheSetupTabsFollow() throws {
+        let agent = PaneSpec(id: "agent", role: .agent, title: "claude", directory: "/k")
+        let shell = PaneSpec(id: "shell", role: .shell, title: "zsh", directory: "/k")
+        var agentTab = PaneTab(title: "agent", tree: .leaf(agent))
+        agentTab.split(.horizontal, with: shell)
+        let layout = TaskLayout(tabs: [agentTab, PaneTab(title: "kibana", tree: .leaf(pane("kibana")))], activeTab: 1)
+        let added = NewTask.setupTabs(worktree: "/w/a", bootstrap: "pk kbn bootstrap", settings: .default)
+        let moved = try #require(NewTask.movingAgent("agent", to: "/w/a", in: layout, adding: added))
+        #expect(moved.tabs.map(\.title) == ["agent", "kibana", "bootstrap"])
+        #expect(moved.activeTab == 0)
+        #expect(moved.tabs[0].focused == "agent")
+        #expect(moved.tabs[0].tree.panes.map(\.directory) == ["/w/a", "/k"])
+        #expect(NewTask.movingAgent("gone", to: "/w/a", in: layout, adding: added) == nil)
+        #expect(NewTask.moveCommand(to: "/w/a") == "/cd /w/a")
+    }
+
+    private func pane(_ id: String) -> PaneSpec { PaneSpec(id: id, role: .shell, title: id, directory: "/k") }
+}
+
 struct ReviewNumberTests {
     @Test func aNumberOrAKibanaPRURL() {
         #expect(NewTask.reviewNumber("300162") == 300_162)

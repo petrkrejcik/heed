@@ -1305,23 +1305,52 @@ final class AppModel {
         return layout.panes.first { $0.role == .agent }?.id
     }
 
+    /// pk makes the worktree; then the agent that wrote the note moves there with Claude's `/cd`, keeping its
+    /// conversation. Without a running agent, a new one starts there and reads the note.
     private func createWorktree(for id: String) {
-        worktreeWaits.removeValue(forKey: id)?.timer.cancel()
+        let waited = worktreeWaits.removeValue(forKey: id)
+        waited?.timer.cancel()
         guard let task = task(id) else { return }
         flash = "creating the worktree for \(task.title)…"
         Task {
             do {
                 let fresh = try await pk.addWorktree(id)
                 guard let worktree = fresh.worktree else { return flash = "pk recorded no worktree on \(task.title)" }
-                addWorkTabs(
-                    to: fresh, worktree: worktree,
-                    prompt: NewTask.handoverPrompt(note: fresh.notePath ?? task.notePath ?? ""),
-                    record: "worktree \((worktree as NSString).lastPathComponent)"
-                )
+                let record = "worktree \((worktree as NSString).lastPathComponent)"
+                if let agent = waited?.pane ?? focusedAgentPane(of: id),
+                   layouts[id]?.panes.contains(where: { $0.id == agent }) == true,
+                   isFixture || TerminalSurfaces.shared.hasTerminal(agent)
+                {
+                    moveAgent(agent, of: fresh, to: worktree, record: record)
+                } else {
+                    addWorkTabs(
+                        to: fresh, worktree: worktree,
+                        prompt: NewTask.handoverPrompt(note: fresh.notePath ?? task.notePath ?? ""), record: record
+                    )
+                }
             } catch {
                 flash = "could not add a worktree to \(task.title): \(error)"
             }
         }
+    }
+
+    /// Types `/cd <worktree>` into the agent, records its pane as working there, and adds the setup tabs. The agent's
+    /// tab is shown, and typed into when the task is still the one on screen.
+    private func moveAgent(_ pane: String, of fresh: PkTask, to worktree: String, record: String) {
+        guard let task = upsert(fresh, record: record) else { return }
+        let added = NewTask.setupTabs(
+            worktree: worktree, bootstrap: pk.commandLine(["kbn", "bootstrap"]), settings: settings
+        )
+        guard let layout = NewTask.movingAgent(
+            pane, to: worktree, in: layouts[task.id] ?? TaskLayout(tabs: []), adding: added
+        ) else { return }
+        if !isFixture { TerminalSurfaces.shared.typeLine(NewTask.moveCommand(to: worktree), paneID: pane) }
+        autostart(added.flatMap(\.tree.panes))
+        commit(.layoutChanged(task: task.id, layout))
+        flash = "\(task.title): the agent moved to \((worktree as NSString).lastPathComponent); bootstrapping"
+        guard view == .tasks, currentTask?.id == task.id else { return }
+        focusPane(pane)
+        enterInsert()
     }
 
     /// `:review 299044`: pk makes the review task and imports the PR into a worktree; then the same tabs as a new

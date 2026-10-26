@@ -105,12 +105,13 @@ public enum NewTask {
         "Update the task note at \(note): write the plan and what you learned so far. Reply ok when done."
     }
 
-    /// The tabs a task gets with its new worktree, added after the ones it has: `bootstrap` (pk's command line) in a
-    /// terminal so its progress shows, a tab per pinned command, then a new agent on `prompt`. Every pane starts
-    /// its command at once. The agent's tab comes last; it is the one to show.
-    public static func worktreeTabs(
-        worktree: String, prompt: String, bootstrap: String, settings: WorkSettings, integration: IntegrationFiles?
-    ) -> (tabs: [PaneTab], agent: (pane: String, tab: AgentTab)?) {
+    /// What `W` types into the task's agent once the worktree exists: Claude moves the running session there, so the
+    /// conversation carries on in the worktree.
+    public static func moveCommand(to worktree: String) -> String { "/cd \(worktree)" }
+
+    /// The tabs a worktree brings: `bootstrap` (pk's command line) in a terminal so its progress shows, then a tab
+    /// per pinned command. Every pane starts its command at once.
+    public static func setupTabs(worktree: String, bootstrap: String, settings: WorkSettings) -> [PaneTab] {
         let setup = PaneTab(id: newID(), title: "bootstrap", tree: .leaf(PaneSpec(
             id: newID(), role: .shell, title: "bootstrap", directory: worktree, command: bootstrap
         )))
@@ -120,11 +121,33 @@ public enum NewTask {
                 command: "\(pinned.command); \"${\(HeedEnvironment.binary):-true}\" command-exit $?"
             )))
         }
+        return [setup] + pinned
+    }
+
+    /// The setup tabs, then a new agent on `prompt` (a review, or a task whose agent is not running). The agent's
+    /// tab comes last; it is the one to show.
+    public static func worktreeTabs(
+        worktree: String, prompt: String, bootstrap: String, settings: WorkSettings, integration: IntegrationFiles?
+    ) -> (tabs: [PaneTab], agent: (pane: String, tab: AgentTab)?) {
         let agent = agentTab(
             in: worktree, prompt: prompt, agent: settings.claude, shellSplit: settings.shellSplit,
             integration: integration
         )
-        return ([setup] + pinned + [agent.tab], agent.agent)
+        return (setupTabs(worktree: worktree, bootstrap: bootstrap, settings: settings) + [agent.tab], agent.agent)
+    }
+
+    /// The layout once the agent in `pane` has moved to `worktree`: its pane works there (a relaunch resumes it
+    /// there), `added` follows the task's tabs, and the agent's tab is shown. Nil when no tab has that pane.
+    public static func movingAgent(
+        _ pane: String, to worktree: String, in layout: TaskLayout, adding added: [PaneTab]
+    ) -> TaskLayout? {
+        guard let index = layout.tabs.firstIndex(where: { $0.tree.contains(pane) }) else { return nil }
+        var layout = layout
+        layout.tabs[index].tree = layout.tabs[index].tree.updating(pane) { $0.directory = worktree }
+        layout.tabs[index].focused = pane
+        layout.tabs += added
+        layout.activeTab = index
+        return layout
     }
 
     /// A tab running `agent` on `prompt` in `directory`, with its own Claude session id, and a shell split beside it

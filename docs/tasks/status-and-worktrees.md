@@ -45,10 +45,13 @@ A new task works in the main Kibana checkout. When it is ready for a branch of i
 1. Heed asks the task's agent to write the plan and what it learned into the note.
 2. When the agent's turn ends (or after three minutes; `W` again skips the wait), pk creates the worktree and its
    branch, named from the title.
-3. New tabs open in the worktree: `bootstrap` (`pk kbn bootstrap`), one per [pinned command](panes-and-tabs.md#pinned-commands),
-   and a new agent told to read the note and continue. That agent takes your keys.
+3. The same agent moves to the worktree (Heed types Claude's `/cd <worktree>` into it), so the conversation carries
+   on there, and it takes your keys.
+4. New tabs open in the worktree: `bootstrap` (`pk kbn bootstrap`, with the Node version Kibana asks for) and one per
+   [pinned command](panes-and-tabs.md#pinned-commands).
 
-The old agent stays where it was; close it when you no longer need it.
+When the task has no running agent (after a relaunch, before resuming), a new agent starts in the worktree instead and
+is told to read the note and continue.
 
 ## Reviewing a PR
 
