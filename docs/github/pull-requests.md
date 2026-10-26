@@ -13,6 +13,7 @@ Each row shows:
 - **The branch**, with the state of the session working on it.
 - **Checks**: one segment per check, green passed, red failed, blue running, with the failing one named.
 - **Review**: approved, changes requested, or waiting, and how many review threads are unresolved.
+- **State**: where it stands, the same mark the sidebar shows (see [the state of a PR](pr-overlay.md#the-state-of-a-pr)).
 
 | Key | |
 |---|---|

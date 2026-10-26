@@ -15,7 +15,7 @@ struct OrgRepoSettings: View {
         let shown = selected ?? firstOverridden(groups) ?? groups.first.map { OverrideScope.org($0.org) }
         VStack(alignment: .leading, spacing: 14) {
             Text("Orgs & repos").font(Theme.ui(17, weight: .semibold))
-            Text("Orgs and repos can override the defaults: color, issues, and every Pilot setting. A repo takes its "
+            Text("Orgs and repos can override the defaults: color and issues. A repo takes its "
                 + "org's values unless it sets its own. Marked ones override something.")
                 .font(Theme.ui(12)).foregroundStyle(Theme.fg3)
                 .fixedSize(horizontal: false, vertical: true)

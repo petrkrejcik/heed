@@ -135,6 +135,24 @@ struct ConfigTests {
         ])
     }
 
+    @Test func sectionsOfRemovedFeaturesAreIgnored() throws {
+        let (decoded, problems) = ConfigLoader.decode("""
+        [pilot]
+        green = "auto"
+        merge = "heed"
+        [orgs.elastic]
+        color = "teal"
+        reviewers = ["copilot"]
+        [repos."elastic/docs"]
+        issues = "all"
+        admin_merge = true
+        """)
+        let config = try #require(decoded)
+        #expect(problems.isEmpty)
+        #expect(config.orgColors["elastic"] == "teal")
+        #expect(config.issues.repos["elastic/docs"] == .all)
+    }
+
     @Test func syntaxErrorsGiveNoConfig() {
         let (config, problems) = ConfigLoader.decode("[worktrees\nroot = 1")
         #expect(config == nil)

@@ -132,87 +132,8 @@ struct WorkPromptTests {
     }
 }
 
-struct FeedbackTests {
+struct PullDetailTests {
     private let ref = PullRef(repo: Repo(org: "elastic", name: "docs-builder"), number: 2841)
-
-    private func detail(
-        threads: [ReviewThread], failing: [String] = [], sha: String = "a1", approvals: Int = 0, pending: [String] = []
-    ) -> PullDetail {
-        PullDetail(
-            ref: ref, title: "t", body: "", author: "you", baseBranch: "main", headBranch: "b", additions: 1,
-            deletions: 1,
-            commitCount: 1, headSHA: sha,
-            reviews: (0 ..< approvals).map { PullDetail.Review(author: "r\($0)", state: "APPROVED") },
-            threads: threads,
-            failingChecks: failing.map { PullDetail.FailingCheck(name: $0, summary: "\($0) broke", url: nil) },
-            checks: CheckSummary(
-                failed: failing.count, pending: pending.count, failedNames: failing, pendingNames: pending
-            ), closes: [],
-            fetchedAt: Date()
-        )
-    }
-
-    private func thread(_ id: String, resolved: Bool = false) -> ReviewThread {
-        ReviewThread(
-            id: id,
-            isResolved: resolved,
-            path: "src/RedirectFile.cs",
-            line: 88,
-            author: "reviewer",
-            body: "Anchor lookup is case sensitive.",
-            diff: [],
-            replies: 0,
-            url: nil
-        )
-    }
-
-    @Test func newItemsArriveAndResolve() {
-        var feedback = PullFeedback(ref: ref)
-        feedback.merge(detail(threads: [thread("t1"), thread("t2")], failing: ["lint"]))
-        #expect(feedback.items.map(\.status) == [.new, .new, .new])
-        feedback.merge(detail(threads: [thread("t1", resolved: true), thread("t2")]))
-        #expect(feedback.items.first { $0.id == "t1" }?.status == .resolved)
-        #expect(feedback.items.first { $0.id == "check:lint" }?.status == .resolved)
-        #expect(feedback.items.first { $0.id == "t2" }?.status == .new)
-    }
-
-    @Test func autoFeedQueuesAndPromptsListEachItem() {
-        var feedback = PullFeedback(ref: ref, autoFeed: .auto)
-        feedback.merge(detail(threads: [thread("t1")], failing: ["lint"]))
-        #expect(feedback.queued.count == 2)
-        let prompt = feedback.prompt() ?? ""
-        #expect(prompt.hasPrefix("Review feedback on PR #2841"))
-        #expect(prompt.contains("1) RedirectFile.cs:88 (@reviewer): Anchor lookup is case sensitive."))
-        #expect(prompt.contains("2) check lint failed: lint broke"))
-    }
-
-    @Test func sentItemsBecomeAddressedOnANewPushAndRoundsReset() {
-        var feedback = PullFeedback(ref: ref, autoFeed: .auto)
-        feedback.merge(detail(threads: [thread("t1")]))
-        feedback.markSent(at: "a1")
-        #expect(feedback.rounds == 1)
-        feedback.merge(detail(threads: [thread("t1")], sha: "a2"))
-        #expect(feedback.items[0].status == .addressed)
-        feedback.markSent(at: "a2")
-        feedback.markSent(at: "a2")
-        #expect(feedback.roundsExhausted)
-        feedback.merge(detail(threads: [thread("t1")], sha: "a3", approvals: 1))
-        #expect(feedback.rounds == 0)
-    }
-
-    @Test func aCheckRunningAgainIsNotResolvedYet() {
-        var feedback = PullFeedback(ref: ref)
-        feedback.merge(detail(threads: [], failing: ["build"]))
-        feedback.merge(detail(threads: [], failing: [], pending: ["build"]))
-        #expect(feedback.items[0].status == .new)
-    }
-
-    @Test func aCheckThatPassedResolvesWhileOthersStillRun() {
-        var feedback = PullFeedback(ref: ref)
-        feedback.merge(detail(threads: [], failing: ["check-labels", "validate"]))
-        feedback.merge(detail(threads: [], failing: [], pending: ["build (windows-latest)"]))
-        #expect(feedback.items.map(\.status) == [.resolved, .resolved])
-    }
 
     @Test func onlyTheNewestRunOfACheckCounts() {
         // check-labels failed, then ran again on the same commit once the label was added.
@@ -238,15 +159,6 @@ struct FeedbackTests {
         #expect(summary.failed == 0)
         #expect(summary.passed == 2)
         #expect(summary.pendingNames == ["build"])
-    }
-
-    @Test func deliveryWaitsForIdleAndForYou() {
-        #expect(Delivery.verdict(state: .idle, lastTyped: nil) == .deliver)
-        #expect(Delivery.verdict(state: .done, lastTyped: Date(timeIntervalSinceNow: -60)) == .deliver)
-        #expect(Delivery.verdict(state: .working, lastTyped: nil) == .wait("the agent is working"))
-        #expect(Delivery.verdict(state: .blocked, lastTyped: nil) != .deliver)
-        #expect(Delivery.verdict(state: .asking, lastTyped: nil) != .deliver)
-        #expect(Delivery.verdict(state: .idle, lastTyped: Date()) == .wait("you typed in its pane just now"))
     }
 
     @Test func parsesPullDetail() {

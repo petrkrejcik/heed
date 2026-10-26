@@ -175,6 +175,25 @@ struct DomainChangeTests {
         #expect(loaded.sessions == Fixtures.main.sessions)
         #expect(await DomainStore.load(from: file.appendingPathExtension("missing")) == .empty)
     }
+
+    /// The pilot's fields and its helper tabs, from caches written before it was cut.
+    @Test func oldCachesStillLoad() throws {
+        var json = try #require(JSONSerialization
+            .jsonObject(with: JSONEncoder().encode(Fixtures.main)) as? [String: Any])
+        json["feedback"] = [:] as [String: Any]
+        json["pilotLog"] = [] as [Any]
+        json["runs"] = [] as [Any]
+        json["mergeRuns"] = [:] as [String: Any]
+        let helper = PaneSpec(id: "h", role: .shell, title: "get it green", directory: "/tmp")
+        var pane = try #require(JSONSerialization.jsonObject(with: JSONEncoder().encode(helper)) as? [String: Any])
+        pane["role"] = "helper"
+        let data = try JSONSerialization.data(withJSONObject: json)
+        let loaded = try JSONDecoder().decode(Domain.self, from: data)
+        #expect(loaded.sessions.map(\.id) == Fixtures.main.sessions.map(\.id))
+        #expect(loaded.pullDetails.keys.sorted() == Fixtures.main.pullDetails.keys.sorted())
+        let decoded = try JSONDecoder().decode(PaneSpec.self, from: JSONSerialization.data(withJSONObject: pane))
+        #expect(decoded.role == .shell)
+    }
 }
 
 struct GitIntegrationTests {

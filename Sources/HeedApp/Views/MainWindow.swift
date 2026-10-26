@@ -38,7 +38,7 @@ struct MainWindow: View {
         }
         .background(Theme.bg)
         .overlay {
-            if model.overlay == .pr { PullOverlayView().shotRegion(.pipeline).padding(.top, 44).padding(.bottom, 28) }
+            if model.overlay == .pr { PullOverlayView().shotRegion(.reader).padding(.top, 44).padding(.bottom, 28) }
         }
         .overlay {
             if model.overlay == .diff { DiffOverlayView().shotRegion(.diffBody).padding(.top, 44).padding(.bottom, 28) }
@@ -58,7 +58,6 @@ struct MainWindow: View {
         .overlay {
             if let picker = model.importPicker { ImportPickerView(picker: picker) }
             if let picker = model.linkPicker { LinkPickerView(picker: picker) }
-            if let run = model.runReader { RunReaderView(run: run) }
         }
         .overlay {
             if let state = model.pathImport { PathImportView(state: state) }
@@ -335,12 +334,6 @@ struct StatusBar: View {
         .padding(.horizontal, 12)
     }
 
-    /// The pilot's keys as bound: `zw watch · zg green · zm merge · zp pause` by default.
-    private var pilotHints: String {
-        [("pilot.watch", "watch"), ("pilot.green", "green"), ("pilot.merge", "merge"), ("pilot.pause", "pause")]
-            .map { "\(model.keyText(for: $0.0)) \($0.1)" }.joined(separator: " · ")
-    }
-
     private var hints: String {
         switch model.mode {
         case let .normal where model.confirmation.map { !$0.alternatives.isEmpty } == true:
@@ -355,16 +348,16 @@ struct StatusBar: View {
         case .normal where model.overlay == .diff: "j k line · n hunk · ]f file · ⇥ scope · c commit · t split · gd close"
         case .normal where model.issueReader != nil: "s start session · a add to session · gB browser · ⎋ back"
         case .normal where model.reader != nil || model.overlay == .pr:
-            "j k item · space queue · s send · \(model.keyText(for: "pilot.green")) green · ]p next PR · gS session · ⎋ back"
+            "\(model.keyText(for: "pr.start")) new session · ]p next PR · gS session · gB browser · ⎋ back"
         case .normal where model.view == .repos: "o start work here · v select · dd remove · r rescan · w issues · { } repo · / filter"
         case .normal where model.view == .history: "j k move · / filter · R reopen · O new from prompt · t outcome"
         case .normal where model.view == .inbox: "↩ read · space pick · v range · s start session · a add · x mark read · t unread/all · / filter"
         case .normal where model.view == .issues: "↩ read · space pick · s start session · t filter · ⇥ repo · w all/yours · / filter"
-        case .normal where model.view == .prs: "↩ open · \(pilotHints) · v select · gS session · r sync"
+        case .normal where model.view == .prs: "↩ open · v select · gS session · r sync"
         case .normal: "i insert · o start work · m pin · { } group · Iw import · : command · ? keys"
         case .insert: "⇧⎋ or \(KeyCapText.of(model.config.insertEscape)) normal · ⌘/ keys"
         case .visual where model.view == .prs:
-            "\(model.pickedIDs(model.view).count) selected · \(model.keyText(for: "pilot.pause")) pause or resume · space toggle · ⎋ cancel"
+            "\(model.pickedIDs(model.view).count) selected · space toggle · ⎋ cancel"
         case .visual: "\(model.selectedRows.count) selected · space toggle · y copy path · o open session · ⎋ cancel"
         case .command: "⇥ complete · ↩ run · ⎋ cancel"
         case .hint: "type a label · ⎋ cancel"

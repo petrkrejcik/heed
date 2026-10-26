@@ -12,7 +12,7 @@
 <p align="center">
   A native macOS app that feels like a TUI, with vim modes and keys, for running coding agents.<br>
   heed hosts Claude Code in real terminals, taps you only when one needs you,<br>
-  then gets their pull requests green and merged.
+  and shows where each of their pull requests stands.
 </p>
 
 <p align="center">
@@ -49,12 +49,9 @@ Or [download the latest release](https://github.com/heed-build/heed/releases/lat
   heed knows who needs you, and `ga` jumps there.
 - **Start work in one line.** Press `o`, describe the task: heed picks the repo, makes a worktree named after it and
   starts the agent with your prompt. Sessions resume where you left them after a restart.
-- **Get it green.** heed watches the PRs your sessions open. Review comments, failing checks (with the failed log) and
-  merge conflicts become items for the agent that wrote the code, sent once it is idle. Or hand conflicts and
-  comments to GitHub's Copilot coding agent and spare your agent's tokens.
-- **Get it merged.** Turn merging on per PR, repo or org. Each repo gets a merge queue: GitHub's auto-merge, or heed
-  merging itself once your rules hold (green, reviewed after the last push, quiet, gate checks, no hold label, an
-  optional self-review).
+- **Watch the PRs.** heed follows the PRs your sessions open: review comments with the code they are on, failing
+  checks, conflicts, and what holds each back from green, on the session's row and in the PR overlay. You decide what
+  the agent fixes.
 - **Keyboard first.** NORMAL, INSERT, VISUAL, COMMAND and HINT modes, counts, relative numbers, `:` commands, and every
   feature a named command you can rebind.
 - **Worktrees.** Create, list and remove worktrees across repos; removal never touches dirty or unpushed work.

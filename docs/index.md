@@ -21,5 +21,5 @@ agent needs you, and it gets you there in a keystroke.
 | [Concepts](concepts/index.md) | Sessions, agent states, worktrees and modes: the four ideas the rest builds on. |
 | [Sessions](sessions/index.md) | The main view: moving around, typing into agents, panes and tabs. |
 | [Start work](start-work/index.md) | From a sentence to a running agent in its own worktree. |
-| [GitHub](github/index.md) | Your inbox, issues and pull requests, and review feedback fed back to the agent. |
+| [GitHub](github/index.md) | Your inbox, issues and pull requests, and what holds each PR back from green. |
 | [Keyboard](keyboard/index.md) | Every key, how keys work, and how to change them. |

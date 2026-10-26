@@ -37,12 +37,13 @@ keyboard back to Heed. More in [Typing into agents](../sessions/typing-into-agen
 
 ![The agent pane in INSERT, outlined white](../images/shots/getting-started/first-session-4-insert.png)
 
-## 5. Review feedback goes back to the agent
+## 5. Read what the PR needs
 
-When the agent opens a pull request, the session tracks it. Review comments and failing checks queue up in the PR
-overlay (`go`) and go back to the agent when it is idle. More in [Review feedback](../github/review-feedback.md).
+When the agent opens a pull request, the session tracks it, and its state shows on the row. `go` opens the PR
+overlay: review comments with the code they are on, failing checks, and what holds the PR back from green. You decide
+what the agent fixes. More in [The PR overlay](../github/pr-overlay.md).
 
-![The PR overlay: two items queued for the agent, the prompt that will be sent](../images/shots/getting-started/first-session-5-feedback.png)
+![The PR overlay: review threads, a failing check, and the green rules](../images/shots/getting-started/first-session-5-pr.png)
 
 ## 6. Done
 

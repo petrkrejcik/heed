@@ -8,8 +8,9 @@ description: Reading pull requests and issues without leaving Heed.
 
 ## Pull requests
 
-The reader shows the description, the unresolved review threads with the code they are on, the failing checks, and the
-[review feedback](review-feedback.md) pipeline for it.
+The reader shows the description, the unresolved review threads with the code they are on, and the failing checks;
+beside them its reviewers, checks and [green rules](pr-overlay.md#green). It is the [PR overlay](pr-overlay.md)'s view,
+for any PR: `S` starts a session from it, `gS` jumps to the session working on it.
 
 ![The pull request reader](../images/shots/github/reader-pr.png)
 

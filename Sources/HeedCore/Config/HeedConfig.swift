@@ -20,8 +20,6 @@ public struct HeedConfig: Equatable, Sendable {
     public var githubPollSeconds: Int
     public var tools = ToolSettings()
     public var issues = IssueRules()
-    /// `[pilot]`, with org and repo levels: watching PRs, get it green.
-    public var pilot = PilotRules()
 
     public struct RepoConfig: Equatable, Sendable {
         public var color: String?
@@ -62,7 +60,6 @@ public struct HeedConfig: Equatable, Sendable {
             lhs.githubPollSeconds == rhs.githubPollSeconds,
             lhs.tools == rhs.tools,
             lhs.issues == rhs.issues,
-            lhs.pilot == rhs.pilot,
         ]
         return !same.contains(false)
     }
@@ -191,111 +188,6 @@ public enum ConfigLoader {
         }
         // [github]
         if let seconds = integer(["github", "poll_seconds"], range: 15 ... 3600) { config.githubPollSeconds = seconds }
-        // [pilot], and the same keys under [orgs.<name>] and [repos."org/name"] below
-        func green(_ path: [String]) -> AutoFeed? {
-            guard let text = string(path) else { return nil }
-            guard let mode = AutoFeed.named(text) else {
-                problems.append(ConfigProblem(path: path.joined(separator: "."), message: "expected off, ask or auto"))
-                return nil
-            }
-            return mode
-        }
-        func merge(_ path: [String]) -> MergeMode? {
-            guard let text = string(path) else { return nil }
-            guard let mode = MergeMode.named(text) else {
-                problems.append(ConfigProblem(path: path.joined(separator: "."), message: "expected off, auto or heed"))
-                return nil
-            }
-            return mode
-        }
-        func mergeMethod(_ path: [String]) -> String? {
-            guard let text = string(path)?.lowercased() else { return nil }
-            guard ["squash", "merge", "rebase"].contains(text) else {
-                problems.append(ConfigProblem(
-                    path: path.joined(separator: "."),
-                    message: "expected squash, merge or rebase"
-                ))
-                return nil
-            }
-            return text
-        }
-        func pilotOverrides(_ base: [String]) -> PilotOverrides {
-            var overrides = PilotOverrides(
-                watch: bool(base + ["watch"]), green: green(base + ["green"]),
-                maxRounds: integer(base + ["max_rounds"], range: 1 ... 20), merge: merge(base + ["merge"]),
-                mergeMethod: mergeMethod(base + ["merge_method"]), updateBranches: bool(base + ["update_branches"]),
-                copilotConflicts: bool(base + ["copilot_conflicts"]),
-                copilotComments: bool(base + ["copilot_comments"]), reviewers: strings(base + ["reviewers"])
-            )
-            overrides.quietMinutes = integer(base + ["quiet_minutes"], range: 0 ... 1440)
-            overrides.trustedReviewers = strings(base + ["trusted_reviewers"])
-            overrides.gateChecks = strings(base + ["gate_checks"])
-            overrides.holdLabels = strings(base + ["hold_labels"])
-            overrides.selfReview = string(base + ["self_review"]).map { $0.trimmingCharacters(in: .whitespaces) }
-            if base.first == "repos" { overrides.adminMerge = bool(base + ["admin_merge"]) }
-            for removed in ["send_after_idle", "send_to"] where root.value(at: base + [removed]) != nil {
-                problems.append(ConfigProblem(
-                    path: (base + [removed]).joined(separator: "."),
-                    message: "no longer used: get it green always runs in the background now"
-                ))
-            }
-            overrides.agent = string(base + ["agent"]).flatMap { $0.isEmpty ? nil : $0.lowercased() }
-            overrides.model = string(base + ["model"]).flatMap { $0.isEmpty ? nil : $0 }
-            return overrides
-        }
-        let pilotDefaults = pilotOverrides(["pilot"])
-        if let watch = pilotDefaults.watch { config.pilot.defaults.watch = watch }
-        if let mode = pilotDefaults.green { config.pilot.defaults.green = mode }
-        if let rounds = pilotDefaults.maxRounds { config.pilot.defaults.maxRounds = rounds }
-        if let mode = pilotDefaults.merge { config.pilot.defaults.merge = mode }
-        if let method = pilotDefaults.mergeMethod { config.pilot.defaults.mergeMethod = method }
-        if let flag = pilotDefaults.updateBranches { config.pilot.defaults.updateBranches = flag }
-        if let flag = pilotDefaults.copilotConflicts { config.pilot.defaults.copilotConflicts = flag }
-        if let flag = pilotDefaults.copilotComments { config.pilot.defaults.copilotComments = flag }
-        if let list = pilotDefaults.reviewers { config.pilot.defaults.reviewers = list }
-        if let minutes = pilotDefaults.quietMinutes { config.pilot.defaults.quietMinutes = minutes }
-        if let list = pilotDefaults.trustedReviewers { config.pilot.defaults.trustedReviewers = list }
-        if let list = pilotDefaults.gateChecks { config.pilot.defaults.gateChecks = list }
-        if let list = pilotDefaults.holdLabels { config.pilot.defaults.holdLabels = list }
-        if let command = pilotDefaults.selfReview { config.pilot.defaults.selfReview = command.isEmpty ? nil : command }
-        config.pilot.defaults.agent = pilotDefaults.agent
-        config.pilot.defaults.model = pilotDefaults.model
-        if let text = string(["pilot", "run_timeout"]) {
-            if case let .seconds(seconds) = PilotDuration.parse(text), seconds >= 60 {
-                config.pilot.defaults.runTimeout = seconds
-            } else {
-                problems.append(ConfigProblem(path: "pilot.run_timeout", message: "expected a duration like 30m or 1h"))
-            }
-        }
-        if bool(["pilot", "admin_merge"]) != nil {
-            problems.append(ConfigProblem(
-                path: "pilot.admin_merge",
-                message: "admin_merge is per repo only: [repos.\"org/name\"] admin_merge = true"
-            ))
-        }
-        if let text = string(["pilot", "merge_schedule"]) {
-            if text.lowercased() == "manual" {
-                config.pilot.defaults.mergeSchedule = nil
-            } else if case let .seconds(seconds) = PilotDuration.parse(text), seconds >= 300 {
-                config.pilot.defaults.mergeSchedule = seconds
-            } else {
-                problems.append(ConfigProblem(
-                    path: "pilot.merge_schedule",
-                    message: "expected a duration of at least 5m, like 15m or 1h, or manual"
-                ))
-            }
-        }
-        if let text = string(["pilot", "pause"]) {
-            switch PilotDuration.parse(text) {
-            case let .seconds(seconds): config.pilot.defaults.pause = seconds
-            case .forever: config.pilot.defaults.pause = nil
-            case .off, nil:
-                problems.append(ConfigProblem(
-                    path: "pilot.pause",
-                    message: "expected a duration like 1h, 30m or forever"
-                ))
-            }
-        }
         // [tools]
         if let git = string(["tools", "git"]) { config.tools.git = git }
         if let gh = string(["tools", "gh"]) { config.tools.gh = gh }
@@ -366,8 +258,6 @@ public enum ConfigLoader {
             for org in orgs.keys {
                 if let color = string(["orgs", org, "color"]) { config.orgColors[org] = color }
                 if let issues = visibility(["orgs", org, "issues"]) { config.issues.orgs[org] = issues }
-                let pilot = pilotOverrides(["orgs", org])
-                if !pilot.isEmpty { config.pilot.orgs[org] = pilot }
             }
         }
         if let repos = root.value(at: ["repos"])?.table {
@@ -378,8 +268,6 @@ public enum ConfigLoader {
                 )
                 config.repos[slug] = repo
                 if let issues = repo.issues { config.issues.repos[slug] = issues }
-                let pilot = pilotOverrides(["repos", slug])
-                if !pilot.isEmpty { config.pilot.repos[slug] = pilot }
                 if !repo.tasks
                     .isEmpty { config.work.tasks[slug] = repo.tasks.map { TaskSpec(name: $0.0, command: $0.1) } }
             }
@@ -451,54 +339,6 @@ public enum ConfigLoader {
     # How often the view on screen refreshes from GitHub; the others refresh five times less often.
     poll_seconds = 60
 
-    [pilot]
-    # Follow the PRs your sessions track: their review threads and failing checks.
-    # Read-only, so on; turn it off for an org or a repo under [orgs.<name>] or [repos."org/name"] (watch = false).
-    watch = true
-    # What happens to what a watched PR collects: off (shown only), ask (you queue it) or auto (sent to the agent
-    # once it is idle). Also per org and per repo.
-    green = "ask"
-    # Prompts sent without a new approval before get it green stops.
-    max_rounds = 3
-    # Each round of get it green (or get it merged) runs in the background: an agent in its own tab, worktree and
-    # branch (heed/get-it-green/<branch>), all removed when it is done. Which agent and model those runs use; empty:
-    # the session's agent and that agent's default model. Also per org and per repo.
-    agent = ""
-    model = ""
-    # A run still working after this long is stopped.
-    run_timeout = "30m"
-    # How long zp pauses a PR: 30m, 1h, 4h, 1d, or forever.
-    pause = "1h"
-    # Get it merged: off; auto (heed turns on GitHub's auto-merge for a PR, and GitHub merges it once its own
-    # requirements are met); or heed (heed merges it itself once the rules below hold). Per org and per repo too, and M
-    # cycles one PR.
-    merge = "off"
-    # squash, merge or rebase; unset takes the first the repo allows, in that order.
-    # merge_method = "squash"
-    # How often a repo's merge queue runs (15m, 1h, ...), or manual (only :merge.run).
-    merge_schedule = "1h"
-    # Bring the queue's PRs that fell behind their base up to date on each run.
-    update_branches = true
-    # Hand work on a watched PR to GitHub's Copilot coding agent instead of your session's agent, sparing its tokens:
-    # merge conflicts, review comments, or both (one comment on the PR asks for both). Only where Copilot can work in
-    # the repo; elsewhere, and with these off, your agent gets them. Per org and per repo too.
-    copilot_conflicts = false
-    copilot_comments = false
-    # Who heed asks to review a PR once it is open and not a draft, once per PR: logins, "org/team", or "copilot".
-    reviewers = []
-    # merge = "heed" merges a PR when it is green, reviewed after its last push (a human approval, or a trusted AI
-    # reviewer's), quiet for quiet_minutes, its gate_checks passed, without a hold label, and, with self_review set,
-    # approved by that command. Each per org and per repo too.
-    quiet_minutes = 5
-    # AI reviewers whose review counts: an approval, a comment review with none of its threads open, or no review at
-    # all once its review check (named in gate_checks) passed on the head commit.
-    trusted_reviewers = []    # e.g. ["copilot-pull-request-reviewer"]
-    gate_checks = []
-    hold_labels = ["hold", "do-not-merge", "wip"]
-    # A command that reads the prompt and the PR's diff on stdin and answers APPROVE, or REQUEST_CHANGES: <why>.
-    # self_review = "claude -p"
-    # [repos."org/name"] admin_merge = true retries a refused merge with --admin, bypassing branch protection. Repo only.
-
     [issues]
     # Which issues the Issues view shows per repo: "involved" (assigned to you or mentioning you) or "all" open
     # issues. Override per org ([orgs.<org>] issues = "all") or per repo ([repos."org/name"] issues = "involved");
@@ -506,7 +346,7 @@ public enum ConfigLoader {
     default = "involved"
 
     [ui]
-    # A menu bar item: an owl that shows how many sessions need you, with those sessions, Start work and Open Heed.
+    # A menu bar item: an owl that shows how many sessions need you, with those sessions and Open Heed.
     menu_bar = true
     # The Dock icon shows the same: a badge in the state's colour (blocked, else asking) with the count.
     dock_state = true

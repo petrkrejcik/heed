@@ -41,18 +41,6 @@ struct Inspector: View {
                             .help("\(link.url)\n⌘-click opens it on GitHub")
                     }
                 }
-                let runs = Array(model.runs.filter { $0.sessionID == session.id }.prefix(10))
-                if !runs.isEmpty {
-                    section {
-                        SectionHeader(title: "Runs")
-                        ForEach(runs) { run in
-                            RunRow(run: run)
-                                .contentShape(Rectangle())
-                                .onTapGesture { model.open(run: run) }
-                                .help(run.isRunning ? "Go to its tab" : "Open: what it did, and its last screen")
-                        }
-                    }
-                }
                 section {
                     SectionHeader(title: "Agent events")
                     let log = model.events[session.id] ?? []
@@ -158,8 +146,8 @@ struct StateTag: View {
     }
 }
 
-/// One of a session's links in the inspector: a PR (its state, checks, review and what heed is doing about it) or an
-/// issue (its title and state).
+/// One of a session's links in the inspector: a PR (its state, checks, review and what holds it back from green) or
+/// an issue (its title and state).
 private struct LinkCard: View {
     @Environment(AppModel.self) private var model
     let session: Session
@@ -198,15 +186,22 @@ private struct LinkCard: View {
             .font(Theme.ui(11.5))
             .lineLimit(1)
         }
-        // What the pilot is doing for this PR; a merged or closed one is done.
-        let watching = model.pilot(for: ref).watching
         HStack(alignment: .firstTextBaseline, spacing: 6) {
-            PilotMark(status: model.pilotStatus(for: ref), compact: true)
-            Text(pull == nil && watching ? "waiting for the next sync" : model.pilotLine(for: ref))
-                .foregroundStyle(watching && pull?.state == .open ? Theme.fg2 : Theme.fg3)
+            PullMark(status: model.pullStatus(for: ref), compact: true)
+            Text(verdictLine(ref, pull))
+                .foregroundStyle(pull?.state == .open ? Theme.fg2 : Theme.fg3)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .font(Theme.mono(11))
+    }
+
+    /// What holds an open PR back from green, from its detail once fetched.
+    private func verdictLine(_ ref: PullRef, _ pull: PullRequest?) -> String {
+        guard let pull else { return "waiting for the next sync" }
+        guard pull.state == .open else { return pull.state == .merged ? "done" : "closed without merging" }
+        guard let detail = model.pullDetails[ref.description] else { return "details not fetched yet" }
+        guard let blocker = GreenVerdict.of(detail).blocker else { return "nothing left to fix" }
+        return "\(blocker.name.lowercased()): \(blocker.detail)"
     }
 
     @ViewBuilder private func issue(_ ref: IssueRef) -> some View {
@@ -229,107 +224,5 @@ private struct LinkCard: View {
             .font(Theme.ui(13, weight: .medium))
             .foregroundStyle(known == nil ? Theme.fg3 : Theme.fg)
             .lineLimit(2)
-    }
-}
-
-/// One get it green / get it merged run in the inspector: what, with which agent, how long, how it went.
-struct RunRow: View {
-    let run: PilotRun
-
-    var body: some View {
-        HStack(alignment: .top, spacing: 8) {
-            if run.isRunning {
-                StateGlyph(state: .working, size: 11).padding(.top, 2)
-            } else {
-                Image(systemName: icon).font(.system(size: 10, weight: .semibold)).foregroundStyle(tint)
-                    .frame(width: 11).padding(.top, 3)
-            }
-            VStack(alignment: .leading, spacing: 2) {
-                Text(verbatim: "\(run.goal.rawValue) #\(run.ref.number)").font(Theme.mono(11.5))
-                    .foregroundStyle(Theme.fg)
-                Text(detail).font(Theme.ui(11.5)).foregroundStyle(run.isRunning ? Theme.busy : tint).lineLimit(2)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            Spacer(minLength: 0)
-            Text(Clock.relative(run.startedAt)).font(Theme.ui(10.5)).foregroundStyle(Theme.fg3)
-        }
-    }
-
-    static func duration(_ run: PilotRun) -> String {
-        PilotDuration.text((run.endedAt ?? Clock.now).timeIntervalSince(run.startedAt))
-    }
-
-    private var detail: String {
-        let who = run.model.map { "\(run.agent) \($0)" } ?? run.agent
-        let how = run.isRunning ? "working" : run.outcome?.text ?? "ended"
-        return "\(who) · \(Self.duration(run)) · \(how)"
-    }
-
-    private var tint: Color {
-        switch run.outcome {
-        case .pushed: Theme.done
-        case .noChanges, nil: Theme.fg3
-        case .timedOut, .failed: Theme.err
-        case .stopped, .interrupted: Theme.block
-        }
-    }
-
-    private var icon: String {
-        switch run.outcome {
-        case .pushed: "arrow.up"
-        case .noChanges, nil: "minus"
-        case .timedOut: "clock"
-        case .failed: "xmark"
-        case .stopped, .interrupted: "stop.fill"
-        }
-    }
-}
-
-/// A run that ended, read: its PR, agent, how it went, and the last lines of its screen.
-struct RunReaderView: View {
-    @Environment(AppModel.self) private var model
-    let run: PilotRun
-
-    var body: some View {
-        ZStack {
-            Color.black.opacity(0.5).onTapGesture { model.runReader = nil }
-            VStack(alignment: .leading, spacing: 12) {
-                HStack {
-                    Text(verbatim: "\(run.goal.rawValue) · \(run.ref.repo.name) #\(run.ref.number)")
-                        .font(Theme.ui(15, weight: .semibold))
-                    Spacer()
-                    KeyCap(text: "esc")
-                }
-                RunRow(run: run)
-                VStack(alignment: .leading, spacing: 3) {
-                    line("Branch", run.branch.isEmpty ? "none" : run.branch)
-                    line("Pushed to", run.prBranch.isEmpty ? "none" : run.prBranch)
-                    line("Sent", "\(run.items) feedback item\(run.items == 1 ? "" : "s")")
-                    line("Started", Clock.relative(run.startedAt, named: true))
-                }
-                Text("Last screen").font(Theme.ui(12, weight: .semibold)).foregroundStyle(Theme.fg2)
-                // At most 40 lines are kept: they fit without scrolling.
-                Text(run.screen?.isEmpty == false ? run.screen! : "Nothing was kept.")
-                    .font(Theme.mono(11.5))
-                    .foregroundStyle(run.screen == nil ? Theme.fg3 : Theme.fg)
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(10)
-                    .background(RoundedRectangle(cornerRadius: 6).fill(Theme.pane))
-            }
-            .padding(20)
-            .frame(width: 640, alignment: .leading)
-            .background(RoundedRectangle(cornerRadius: 10).fill(Theme.bg2))
-            .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Theme.line))
-            .shadow(color: .black.opacity(0.5), radius: 30)
-            .shotRegion(.dialog)
-        }
-    }
-
-    private func line(_ label: String, _ value: String) -> some View {
-        HStack(spacing: 8) {
-            Text(label).font(Theme.ui(12)).foregroundStyle(Theme.fg3).frame(width: 80, alignment: .leading)
-            Text(value).font(Theme.mono(12))
-        }
     }
 }

@@ -52,54 +52,6 @@ persist = "auto"
 # How often the view on screen refreshes from GitHub; the others refresh five times less often.
 poll_seconds = 60
 
-[pilot]
-# Follow the PRs your sessions track: their review threads and failing checks.
-# Read-only, so on; turn it off for an org or a repo under [orgs.<name>] or [repos."org/name"] (watch = false).
-watch = true
-# What happens to what a watched PR collects: off (shown only), ask (you queue it) or auto (sent to the agent
-# once it is idle). Also per org and per repo.
-green = "ask"
-# Prompts sent without a new approval before get it green stops.
-max_rounds = 3
-# Each round of get it green (or get it merged) runs in the background: an agent in its own tab, worktree and
-# branch (heed/get-it-green/<branch>), all removed when it is done. Which agent and model those runs use; empty:
-# the session's agent and that agent's default model. Also per org and per repo.
-agent = ""
-model = ""
-# A run still working after this long is stopped.
-run_timeout = "30m"
-# How long zp pauses a PR: 30m, 1h, 4h, 1d, or forever.
-pause = "1h"
-# Get it merged: off; auto (heed turns on GitHub's auto-merge for a PR, and GitHub merges it once its own
-# requirements are met); or heed (heed merges it itself once the rules below hold). Per org and per repo too, and M
-# cycles one PR.
-merge = "off"
-# squash, merge or rebase; unset takes the first the repo allows, in that order.
-# merge_method = "squash"
-# How often a repo's merge queue runs (15m, 1h, ...), or manual (only :merge.run).
-merge_schedule = "1h"
-# Bring the queue's PRs that fell behind their base up to date on each run.
-update_branches = true
-# Hand work on a watched PR to GitHub's Copilot coding agent instead of your session's agent, sparing its tokens:
-# merge conflicts, review comments, or both (one comment on the PR asks for both). Only where Copilot can work in
-# the repo; elsewhere, and with these off, your agent gets them. Per org and per repo too.
-copilot_conflicts = false
-copilot_comments = false
-# Who heed asks to review a PR once it is open and not a draft, once per PR: logins, "org/team", or "copilot".
-reviewers = []
-# merge = "heed" merges a PR when it is green, reviewed after its last push (a human approval, or a trusted AI
-# reviewer's), quiet for quiet_minutes, its gate_checks passed, without a hold label, and, with self_review set,
-# approved by that command. Each per org and per repo too.
-quiet_minutes = 5
-# AI reviewers whose review counts: an approval, a comment review with none of its threads open, or no review at
-# all once its review check (named in gate_checks) passed on the head commit.
-trusted_reviewers = []    # e.g. ["copilot-pull-request-reviewer"]
-gate_checks = []
-hold_labels = ["hold", "do-not-merge", "wip"]
-# A command that reads the prompt and the PR's diff on stdin and answers APPROVE, or REQUEST_CHANGES: <why>.
-# self_review = "claude -p"
-# [repos."org/name"] admin_merge = true retries a refused merge with --admin, bypassing branch protection. Repo only.
-
 [issues]
 # Which issues the Issues view shows per repo: "involved" (assigned to you or mentioning you) or "all" open
 # issues. Override per org ([orgs.<org>] issues = "all") or per repo ([repos."org/name"] issues = "involved");
@@ -107,7 +59,7 @@ hold_labels = ["hold", "do-not-merge", "wip"]
 default = "involved"
 
 [ui]
-# A menu bar item: an owl that shows how many sessions need you, with those sessions, Start work and Open Heed.
+# A menu bar item: an owl that shows how many sessions need you, with those sessions and Open Heed.
 menu_bar = true
 # The Dock icon shows the same: a badge in the state's colour (blocked, else asking) with the count.
 dock_state = true

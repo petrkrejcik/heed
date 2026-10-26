@@ -28,14 +28,14 @@ Single keys are kept for what you do many times an hour; anything rarer is two k
 | `↩` `o` `i` `v` `x` `m` | Open, start work, type into the agent, select, done with it, pin |
 | `r` | Refresh the view you are in |
 | `g…` | Go somewhere: views (`gm` Inbox), overlays (`go`, `gd`), tabs (`gt`), the browser (`gB`), the repo on GitHub (`gR`) |
-| `z…` | Toggles: `zz` park, `zi` inspector, `zs` sidebar; the pilot's `zw` watch, `zg` green, `zm` merge, `zp` pause |
+| `z…` | Toggles: `zz` park, `zi` inspector, `zs` sidebar |
 | `'…` | Jump to a pin (`'1`–`'9`), or back (`''`) |
 | `]…` `[…` | Next or previous of a kind: `]p` PR, `]f` file |
 | `⌃w…` | Panes |
 | `dd` | Remove (it asks first) |
 
-A key means the same thing in every view where it means anything: `x` closes a session, marks an Inbox item read and
-dismisses a feedback item; `o` always starts work, picking the repo under the cursor in Repos.
+A key means the same thing in every view where it means anything: `x` closes a session and marks an Inbox item read;
+`o` always starts work, picking the repo under the cursor in Repos.
 
 ## Views have their own keys
 

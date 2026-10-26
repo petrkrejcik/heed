@@ -15,7 +15,7 @@ enum ShotRegion: String, CaseIterable {
     case dialog, confirm, picker, leaderHints, commandLine, filterPill, help
     case repoColumn, worktreeTable
     case chips, list, pickedPanel, issueRepos, syncBanner
-    case pipeline, delivery, promptPreview, reader
+    case reader
     case diffFiles, diffBody
     case historyList, historyDetail
 }

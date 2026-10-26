@@ -2,7 +2,7 @@ import Foundation
 @testable import HeedCore
 import Testing
 
-struct GreenVerdictTests {
+struct PullStatusTests {
     private let ref = PullRef(repo: Repo(org: "nullean", name: "heed"), number: 7)
 
     private func detail(
@@ -44,8 +44,19 @@ struct GreenVerdictTests {
         return detail
     }
 
-    private func status(_ detail: PullDetail) -> PilotStatus {
-        PilotStatus.of(pull: nil, pipeline: nil, settings: PilotSettings(), hasSession: true, detail: detail)
+    private func status(_ detail: PullDetail) -> PullStatus { PullStatus.of(pull: nil, detail: detail) }
+
+    private func pull(
+        checks: CheckSummary = CheckSummary(passed: 1),
+        threads: Int = 0,
+        state: PullRequest.State = .open
+    )
+        -> PullRequest
+    {
+        PullRequest(
+            ref: ref, title: "t", url: "", state: state, isDraft: false, headBranch: "b", review: nil,
+            checks: checks, unresolvedThreads: threads, updatedAt: Date()
+        )
     }
 
     @Test func greenWhenEveryRuleHolds() {
@@ -75,36 +86,14 @@ struct GreenVerdictTests {
         #expect(GreenVerdict.of(detail(failing: ["label"])).blocker?.detail == "label failed")
     }
 
-    @Test func aConflictBecomesAnItemAndResolves() {
-        var pipeline = PullFeedback(ref: ref)
-        pipeline.merge(detail(mergeable: "CONFLICTING", state: "DIRTY"))
-        let item = pipeline.items.first { $0.id == "conflict" }
-        #expect(item?.status == .new)
-        #expect(item?.promptLine.contains("rebase on main, resolve the conflicts") == true)
-        // Unknown keeps it; merging cleanly resolves it.
-        pipeline.merge(detail(mergeable: "UNKNOWN", state: "UNKNOWN"))
-        #expect(pipeline.items.first { $0.id == "conflict" }?.status == .new)
-        pipeline.merge(detail())
-        #expect(pipeline.items.first { $0.id == "conflict" }?.status == .resolved)
-
-        var behind = PullFeedback(ref: ref)
-        behind.merge(detail(state: "BEHIND"))
-        #expect(behind.items.first?.promptLine.contains("behind main") == true)
-    }
-
-    @Test func aFailedCheckPointsAtItsLog() {
-        var item = FeedbackItem(id: "check:lint", kind: .check(name: "lint"), text: "line too long")
-        #expect(item.promptLine == "check lint failed: line too long")
-        item.logPath = "/tmp/heed/logs/x.log"
-        #expect(item.promptLine == "check lint failed: line too long (the failed log is in /tmp/heed/logs/x.log)")
-    }
-
-    @Test func jobsAndLogLines() {
-        #expect(GitHub.jobID(fromDetailsURL: "https://github.com/o/r/actions/runs/123/job/456") == "456")
-        #expect(GitHub.jobID(fromDetailsURL: "https://ci.example.com/build/9") == nil)
-        #expect(GitHub.jobID(fromDetailsURL: nil) == nil)
-        #expect(GitHub.cleanLogLine("build\tRun tests\t2026-10-13T18:44:48.5Z 3 failed") == "Run tests: 3 failed")
-        #expect(GitHub.cleanLogLine("plain line") == "plain line")
+    @Test func withoutADetailTheSyncsSummaryDecides() {
+        #expect(PullStatus.of(pull: pull()) == .passing)
+        #expect(PullStatus.of(pull: pull(checks: CheckSummary(passed: 1, failed: 2))) == .failing(2))
+        #expect(PullStatus.of(pull: pull(threads: 3)) == .changes(3))
+        #expect(PullStatus.of(pull: pull(checks: CheckSummary(pending: 1))) == .pending)
+        #expect(PullStatus.of(pull: pull(state: .merged)) == .closed(merged: true))
+        #expect(PullStatus.of(pull: nil) == .pending)
+        #expect(PullStatus.failing(1).urgency < PullStatus.changes(1).urgency)
     }
 
     @Test func theDetailQueryFieldsAreRead() throws {

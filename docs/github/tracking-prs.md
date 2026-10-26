@@ -6,7 +6,7 @@ description: Which pull requests a session tracks, and how to add one.
 
 A session tracks the pull requests that are part of its work. A tracked PR shows in the session's sidebar row
 ("2 PR"), the [inspector](../sessions/inspector.md) and the
-[PR overlay](review-feedback.md). The session's timeline says why each one is tracked.
+[PR overlay](pr-overlay.md). The session's timeline says why each one is tracked.
 
 ## How a session picks them up
 

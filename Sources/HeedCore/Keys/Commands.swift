@@ -102,7 +102,7 @@ public enum Commands {
         .init("tools.detect", "find git and gh again (login shell PATH, usual places, [tools])", .views),
         .init("app.quit", "quit Heed", .views),
         .init(
-            "settings.open", "open Settings, on a section (general, agents, colors, worktrees, pilot, keys)", .views,
+            "settings.open", "open Settings, on a section (general, agents, colors, worktrees, keys)", .views,
             arguments: "[section]"
         ),
         .init("app.activate", "bring Heed's window to the front, as the global shortcut does", .views),
@@ -130,33 +130,7 @@ public enum Commands {
         .init("issues.repo.prev", "previous repo in the Issues repo column", .selection),
         .init("issues.repo", "show one repo's issues (no name: every repo)", .selection, arguments: "[name]"),
         .init("issues.visibility", "flip the repo under the cursor between all issues and only yours", .selection),
-        .init("feedback.queue", "queue / unqueue the item", .selection),
-        .init("feedback.send", "send queued feedback to the session", .selection),
-        .init("feedback.mode", "pilot.green, by its former name", .selection),
-        .init("feedback.watch", "pilot.watch, by its former name", .selection),
-        .init("pilot.why", "what holds the PR back from green", .selection),
-        .init("pilot.watch", "watch or stop watching the PR (or the picked PRs)", .selection),
-        .init("pilot.green", "cycle get it green for the PR: off, ask, auto", .selection),
-        .init("pilot.run", "show the session's running get it green / get it merged run", .selection),
-        .init("pilot.retry", "one more round of get it green for a stalled PR (or the picked PRs)", .selection),
-        .init(
-            "pilot.copilot", "ask GitHub's Copilot coding agent to resolve the PR's conflicts and address its comments",
-            .selection
-        ),
-        .init("pilot.reviewers", "ask the PR's configured reviewers ([pilot] reviewers) to review it", .selection),
-        .init("pilot.merge", "get it merged for the PR (or the picked PRs): off or auto", .selection),
-        .init(
-            "merge.run",
-            "run a repo's merge queue now (no name: the PR's repo; all: every queue)",
-            .selection,
-            arguments: "[repo|all]"
-        ),
-        .init(
-            "pilot.pause", "pause the PR (or the picked PRs), or resume: 30m, 1h, 4h, 1d, forever, off", .selection,
-            arguments: "[duration]"
-        ),
-        .init("feedback.dismiss", "dismiss the item", .selection),
-        .init("feedback.session", "start a new session from this PR", .selection),
+        .init("pr.start", "start a new session from this PR", .selection),
         .init("diff.hunk.next", "next hunk", .selection),
         .init("diff.hunk.prev", "previous hunk", .selection),
         .init("diff.file.next", "next file", .selection),

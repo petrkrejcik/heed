@@ -18,13 +18,13 @@ struct SettingsView: View {
             let key = name.lowercased()
             let short: [String: Section] = [
                 "general": .general, "agents": .agents, "colors": .colors, "repos": .colors, "orgs": .colors,
-                "worktrees": .worktrees, "keys": .keys, "modes": .keys, "pilot": .pilot,
+                "worktrees": .worktrees, "keys": .keys, "modes": .keys,
             ]
             return short[key]
         }
 
         case general = "General", agents = "Agents", colors = "Orgs & repos", worktrees = "Worktrees"
-        case pilot = "Pilot", keys = "Keys & modes"
+        case keys = "Keys & modes"
 
         var id: String { rawValue }
     }
@@ -79,7 +79,6 @@ struct SettingsView: View {
                     case .agents: AgentSettings()
                     case .colors: OrgRepoSettings()
                     case .worktrees: WorktreeSettings()
-                    case .pilot: PilotSettingsView()
                     case .keys: KeySettings()
                     }
                 }
@@ -340,171 +339,6 @@ private struct AgentSettings: View {
     }
 }
 
-/// `[pilot]`: the defaults every PR starts from. Orgs and repos override them in config.toml; listed here.
-private struct PilotSettingsView: View {
-    @Environment(AppModel.self) private var model
-
-    var body: some View {
-        let pilot = model.config.pilot
-        VStack(alignment: .leading, spacing: 16) {
-            Text("Pilot").font(Theme.ui(17, weight: .semibold))
-            Text("What heed does with the PRs your sessions track.")
-                .font(Theme.ui(12.5)).foregroundStyle(Theme.fg2)
-            GroupLabel(title: "Watching")
-            Field(
-                label: "Watch PRs",
-                detail: "Follow their review threads and failing checks. Read-only, so on; w turns it off for one PR."
-            ) {
-                Toggle("", isOn: Binding(
-                    get: { pilot.defaults.watch }, set: { model.setConfig(["pilot", "watch"], .bool($0)) }
-                )).labelsHidden()
-            }
-            GroupLabel(title: "Get it green")
-            Field(
-                label: "Get it green",
-                detail: "Off shows what a PR collects; Ask waits for you to queue it; Auto sends it once the agent is idle."
-            ) {
-                Picker("", selection: Binding(
-                    get: { pilot.defaults.green },
-                    set: { model.setConfig(["pilot", "green"], .string($0.configName)) }
-                )) {
-                    ForEach(AutoFeed.allCases, id: \.self) { Text($0.rawValue).tag($0) }
-                }
-                .labelsHidden()
-                .frame(width: 200)
-            }
-            Field(label: "Stop after", detail: "Prompts sent without a new approval.") {
-                Stepper(value: Binding(
-                    get: { pilot.defaults.maxRounds },
-                    set: { model.setConfig(["pilot", "max_rounds"], .integer($0)) }
-                ), in: 1 ... 20) {
-                    Text("\(pilot.defaults.maxRounds) rounds").font(Theme.mono(12.5))
-                }
-            }
-            Field(
-                label: "Run agent",
-                detail: "Each round runs in the background: an agent in its own tab, worktree and branch "
-                    + "(heed/get-it-green/…), all removed when it is done. Which agent; the session's when unset. "
-                    + "Spend tokens of an agent you do not use for real work."
-            ) {
-                Picker("", selection: Binding(
-                    get: { pilot.defaults.agent ?? "" },
-                    set: { model.setConfig(["pilot", "agent"], .string($0)) }
-                )) {
-                    Text("The session's agent").tag("")
-                    ForEach(model.settings.agents.map(\.name), id: \.self) { Text($0).tag($0) }
-                }
-                .labelsHidden()
-                .frame(width: 200)
-            }
-            Field(
-                label: "Run model",
-                detail: "Its model (haiku, gpt-5-codex, openai/gpt-5…); the agent's default when empty."
-            ) {
-                ConfigTextField(path: ["pilot", "model"], value: pilot.defaults.model ?? "")
-            }
-            Field(label: "Run timeout", detail: "A run still working after this long is stopped.") {
-                ConfigTextField(path: ["pilot", "run_timeout"], value: PilotDuration.text(pilot.defaults.runTimeout))
-            }
-            Field(label: "Pause for", detail: "What zp pauses a PR for: 30m, 1h, 4h, 1d or forever.") {
-                ConfigTextField(
-                    path: ["pilot", "pause"],
-                    value: pilot.defaults.pause.map(PilotDuration.text) ?? "forever"
-                )
-            }
-            GroupLabel(title: "Get it merged")
-            Field(
-                label: "Get it merged",
-                detail: "Auto turns on GitHub's auto-merge once nothing fails; heed merges itself once its rules hold. zm cycles one PR."
-            ) {
-                Picker("", selection: Binding(
-                    get: { pilot.defaults.merge },
-                    set: { model.setConfig(["pilot", "merge"], .string($0.configName)) }
-                )) {
-                    ForEach(MergeMode.allCases, id: \.self) { Text($0.rawValue).tag($0) }
-                }
-                .labelsHidden()
-                .frame(width: 200)
-            }
-            Field(label: "Quiet for", detail: "heed merges: no new commit or review for this many minutes first.") {
-                Stepper(value: Binding(
-                    get: { pilot.defaults.quietMinutes },
-                    set: { model.setConfig(["pilot", "quiet_minutes"], .integer($0)) }
-                ), in: 0 ... 1440) {
-                    Text("\(pilot.defaults.quietMinutes) minutes").font(Theme.mono(12.5))
-                }
-            }
-            Field(
-                label: "Trusted AI reviewers",
-                detail: "heed merges: their review on the last push counts, as an approval does. Comma separated logins."
-            ) {
-                ListField(path: ["pilot", "trusted_reviewers"], values: pilot.defaults.trustedReviewers)
-            }
-            Field(
-                label: "Gate checks",
-                detail: "heed merges: checks that must have passed, required by GitHub or not."
-            ) {
-                ListField(path: ["pilot", "gate_checks"], values: pilot.defaults.gateChecks)
-            }
-            Field(label: "Hold labels", detail: "heed merges: a PR with one of these labels waits.") {
-                ListField(path: ["pilot", "hold_labels"], values: pilot.defaults.holdLabels)
-            }
-            Field(
-                label: "Self-review",
-                detail: "heed merges: a command that reads the diff on stdin and answers APPROVE (e.g. claude -p). Empty: none."
-            ) {
-                ConfigTextField(path: ["pilot", "self_review"], value: pilot.defaults.selfReview ?? "")
-            }
-            Field(label: "Merge queue runs", detail: "How often each repo's queue runs: 15m, 1h, ... or manual.") {
-                ConfigTextField(
-                    path: ["pilot", "merge_schedule"],
-                    value: pilot.defaults.mergeSchedule.map(PilotDuration.text) ?? "manual"
-                )
-            }
-            Field(label: "Update branches", detail: "Bring queued PRs that fell behind their base up to date.") {
-                Toggle("", isOn: Binding(
-                    get: { pilot.defaults.updateBranches },
-                    set: { model.setConfig(["pilot", "update_branches"], .bool($0)) }
-                )).labelsHidden()
-            }
-            GroupLabel(title: "Copilot and reviewers")
-            Field(
-                label: "Copilot: conflicts",
-                detail: "Ask GitHub's Copilot coding agent on the PR to resolve merge conflicts, sparing your agent's "
-                    + "tokens. Where Copilot can work in the repo."
-            ) {
-                Toggle("", isOn: Binding(
-                    get: { pilot.defaults.copilotConflicts },
-                    set: { model.setConfig(["pilot", "copilot_conflicts"], .bool($0)) }
-                )).labelsHidden()
-            }
-            Field(
-                label: "Copilot: comments",
-                detail: "Ask it to address new review comments too; with both on, one comment asks for both. C asks now."
-            ) {
-                Toggle("", isOn: Binding(
-                    get: { pilot.defaults.copilotComments },
-                    set: { model.setConfig(["pilot", "copilot_comments"], .bool($0)) }
-                )).labelsHidden()
-            }
-            Field(
-                label: "Reviewers",
-                detail: "Asked to review each PR once it is open and ready: logins, org/team, or copilot. Comma separated."
-            ) {
-                ListField(path: ["pilot", "reviewers"], values: pilot.defaults.reviewers)
-            }
-            let orgs = pilot.orgs.count, repos = pilot.repos.count
-            HStack(spacing: 6) {
-                Text(orgs + repos == 0
-                    ? "No org or repo overrides these."
-                    : "\(orgs) org\(orgs == 1 ? "" : "s") and \(repos) repo\(repos == 1 ? "" : "s") override these.")
-                    .font(Theme.ui(12)).foregroundStyle(Theme.fg3)
-                Button("Orgs & repos") { model.settingsSection = .colors }.buttonStyle(.link).font(Theme.ui(12))
-            }
-        }
-    }
-}
-
 private struct WorktreeSettings: View {
     @Environment(AppModel.self) private var model
 
@@ -518,48 +352,6 @@ private struct WorktreeSettings: View {
                 RootsField(roots: model.config.work.repoRoots)
             }
         }
-    }
-}
-
-/// A comma-separated list of words, written as a TOML array.
-private struct WordsField: View {
-    @Environment(AppModel.self) private var model
-    let path: [String]
-    let words: [String]
-    @State private var text = ""
-
-    var body: some View {
-        TextField("", text: $text)
-            .textFieldStyle(.roundedBorder)
-            .font(Theme.mono(12))
-            .onAppear { text = words.joined(separator: ", ") }
-            .onChange(of: words) { text = words.joined(separator: ", ") }
-            .onSubmit {
-                let list = text.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces).lowercased() }
-                    .filter { !$0.isEmpty }
-                guard list != words else { return }
-                model.setConfig(path, .array(list.map { .string($0) }))
-            }
-    }
-}
-
-/// A comma separated list written to config.toml as an array.
-private struct ListField: View {
-    @Environment(AppModel.self) private var model
-    let path: [String]
-    let values: [String]
-    @State private var text = ""
-
-    var body: some View {
-        TextField("", text: $text)
-            .textFieldStyle(.roundedBorder)
-            .font(Theme.mono(12.5))
-            .onAppear { text = values.joined(separator: ", ") }
-            .onSubmit {
-                let list = text.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
-                    .filter { !$0.isEmpty }
-                model.setConfig(path, .array(list.map { .string($0) }))
-            }
     }
 }
 

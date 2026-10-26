@@ -165,7 +165,6 @@ struct ScopedKeyTests {
         // x is "done with it" wherever it is bound, o is always starting work, and the GitHub views read with ↩.
         #expect(DefaultKeys.normal.contains { $0 == ("x", "session.close") })
         #expect(DefaultKeys.scoped["inbox"]?.contains { $0 == ("x", "items.read") } == true)
-        #expect(DefaultKeys.scoped["pr"]?.contains { $0 == ("x", "feedback.dismiss") } == true)
         for (scope, table) in DefaultKeys.scoped {
             for (keys, command) in table where keys == "o" {
                 #expect(command == "worktree.new", "o in \(scope) is \(command)")

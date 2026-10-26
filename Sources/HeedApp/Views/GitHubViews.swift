@@ -347,7 +347,7 @@ struct PullRequestsView: View {
                             Text("TITLE").frame(maxWidth: .infinity, alignment: .leading)
                             Text("CHECKS").frame(width: 130, alignment: .leading)
                             Text("REVIEW").frame(width: 150, alignment: .leading)
-                            Text("WATCH").frame(width: 130, alignment: .leading)
+                            Text("STATE").frame(width: 130, alignment: .leading)
                         }
                         .font(Theme.ui(10.5, weight: .semibold))
                         .tracking(0.7)
@@ -371,8 +371,7 @@ struct PullRequestsView: View {
                             index: index,
                             cursor: cursor,
                             session: model.sessions.first { $0.trackedPRs.contains(rows[index].ref) },
-                            pilot: model.pilotStatus(for: rows[index].ref),
-                            green: model.pilot(for: rows[index].ref).green,
+                            status: model.pullStatus(for: rows[index].ref),
                             isPicked: model.pickedIDs(.prs).contains(rows[index].id)
                         )
                     }
@@ -388,8 +387,7 @@ private struct PullRow: View {
     let index: Int
     let cursor: Int
     let session: Session?
-    let pilot: PilotStatus
-    let green: AutoFeed
+    let status: PullStatus
     let isPicked: Bool
 
     var body: some View {
@@ -419,14 +417,7 @@ private struct PullRow: View {
             .frame(width: 130, alignment: .leading)
             Text(reviewText).font(Theme.ui(12.5)).foregroundStyle(reviewColor).lineLimit(1)
                 .frame(width: 150, alignment: .leading)
-            // Watched or not, and get it green's mode: `w` `m` `zz` act on the row (or the VISUAL picks).
-            VStack(alignment: .leading, spacing: 3) {
-                PilotMark(status: pilot)
-                if pilot != .unwatched {
-                    Text("green \(green.configName)").font(Theme.mono(10.5)).foregroundStyle(Theme.fg3)
-                }
-            }
-            .frame(width: 130, alignment: .leading)
+            PullMark(status: status).frame(width: 130, alignment: .leading)
         }
         .padding(.horizontal, 16)
         .frame(height: 56)

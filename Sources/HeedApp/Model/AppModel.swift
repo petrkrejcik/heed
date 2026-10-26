@@ -60,13 +60,8 @@ final class AppModel {
     private(set) var repos: [RepoRecord] = [] { didSet { if repos != oldValue { rebuildWorktreeRows() } } }
     private(set) var worktrees: [Worktree] = [] { didSet { if worktrees != oldValue { rebuildWorktreeRows() } } }
     private(set) var history: [HistoryEntry] = []
-    // What the pilot knows decides Watching and Stalled in the sidebar, so each change rebuilds the list.
-    private(set) var github = GitHubState() { didSet { rebuildList() } }
-    private(set) var pullDetails: [String: PullDetail] = [:] { didSet { rebuildList() } }
-    private(set) var feedback: [String: PullFeedback] = [:] { didSet { rebuildList() } }
-    /// What the pilot noticed and did, newest first.
-    private(set) var pilotLog: [PilotEvent] = [] { didSet { rebuildList() } }
-    private(set) var mergeRuns: [String: [MergeRun]] = [:]
+    private(set) var github = GitHubState()
+    private(set) var pullDetails: [String: PullDetail] = [:]
     private(set) var list = SessionList([])
     private(set) var settings: WorkSettings
     private(set) var config = HeedConfig.default
@@ -124,14 +119,7 @@ final class AppModel {
     private var pendingContinue: Set<String> = []
 
     // Cursors
-    private(set) var cursor = 0 {
-        // Leaving the session the list held in place lets it settle into its group.
-        didSet { if !rebuildingList, let held = heldSession, currentSession?.id != held { rebuildList() } }
-    }
-
-    private var rebuildingList = false
-    /// The session under the cursor when the list was built; the pilot does not move it until the cursor leaves it.
-    private var heldSession: String?
+    private(set) var cursor = 0
     private var previousSessionID: String?
     private(set) var repoCursor = 0
     /// VISUAL selection in the Repos table: worktree ids toggled with space, plus the range from the anchor.
@@ -159,11 +147,6 @@ final class AppModel {
     private(set) var issueReader: Issue? { didSet { updateScope() } }
     /// The PR the overlay shows (one of the current session's).
     private(set) var overlayPull: PullRef?
-    private(set) var feedbackCursor = 0
-    /// When you last typed into each session's panes; feedback waits after that.
-    private var lastTyped: [String: Date] = [:]
-    /// PRs with queued feedback waiting for their agent to be idle.
-    private var pendingDelivery: Set<PullRef> = []
 
     /// Scoped key bindings follow what has focus: the diff, the PR overlay or reader, else the view.
     private func updateScope() {
@@ -212,12 +195,10 @@ final class AppModel {
         keyProblems = built.problems
         if isFixture {
             config.issues = Fixtures.issueRules
-            config.pilot = Fixtures.pilotRules
             zmxHealth = ZmxHealth(path: "/opt/homebrew/bin/zmx", version: "0.8.1")
             issueInfo = Fixtures.issueInfo
         }
         replace(with: domain)
-        if isFixture { adoptFixtureRuns() } else { interruptRuns() }
         updateScope()
     }
 
@@ -241,7 +222,6 @@ final class AppModel {
         await offerResume(domain: cached)
         startGitHubSync()
         await refreshRepos()
-        if !isFixture { _ = await cleanUpRunLeftovers() }
     }
 
     // MARK: GitHub
@@ -280,7 +260,7 @@ final class AppModel {
         syncSchedule.front = TimeInterval(config.githubPollSeconds)
         let parts = wanted.isEmpty ? syncSchedule.due(now: Date(), front: frontParts, force: force) : wanted
         guard !parts.isEmpty else {
-            await refreshWatchedDetails()
+            refreshTrackedDetails()
             return
         }
         syncing = true
@@ -294,7 +274,7 @@ final class AppModel {
             )
             syncSchedule.fetched(parts, at: Date())
             commit([.githubSynced(state)] + PullTracking.changes(sessions: sessions, pulls: state.pulls))
-            await refreshWatchedDetails()
+            refreshTrackedDetails()
             await refreshIssueInfo()
         } catch {
             var offline = previous
@@ -464,7 +444,6 @@ final class AppModel {
         guard let decoded else { return }
         let toolsChanged = decoded.tools != config.tools
         let issuesChanged = decoded.issues != config.issues
-        let pilotChanged = decoded.pilot != config.pilot
         config = decoded
         settings = decoded.work
         if !isFixture {
@@ -489,8 +468,6 @@ final class AppModel {
         if toolsChanged, !isFixture { Task { await detectTools() } }
         // Repos that now show all issues need fetching; ones that no longer do are hidden by issueRows right away.
         if issuesChanged, !isFixture, github.syncedAt != nil { Task { await syncGitHub(parts: [.issues]) } }
-        // PRs nobody set by hand follow the new pilot settings.
-        if pilotChanged { settlePilots() }
     }
 
     /// `[tools] zmx` (a path, or a name on the search path), else zmx on the search path.
@@ -559,18 +536,6 @@ final class AppModel {
     /// One message from an agent's hook, applied to its session.
     func receive(_ message: HookMessage) {
         guard var session = sessions.first(where: { $0.id == message.session }) else { return }
-        // A run's hooks: its own state, not the session's. Its turn over (idle after working, or exited) ends it;
-        // asking
-        // or blocked shows the session in Needs you (through `sessionPilot`).
-        if let pane = message.pane, let id = liveRuns.first(where: { $0.value.paneID == pane })?.key {
-            if case let .state(state, _) = message.kind {
-                runStates[pane] = state
-                if state == .working { liveRuns[id]?.worked = true }
-                rebuildList()
-                if let live = liveRuns[id], Runs.ended(state, worked: live.worked) { endRun(id) }
-            }
-            return
-        }
         switch message.kind {
         case let .state(state, reason):
             session.state = ObservedState(state, source: .reported, reason: reason)
@@ -579,14 +544,6 @@ final class AppModel {
             events[session.id] = AgentEvent.log(
                 events[session.id] ?? [], adding: AgentEvent(at: message.sentAt, state: state, reason: reason)
             )
-            if state == .idle || state == .done {
-                let waiting = pendingDelivery.filter { session.trackedPRs.contains($0) }
-                Task { @MainActor in
-                    for ref in waiting {
-                        self.deliver(ref, explicit: false)
-                    }
-                }
-            }
             if state == .idle, pendingContinue.remove(session.id) != nil,
                let layout = layouts[session.id], let (_, paneID) = agentPane(in: layout)
             {
@@ -600,7 +557,6 @@ final class AppModel {
             guard let pull = PullRef(url: url), session.track(pull, because: "opened by \(session.agent)") else {
                 return
             }
-            logPilot(pull, .watch, "opened by \(session.agent) in \(session.title)")
             fetchDetail(pull)
         case let .issueAdd(url):
             guard let issue = IssueRef(url: url), !session.issues.contains(issue) else { return }
@@ -626,14 +582,7 @@ final class AppModel {
         // The selection is a session, not a row. A session moving between groups (parked to working, say) reorders
         // the list; the cursor follows the session it was on, so what you look at and type into never changes under
         // you. Read before the rebuild: `currentSession` still indexes the old list here.
-        rebuildingList = true
-        defer { rebuildingList = false }
         let selected = currentSession?.id
-        let hold = currentSession.flatMap { session in
-            list.group(of: session.id).map {
-                SessionHold(id: session.id, group: $0, pinned: session.pinned, parked: session.parked)
-            }
-        }
         let filter = sessionFilter
         list = SessionList(filter.isEmpty ? sessions : sessions.filter { session in
             FilterQuery.matches(
@@ -641,36 +590,22 @@ final class AppModel {
                 [session.title, session.worktreeName, session.branch, session.agent]
                     + session.repos.map(\.name) + session.trackedPRs.map { "#\($0.number)" }
             )
-        }, pilot: sessionPilot, hold: hold)
+        })
         if let selected, let index = list.ordered.firstIndex(where: { $0.id == selected }) {
             cursor = index
         } else {
             cursor = min(cursor, max(list.ordered.count - 1, 0))
         }
-        heldSession = currentSession?.id
     }
 
     private func replace(with domain: Domain) {
         sessions = domain.sessions
-        // Helper tabs do not come back: a PR that still needs work gets a fresh one on its next round.
-        layouts = isFixture ? domain.layouts : domain.layouts.mapValues { layout in
-            var layout = layout
-            let keep = layout.tabs.filter { !$0.tree.panes.allSatisfy { $0.role == .helper } }
-            if keep.count != layout.tabs.count, !keep.isEmpty {
-                layout.tabs = keep
-                layout.activeTab = min(layout.activeTab, keep.count - 1)
-            }
-            return layout
-        }
+        layouts = domain.layouts
         repos = domain.repos
         worktrees = domain.worktrees
         history = domain.history
         github = domain.github
         pullDetails = domain.pullDetails
-        feedback = domain.feedback
-        pilotLog = domain.pilotLog
-        mergeRuns = domain.mergeRuns
-        runs = domain.runs
         cursor = min(cursor, max(list.ordered.count - 1, 0))
     }
 
@@ -683,10 +618,6 @@ final class AppModel {
         if after.github != before.github { github = after.github }
         if after.repos != before.repos || after.github.pulls != before.github.pulls { loadAvatars() }
         if after.pullDetails != before.pullDetails { pullDetails = after.pullDetails }
-        if after.feedback != before.feedback { feedback = after.feedback }
-        if after.pilotLog != before.pilotLog { pilotLog = after.pilotLog }
-        if after.mergeRuns != before.mergeRuns { mergeRuns = after.mergeRuns }
-        if after.runs != before.runs { runs = after.runs }
         if after.sessions != before.sessions { sessions = after.sessions }
         if after.layouts != before.layouts { layouts = after.layouts }
         if after.repos != before.repos { repos = after.repos }
@@ -699,8 +630,7 @@ final class AppModel {
     var currentDomain: Domain {
         Domain(
             repos: repos, worktrees: worktrees, sessions: sessions, layouts: layouts, history: history, github: github,
-            pullDetails: pullDetails, feedback: feedback, pilotLog: pilotLog,
-            mergeRuns: mergeRuns, runs: runs
+            pullDetails: pullDetails
         )
     }
 
@@ -742,31 +672,6 @@ final class AppModel {
 
     /// `gB` / `gR` with more than one place to go.
     private(set) var linkPicker: LinkPicker?
-    /// The get it green / get it merged runs running now, by run id: their tab, pane and worktree. In memory only.
-    struct LiveRun: Equatable {
-        let runID: String
-        let ref: PullRef
-        let sessionID: String
-        let tabID: String
-        let paneID: String
-        let record: RepoRecord
-        let worktree: String
-        let branch: String
-        let prBranch: String
-        let mainPath: String
-        /// Its agent has worked: idle after this means its turn is over.
-        var worked = false
-    }
-
-    private(set) var liveRuns: [String: LiveRun] = [:]
-    /// Each run pane's own state, from its hooks; never the session's.
-    private(set) var runStates: [String: AgentState] = [:]
-    /// PRs whose run is being started (async), so one is not started twice.
-    private var startingRuns: Set<String> = []
-    /// Every run, newest first (the domain's).
-    private(set) var runs: [PilotRun] = []
-    /// The run the reader shows (`↩` on a Runs row).
-    var runReader: PilotRun?
     /// Titles and states of the issues sessions link to (fetched, not cached on disk).
     private(set) var issueInfo: [IssueRef: IssueInfo] = [:]
     private var issueInfoFetchedAt: [IssueRef: Date] = [:]
@@ -872,8 +777,7 @@ final class AppModel {
         worktreeCount = counts.values.reduce(0, +)
         let rank = Dictionary(sortedRepos.enumerated().map { ($1.id, $0) }) { first, _ in first }
         let filter = filter(for: .repos)
-        // A run's worktree is heed's own, not yours to import or clean up.
-        let added = worktrees.filter { !$0.isMain && !($0.branch.map(Runs.isRunBranch) ?? false) }
+        let added = worktrees.filter { !$0.isMain }
         let roots = settings.pathRoots
         let matching = filter.isEmpty ? added : added.filter { worktree in
             FilterQuery.matches(filter, [
@@ -940,10 +844,6 @@ final class AppModel {
             answerLinkPicker(stroke)
             return true
         }
-        if runReader != nil {
-            if stroke == .escape || stroke == KeyStroke("q") || stroke == KeyStroke("CR") { runReader = nil }
-            return true
-        }
         if pathImport != nil {
             answerPathImport(stroke)
             return true
@@ -977,7 +877,6 @@ final class AppModel {
         case .terminal:
             if var session = currentSession {
                 let now = Date()
-                lastTyped[session.id] = now
                 if now.timeIntervalSince(session.lastActivity) > 60 {
                     session.lastActivity = now
                     commit(.sessionUpserted(session))
@@ -1180,25 +1079,7 @@ final class AppModel {
         case "pr.next": cyclePull(by: 1)
         case "pr.prev": cyclePull(by: -1)
         case "jump.back": closeReaderOrOverlay()
-        case "feedback.queue": toggleQueued()
-        case "feedback.send": if let ref = feedbackPull { deliver(ref, explicit: true) }
-        // feedback.mode and feedback.watch were their names before the pilot settings; both still work.
-        case "pilot.green", "feedback.mode": cyclePilotGreen()
-        case "pilot.watch", "feedback.watch": togglePilotWatch()
-        case "pilot.pause": pausePilot(command.arguments.first)
-        case "pilot.retry": retryPilot()
-        case "pilot.run": showRun()
-        case "pilot.why": showPilotWhy()
-        case "pilot.merge": togglePilotMerge()
-        case "pilot.copilot":
-            let refs = pilotTargets
-            if refs.isEmpty { flash = "no PR here" } else { Task { await askCopilot(refs, byHand: true) } }
-        case "pilot.reviewers":
-            let refs = pilotTargets
-            if refs.isEmpty { flash = "no PR here" } else { Task { await requestReviews(refs, byHand: true) } }
-        case "merge.run": runMergeCommand(command.arguments.first)
-        case "feedback.dismiss": dismissItem()
-        case "feedback.session": startFromPull()
+        case "pr.start": startFromPull()
         case "pr.session": jumpToPullSession()
         case "history.reopen": reopenSelected()
         case "history.again": openStartWork(prompt: selectedHistory?.session.prompt ?? "")
@@ -1209,7 +1090,7 @@ final class AppModel {
         case "settings.open":
             if let name = command.arguments.first {
                 guard let section = SettingsView.Section.named(name) else {
-                    flash = "no Settings section \(name) (general, agents, colors, cleanup, pilot, keys)"
+                    flash = "no Settings section \(name) (general, agents, colors, cleanup, keys)"
                     return
                 }
                 settingsSection = section
@@ -1264,11 +1145,7 @@ final class AppModel {
             if count > 0 { diffRow = min(max(diffRow + delta, 0), count - 1) }
             return
         }
-        if feedbackPull != nil, overlay == .pr || reader != nil {
-            let count = feedbackItems.count
-            if count > 0 { feedbackCursor = min(max(feedbackCursor + delta, 0), count - 1) }
-            return
-        }
+        if shownPull != nil, overlay == .pr || reader != nil { return }
         switch view {
         case .repos: setRow(repoCursor + delta)
         case .history: setRow(historyCursor + delta)
@@ -1819,9 +1696,7 @@ final class AppModel {
 
     private func openImportPicker() {
         let rank = Dictionary(sortedRepos.enumerated().map { ($1.id, $0) }) { first, _ in first }
-        let candidates = worktrees.filter {
-            session(for: $0) == nil && !($0.branch.map(Runs.isRunBranch) ?? false)
-        }.sorted {
+        let candidates = worktrees.filter { session(for: $0) == nil }.sorted {
             if $0.isMain != $1.isMain { return !$0.isMain }
             return $0.repo.slug == $1.repo.slug ? $0.path < $1.path
                 : (rank[$0.repo.slug] ?? .max, $0.repo.slug) < (rank[$1.repo.slug] ?? .max, $1.repo.slug)
@@ -2141,7 +2016,7 @@ final class AppModel {
     /// no rule adds it back.
     private func untrackPull(_ argument: String?) {
         guard let session = currentSession else { return flash = "no session here" }
-        let pull = argument.flatMap(PullRef.init(url:)) ?? feedbackPull
+        let pull = argument.flatMap(PullRef.init(url:)) ?? shownPull
             ?? (session.trackedPRs.count == 1 ? session.trackedPRs.first : nil)
         guard let pull, session.trackedPRs.contains(pull) else {
             return flash = session.trackedPRs.isEmpty ? "this session tracks no PR"
@@ -2367,7 +2242,7 @@ final class AppModel {
 
     private var urlUnderCursor: String? {
         if let issue = issueReader { return issue.url }
-        if let ref = feedbackPull { return pullDetails[ref.description].map { _ in ref.url } ?? ref.url }
+        if let ref = shownPull { return pullDetails[ref.description].map { _ in ref.url } ?? ref.url }
         let index = cursor(in: view)
         switch view {
         case .inbox: return inboxRows.indices.contains(index) ? inboxRows[index].url : nil
@@ -2381,7 +2256,7 @@ final class AppModel {
     /// `gB`: what is under the cursor. In Sessions (outside the overlay and reader) the session's links: one opens,
     /// several offer the picker, none opens its repo.
     private func openInBrowser() {
-        if view == .sessions, issueReader == nil, feedbackPull == nil, let session = currentSession {
+        if view == .sessions, issueReader == nil, shownPull == nil, let session = currentSession {
             let links = links(of: session)
             switch links.count {
             case 0: return openRepo()
@@ -2443,7 +2318,6 @@ final class AppModel {
             }
             overlayPull = ref
             overlay = .pr
-            feedbackCursor = 0
             fetchDetail(ref)
         case let .issue(ref):
             if let issue = issue(for: ref) {
@@ -2463,7 +2337,7 @@ final class AppModel {
     /// The repos under the cursor, for `gR`: a session's (all of them), a Repos row's, an item's.
     private var reposUnderCursor: [Repo] {
         if let issue = issueReader { return [issue.repo] }
-        if let ref = feedbackPull, overlay == .pr || reader != nil { return [ref.repo] }
+        if let ref = shownPull, overlay == .pr || reader != nil { return [ref.repo] }
         let index = cursor(in: view)
         switch view {
         case .sessions: return currentSession?.involvedRepos ?? []
@@ -2554,7 +2428,7 @@ final class AppModel {
 
     private func jumpToPullSession() {
         let ref: PullRef
-        if let open = feedbackPull, overlay == .pr || reader != nil {
+        if let open = shownPull, overlay == .pr || reader != nil {
             ref = open
         } else {
             let index = cursor(in: .prs)
@@ -2572,17 +2446,10 @@ final class AppModel {
         }
     }
 
-    // MARK: PR overlay, reader and feedback
+    // MARK: PR overlay and reader
 
     /// The PR the overlay or reader is about.
-    var feedbackPull: PullRef? { reader ?? (overlay == .pr ? overlayPull : nil) }
-
-    /// Items in display order: open ones first (queued, new, sent, addressed), then resolved.
-    var feedbackItems: [FeedbackItem] {
-        guard let ref = feedbackPull, let pipeline = feedback[ref.description] else { return [] }
-        let order: [FeedbackItem.Status] = [.queued, .new, .sent, .addressed, .resolved]
-        return pipeline.items.sorted { order.firstIndex(of: $0.status)! < order.firstIndex(of: $1.status)! }
-    }
+    var shownPull: PullRef? { reader ?? (overlay == .pr ? overlayPull : nil) }
 
     /// The PR under the cursor where `o` was pressed: a PRs row, a PR in the inbox, or the session's first PR.
     private var pullUnderCursor: PullRef? {
@@ -2601,7 +2468,6 @@ final class AppModel {
     private func openReader() {
         if let ref = pullUnderCursor {
             reader = ref
-            feedbackCursor = 0
             fetchDetail(ref)
         } else if let issue = issueUnderCursor {
             issueReader = issue
@@ -2655,7 +2521,6 @@ final class AppModel {
         }
         overlayPull = overlayPull.flatMap { currentSession?.trackedPRs.contains($0) == true ? $0 : nil } ?? first
         overlay = .pr
-        feedbackCursor = 0
         if let ref = overlayPull { fetchDetail(ref) }
     }
 
@@ -2663,7 +2528,6 @@ final class AppModel {
         guard overlay == .pr, let prs = currentSession?.trackedPRs, !prs.isEmpty else { return }
         let index = overlayPull.flatMap { prs.firstIndex(of: $0) } ?? 0
         overlayPull = prs[((index + delta) % prs.count + prs.count) % prs.count]
-        feedbackCursor = 0
         if let ref = overlayPull { fetchDetail(ref) }
     }
 
@@ -2679,137 +2543,47 @@ final class AppModel {
         }
     }
 
-    private func updateFeedback(_ edit: (inout PullFeedback) -> Void) {
-        guard let ref = feedbackPull else { return }
-        var pipeline = feedback[ref.description] ?? PullFeedback(ref: ref)
-        edit(&pipeline)
-        commit(.feedbackChanged(pipeline))
-        if pipeline.autoFeed == .auto { deliver(ref, explicit: false) }
-    }
-
-    private func toggleQueued() {
-        let items = feedbackItems
-        guard items.indices.contains(feedbackCursor) else { return }
-        let id = items[feedbackCursor].id
-        updateFeedback { pipeline in
-            guard let index = pipeline.items.firstIndex(where: { $0.id == id }) else { return }
-            switch pipeline.items[index].status {
-            case .new: pipeline.items[index].status = .queued
-            case .queued: pipeline.items[index].status = .new
-            default: break
-            }
-        }
-    }
-
-    private func dismissItem() {
-        let items = feedbackItems
-        guard items.indices.contains(feedbackCursor) else { return }
-        let id = items[feedbackCursor].id
-        updateFeedback { pipeline in pipeline.items.removeAll { $0.id == id } }
-    }
-
+    /// `S`: a new session on the PR, its prompt naming the open review threads and failing checks.
     private func startFromPull() {
-        guard let ref = feedbackPull else { return }
+        guard let ref = shownPull else { return }
         let detail = pullDetails[ref.description]
-        let pipeline = feedback[ref.description]
         var prompt = "Continue PR \(ref.repo.name)#\(ref.number): \(detail?.title ?? "")"
-        if let open = pipeline?.items.filter({ $0.status != .resolved }), !open.isEmpty {
-            prompt += "\n" + open.map { "- " + $0.promptLine }.joined(separator: "\n")
+        let open = (detail?.threads.filter { !$0.isResolved } ?? [])
+            .map { "\($0.location) (@\($0.author)): \($0.body)" }
+            + (detail?.failingChecks ?? []).map { "check \($0.name) failed: \($0.summary)" }
+        if !open.isEmpty {
+            prompt += "\n" + open.map { line in
+                let first = line.split(separator: "\n").first.map(String.init) ?? line
+                return "- " + (first.count > 160 ? String(first.prefix(159)) + "…" : first)
+            }.joined(separator: "\n")
         }
         reader = nil
         overlay = nil
         openStartWork(prompt: prompt)
     }
 
-    /// Fetches a PR's detail off the main actor; the merge into its pipeline happens in `commit`. Reports checks that
-    /// went from failing to passing (the CI loop).
+    /// Fetches a PR's detail off the main actor. Reports checks that went from failing to passing.
     func fetchDetail(_ ref: PullRef) {
         guard !isFixture else { return }
         Task {
             guard let detail = try? await GitHub.pullDetail(ref) else { return }
-            let wasOpen = pullDetails[ref.description].map { $0.state != "MERGED" } ?? false
-            let before = feedback[ref.description]?.items.filter { $0.status != .resolved }.map(\.id) ?? []
-            // The pipeline carries what the settings say before the fetch merges in, so new items arrive as the
-            // PR's green mode wants (queued when auto).
-            var pipeline = feedback[ref.description] ?? PullFeedback(ref: ref)
-            if pipeline.settle(pilotSettings(for: ref)) || feedback[ref.description] == nil {
-                commit(.feedbackChanged(pipeline))
-            }
+            let failedBefore = pullDetails[ref.description]?.failingChecks.map(\.name) ?? []
             commit(.pullDetailFetched(detail))
             trackLinked(detail)
-            let fixed = feedback[ref.description]?.items
-                .filter { before.contains($0.id) && $0.status == .resolved } ?? []
-            let checks = fixed.compactMap { if case let .check(name) = $0.kind { name } else { nil } }
-            if !checks.isEmpty { flash = "\(checks.joined(separator: ", ")) passing now on #\(ref.number)" }
-            // A merge is what leaves the queue's other PRs behind.
-            if wasOpen, detail.state == "MERGED", pilot(for: ref).merge != .off,
-               pilotSettings(for: ref).updateBranches
-            {
-                runMergeQueue(ref.repo.slug, why: "#\(ref.number) merged")
+            let fixed = failedBefore.filter { name in
+                !detail.failingChecks.contains { $0.name == name } && !detail.checks.pendingNames.contains(name)
             }
-            // Before delivery, so a conflict Copilot takes does not also go to the agent.
-            await askCopilot([ref], byHand: false)
-            await requestReviews([ref], byHand: false)
-            fetchFailedLogs(ref, detail)
-            if feedback[ref.description]?.autoFeed == .auto { deliver(ref, explicit: false) }
-            mergeIfTurnedGreen(ref, detail)
+            if !fixed.isEmpty { flash = "\(fixed.joined(separator: ", ")) passing now on #\(ref.number)" }
         }
     }
 
-    /// Jobs whose failed log was asked for already, so a log that cannot be had is not asked for on every fetch.
-    private var askedLogs: Set<String> = []
-
-    /// For each open failed-check item without a log: the job's failed steps, saved under the caches folder, so the
-    /// prompt can point the agent at the actual error instead of "build failed".
-    private func fetchFailedLogs(_ ref: PullRef, _ detail: PullDetail) {
-        guard !isFixture, let pipeline = feedback[ref.description] else { return }
-        let wanted = pipeline.items.compactMap { item -> (id: String, check: String, job: String)? in
-            guard case let .check(name) = item.kind, item.status != .resolved, item.logPath == nil,
-                  let job = GitHub.jobID(fromDetailsURL: detail.failingChecks.first { $0.name == name }?.url),
-                  !askedLogs.contains(job)
-            else { return nil }
-            return (item.id, name, job)
-        }
-        guard !wanted.isEmpty else { return }
-        askedLogs.formUnion(wanted.map(\.job))
-        let folder = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("Heed/logs")
-        Task {
-            var saved: [String: String] = [:]
-            for item in wanted {
-                guard let log = try? await GitHub.failedLog(repo: ref.repo, job: item.job),
-                      !log.isEmpty else { continue }
-                let name = "\(ref.repo.org)-\(ref.repo.name)-\(ref.number)-\(item.check)"
-                    .replacingOccurrences(of: "/", with: "-").replacingOccurrences(of: " ", with: "-")
-                let file = folder.appendingPathComponent("\(name).log")
-                try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-                guard (try? log.write(to: file, atomically: true, encoding: .utf8)) != nil else { continue }
-                saved[item.id] = file.path
-            }
-            guard !saved.isEmpty, var pipeline = feedback[ref.description] else { return }
-            for index in pipeline.items.indices {
-                if let path = saved[pipeline.items[index].id] { pipeline.items[index].logPath = path }
-            }
-            commit(.feedbackChanged(pipeline))
-        }
-    }
-
-    /// Details for the PRs active sessions track and watch, so auto-feed sees new feedback: the one on screen every
-    /// time, the others only when the last sync says their checks or threads moved, or every fifth poll.
-    private func refreshWatchedDetails() async {
-        resumeExpiredPauses()
-        endTimedOutRuns()
-        // Held because you were working in the session: try again, now that time has passed.
-        for ref in pendingDelivery {
-            deliver(ref, explicit: false)
-        }
-        runDueMergeQueues()
+    /// Details for the PRs active sessions track: the one on screen every time, the others only when the last sync
+    /// says their checks or threads moved, or every fifth poll.
+    private func refreshTrackedDetails() {
         let open = [overlay == .pr ? overlayPull : nil, reader].compactMap(\.self)
         let now = Date()
         let refs = Set(sessions.flatMap(\.trackedPRs)).filter { ref in
-            // Unwatched PRs keep only their summary from the sync; opening one still fetches it (`open`).
-            guard pilot(for: ref).watching else { return false }
-            return open.contains(ref) || syncSchedule.needsDetail(
+            open.contains(ref) || syncSchedule.needsDetail(
                 pull: github.pull(ref), detail: pullDetails[ref.description], now: now
             )
         }
@@ -2818,881 +2592,21 @@ final class AppModel {
         }
     }
 
-    // MARK: Pilot
+    // MARK: PR status
 
-    func pilotSettings(for ref: PullRef) -> PilotSettings { config.pilot.resolve(ref.repo) }
-
-    /// What applies to a PR now: a choice made on it by hand, else its org or repo settings, else `[pilot]`.
-    func pilot(for ref: PullRef) -> PullFeedback.Effective {
-        PullFeedback.effective(feedback[ref.description], pilotSettings(for: ref))
+    /// Where a PR stands, from GitHub only.
+    func pullStatus(for ref: PullRef) -> PullStatus {
+        PullStatus.of(pull: github.pull(ref), detail: pullDetails[ref.description])
     }
 
-    func pilotStatus(for ref: PullRef) -> PilotStatus {
-        PilotStatus.of(
-            pull: github.pull(ref), pipeline: feedback[ref.description], settings: pilotSettings(for: ref),
-            hasSession: sessions.contains { $0.trackedPRs.contains(ref) }, detail: pullDetails[ref.description],
-            now: Clock.now
-        )
+    /// The most urgent state among a session's PRs, for its sidebar row.
+    func pullStatus(of session: Session) -> PullStatus? {
+        session.trackedPRs.map(pullStatus(for:)).min { $0.urgency < $1.urgency }
     }
 
-    /// The one line that says what the pilot is doing for a PR: the inspector's PR card.
-    func pilotLine(for ref: PullRef) -> String {
-        let effective = pilot(for: ref)
-        let pipeline = feedback[ref.description]
-        // Merged or closed, nothing is left to watch: saying "watching" made it look still running.
-        switch github.pull(ref)?.state {
-        case .merged: return "merged · done"
-        case .closed: return "closed · done"
-        case .open, nil: break
-        }
-        guard effective.watching else { return "not watched · \(keyText(for: "pilot.watch")) to watch" }
-        var parts = ["watching", "green \(effective.green.configName)"]
-        if let pipeline {
-            if pipeline.isPaused(Clock.now) {
-                parts
-                    .append(pipeline
-                        .pausedForever ? "paused" :
-                        "paused \(PilotDuration.text((pipeline.pausedUntil ?? Clock.now).timeIntervalSince(Clock.now)))")
-            }
-            let queued = pipeline.count(.queued), new = pipeline.count(.new), sent = pipeline.count(.sent)
-            if new > 0 { parts.append("\(new) new") }
-            if queued > 0 { parts.append("\(queued) queued") }
-            if sent > 0 { parts.append("\(sent) sent") }
-            if pipeline
-                .rounds >
-                0 { parts.append("round \(min(pipeline.rounds, effective.maxRounds)) of \(effective.maxRounds)") }
-        }
-        if case let .stuck(reason) = pilotStatus(for: ref) { parts.append("stuck: \(reason)") }
-        if pendingDelivery.contains(ref),
-           let reason = pilotLog.first(where: { $0.ref == ref && $0.kind == .waiting })?.text
-        {
-            parts.append(reason)
-        }
-        return parts.joined(separator: " · ")
-    }
-
-    /// What decides a session's Watching or Stalled: its most urgent PR state, whether heed acts on any of its PRs, and
-    /// whether you typed in it since heed last did something there.
-    func sessionPilot(_ session: Session) -> SessionPilot {
-        let refs = session.trackedPRs
-        guard !refs.isEmpty else { return SessionPilot() }
-        let acting = refs.contains { pilotStatus(for: $0).heedActing(pilot(for: $0)) }
-        // The log is newest first.
-        let lastAction = pilotLog.first { refs.contains($0.ref) && PilotEvent.actions.contains($0.kind) }?.at
-        let helperNeedsYou = liveRuns.values.filter { refs.contains($0.ref) }.contains { live in
-            runStates[live.paneID].map { $0 == .asking || $0 == .blocked } ?? false
-        }
-        return SessionPilot(
-            status: pilotStatus(of: session), acting: acting,
-            yours: SessionPilot.yours(lastTyped: lastTyped[session.id], lastAction: lastAction),
-            helperNeedsYou: helperNeedsYou
-        )
-    }
-
-    /// What a session row in Watching or Stalled says instead of the agent's line, from its most urgent acting PR.
-    func watchLabel(of session: Session) -> String? {
-        let refs = session.trackedPRs
-        let order = PilotStatus.Group.allCases
-        let candidates = refs.map { (ref: $0, status: pilotStatus(for: $0)) }.filter {
-            if case .stalled = $0.status { return true }
-            return $0.status.heedActing(pilot(for: $0.ref))
-        }
-        guard let pick = candidates.min(by: {
-            order.firstIndex(of: $0.status.group)! < order.firstIndex(of: $1.status.group)!
-        }) else { return nil }
-        if let live = liveRuns.values.first(where: { $0.ref == pick.ref }),
-           let run = runs.first(where: { $0.id == live.runID })
-        {
-            return "\(run.goal == .green ? "getting it green" : "getting it merged") · a \(run.agent) run is on it"
-        }
-        return WatchLabel.text(
-            status: pick.status, effective: pilot(for: pick.ref), agent: session.agent, agentState: session.state.state
-        )
-    }
-
-    /// The group a session is shown in (the sidebar's, so Watching and Stalled count).
+    /// The group a session is shown in.
     func sessionGroup(_ session: Session) -> SessionGroup {
-        list.group(of: session.id) ?? SessionGroup.of(session, pilot: sessionPilot(session))
-    }
-
-    /// The most urgent pilot state among a session's PRs, for its sidebar row.
-    func pilotStatus(of session: Session) -> PilotStatus? {
-        let order = PilotStatus.Group.allCases
-        return session.trackedPRs.map(pilotStatus(for:)).min {
-            order.firstIndex(of: $0.group)! < order.firstIndex(of: $1.group)!
-        }
-    }
-
-    /// The pilot's events for one PR, newest first.
-    func pilotTimeline(_ ref: PullRef) -> [PilotEvent] { pilotLog.filter { $0.ref == ref } }
-
-    /// What the pilot commands act on: the PR overlay's or reader's PR; in the Pilot and PRs views the picked rows
-    /// (VISUAL) or the one under the cursor; in Sessions the session's PRs.
-    private var pilotTargets: [PullRef] {
-        if let ref = feedbackPull { return [ref] }
-        switch view {
-        case .prs:
-            let byID = Dictionary(pullRows.map { ($0.id, $0.ref) }) { first, _ in first }
-            return actionIDs(.prs).compactMap { byID[$0] }
-        case .sessions:
-            return currentSession?.trackedPRs ?? []
-        default:
-            return []
-        }
-    }
-
-    private func editPilot(_ refs: [PullRef], _ edit: (inout PullFeedback) -> Void) {
-        let changes = refs.map { ref -> DomainChange in
-            var pipeline = feedback[ref.description] ?? PullFeedback(ref: ref)
-            pipeline.settle(pilotSettings(for: ref))
-            edit(&pipeline)
-            return .feedbackChanged(pipeline)
-        }
-        commit(changes)
-        if mode == .visual {
-            engine.enter(.normal)
-            modeChanged(from: .visual)
-        }
-        clearPicks()
-    }
-
-    func logPilot(_ ref: PullRef, _ kind: PilotEvent.Kind, _ text: String) {
-        // A held delivery is logged once per reason, not on every sync.
-        if kind == .waiting, let last = pilotLog.first(where: { $0.ref == ref }), last.kind == .waiting,
-           last.text == text
-        {
-            return
-        }
-        commit(.pilotLogged([PilotEvent(at: Clock.now, ref: ref, kind: kind, text: text)]))
-    }
-
-    /// `w`: watch or stop watching (all of them, when some are and some are not: watch).
-    private func togglePilotWatch() {
-        let refs = pilotTargets
-        guard !refs.isEmpty else { return flash = "no PR here" }
-        let watch = !refs.allSatisfy { pilot(for: $0).watching }
-        editPilot(refs) { pipeline in
-            pipeline.watching = watch
-            pipeline.watchSet = true
-        }
-        for ref in refs {
-            logPilot(ref, .watch, watch ? "watching (by you)" : "stopped watching (by you)")
-        }
-        flash = watch ? "watching \(refs.count) PR\(refs.count == 1 ? "" : "s")"
-            : "stopped watching \(refs.count) PR\(refs.count == 1 ? "" : "s")"
-        if watch { refs.forEach(fetchDetail) }
-    }
-
-    /// `m`: the green mode, cycled from the first target's (off → ask → auto).
-    private func cyclePilotGreen() {
-        let refs = pilotTargets
-        guard let first = refs.first else { return flash = "no PR here" }
-        let next = pilot(for: first).green.next
-        editPilot(refs) { pipeline in
-            pipeline.autoFeed = next
-            pipeline.greenSet = true
-            // Green needs watching.
-            if next != .off, !pipeline.watching {
-                pipeline.watching = true
-                pipeline.watchSet = true
-            }
-        }
-        for ref in refs {
-            logPilot(ref, .green, "green: \(next.configName) (by you)")
-            if next == .auto { deliver(ref, explicit: false) }
-        }
-        flash = "green \(next.configName) on \(refs.count) PR\(refs.count == 1 ? "" : "s")"
-    }
-
-    /// `zz` / VISUAL `z` / `:pilot.pause [1h|forever|off]`: silence PRs for a while. Without an argument it toggles:
-    /// resume when every target is paused, else pause for `[pilot] pause`.
-    /// `zr`: one more round of get it green for a stalled PR (or the picked PRs, or the session's), sent at once when
-    /// it is on auto.
-    private func retryPilot() {
-        let refs = pilotTargets.filter { if case .stalled = pilotStatus(for: $0) { true } else { false } }
-        guard !refs.isEmpty else { return flash = "nothing stalled here" }
-        for ref in refs {
-            let rounds = pilot(for: ref).maxRounds
-            editPilot([ref]) { pipeline in pipeline.rounds = max(0, rounds - 1) }
-            logPilot(ref, .retry, "another round (by you)")
-            if pilot(for: ref).green == .auto { deliver(ref, explicit: false) }
-        }
-        flash = "another round: \(refs.count) PR\(refs.count == 1 ? "" : "s")"
-    }
-
-    private func pausePilot(_ argument: String?) {
-        let refs = pilotTargets
-        guard !refs.isEmpty else { return flash = "no PR here" }
-        let now = Clock.now
-        let choice: PilotDuration.Parsed
-        if let argument {
-            guard let parsed = PilotDuration.parse(argument) else {
-                return flash = "pause for how long? 30m, 1h, 4h, 1d, forever or off"
-            }
-            choice = parsed
-        } else if refs.allSatisfy({ feedback[$0.description]?.isPaused(now) == true }) {
-            choice = .off
-        } else {
-            choice = config.pilot.defaults.pause.map(PilotDuration.Parsed.seconds) ?? .forever
-        }
-        editPilot(refs) { pipeline in
-            switch choice {
-            case .off:
-                pipeline.pausedUntil = nil
-                pipeline.pausedForever = false
-            case .forever:
-                pipeline.pausedUntil = nil
-                pipeline.pausedForever = true
-            case let .seconds(seconds):
-                pipeline.pausedUntil = now.addingTimeInterval(seconds)
-                pipeline.pausedForever = false
-            }
-        }
-        let text = switch choice {
-        case .off: "resumed (by you)"
-        case .forever: "paused until resumed (by you)"
-        case let .seconds(seconds): "paused for \(PilotDuration.text(seconds)) (by you)"
-        }
-        for ref in refs {
-            logPilot(ref, .pause, text)
-        }
-        flash = "\(text.replacingOccurrences(of: " (by you)", with: "")): \(refs.count) PR\(refs.count == 1 ? "" : "s")"
-        if case .off = choice {
-            for ref in refs where pilot(for: ref).green == .auto {
-                deliver(ref, explicit: false)
-            }
-        }
-    }
-
-    /// `pilot.why`: what holds the PR back from green.
-    private func showPilotWhy() {
-        guard let ref = pilotTargets.first else { return flash = "no PR here" }
-        if let blocker = pullDetails[ref.description].flatMap({ GreenVerdict.of($0).blocker }) {
-            flash = "#\(ref.number): \(blocker.name.lowercased()): \(blocker.detail)"
-        } else if pullDetails[ref.description] != nil {
-            flash = "#\(ref.number) is green"
-        } else {
-            flash = "#\(ref.number): not fetched yet"
-        }
-    }
-
-    /// Pauses whose time is up end on the next sync, said in the log.
-    private func resumeExpiredPauses() {
-        let now = Clock.now
-        let expired = feedback.values.filter { !$0.pausedForever && ($0.pausedUntil.map { $0 <= now } ?? false) }
-        guard !expired.isEmpty else { return }
-        commit(expired.map { pipeline in
-            var pipeline = pipeline
-            pipeline.pausedUntil = nil
-            return .feedbackChanged(pipeline)
-        })
-        commit(.pilotLogged(expired.map { PilotEvent(at: now, ref: $0.ref, kind: .pause, text: "pause ended") }))
-    }
-
-    /// After the settings change: PRs nobody set by hand follow them.
-    private func settlePilots() {
-        let changes = feedback.values.compactMap { pipeline -> DomainChange? in
-            var pipeline = pipeline
-            return pipeline.settle(pilotSettings(for: pipeline.ref)) ? .feedbackChanged(pipeline) : nil
-        }
-        commit(changes)
-    }
-
-    // MARK: Runs
-
-    /// The run working on a PR now, if any.
-    private func liveRun(for ref: PullRef) -> LiveRun? { liveRuns.values.first { $0.ref == ref } }
-
-    /// Starts a get it green / get it merged run: a worktree of its own on `heed/<goal>/<branch>` beside the others,
-    /// and a tab running the configured agent (and model) there on the feedback. The tab is appended without being
-    /// selected: nothing takes your focus. Returns what it was sent to, or nil when it could not start (recorded as a
-    /// failed run).
-    private func startRun(_ ref: PullRef, prompt: String, items: Int, sessionID: String) async -> String? {
-        guard let session = sessions.first(where: { $0.id == sessionID }) else { return nil }
-        let settings = pilotSettings(for: ref)
-        let agentName = settings.agent ?? session.agent
-        let goal = Runs.goal(for: pilotStatus(for: ref)) ?? .green
-        func fail(_ reason: String) -> String? {
-            var run = PilotRun(
-                ref: ref, sessionID: sessionID, goal: goal, agent: agentName, model: settings.model,
-                startedAt: Date(), items: items, prBranch: "", branch: "", worktree: "", startSHA: nil
-            )
-            run.endedAt = Date()
-            run.outcome = .failed(reason)
-            commit(.runUpdated(run))
-            logPilot(ref, .helperDone, "\(goal.rawValue) run could not start: \(reason)")
-            return nil
-        }
-        guard let agent = self.settings.agent(agentName) else { return fail("no agent \(agentName)") }
-        guard let main = worktrees.first(where: { session.owns($0) && $0.repo == ref.repo }),
-              let record = repos.first(where: { $0.repo == ref.repo })
-        else { return fail("no worktree of \(ref.repo.name)") }
-        guard let prBranch = github.pull(ref)?.headBranch ?? main.branch else { return fail("no branch") }
-        let root = self.settings.worktreeRoot
-        let branch = Runs.branch(goal, prBranch: prBranch)
-        let startSHA = await Git.remoteSHA(record, branch: prBranch)
-        let worktree: String
-        do {
-            worktree = try await Git.addRunWorktree(
-                record, path: Runs.worktreePath(root: root, repo: ref.repo, goal: goal, prBranch: prBranch),
-                branch: prBranch, runBranch: branch
-            )
-        } catch {
-            return fail("could not make its worktree: \(error)")
-        }
-        guard var layout = layouts[session.id] else { return fail("the session is gone") }
-        let agentSession = UUID().uuidString.lowercased()
-        let command = agent.launchCommand(
-            prompt: Runs.prompt(prompt, prBranch: prBranch, branch: branch),
-            extraArguments: AgentIntegration.launchArguments(agent: agent, sessionID: agentSession, files: integration),
-            model: settings.model
-        )
-        let pane = PaneSpec(
-            role: .helper, title: goal.rawValue, directory: worktree, command: command
-        )
-        let tab = PaneTab(title: Runs.title(goal, ref: ref, pullCount: session.trackedPRs.count), tree: .leaf(pane))
-        layout.tabs.append(tab)
-        commit(.layoutChanged(session: session.id, layout))
-        let run = PilotRun(
-            ref: ref, sessionID: session.id, goal: goal, agent: agentName, model: settings.model, startedAt: Date(),
-            items: items, prBranch: prBranch, branch: branch, worktree: worktree, startSHA: startSHA
-        )
-        commit(.runUpdated(run))
-        liveRuns[run.id] = LiveRun(
-            runID: run.id, ref: ref, sessionID: session.id, tabID: tab.id, paneID: pane.id, record: record,
-            worktree: worktree, branch: branch, prBranch: prBranch, mainPath: main.path
-        )
-        runStates[pane.id] = .working
-        TerminalSurfaces.shared.autostartPanes.insert(pane.id)
-        TerminalSurfaces.shared.prepare(pane, sessionID: session.id)
-        let who = settings.model.map { "\(agentName) \($0)" } ?? agentName
-        logPilot(ref, .watch, "\(goal.rawValue): a \(who) run in \(branch)")
-        return "a \(who) run"
-    }
-
-    /// Ends a run: its last screen kept, its tab closed, its worktree and branch removed, the session's worktree
-    /// brought up to what it pushed (when it has no changes of its own), and how it went recorded. `outcome` forces
-    /// one (timed out, stopped); otherwise it is what the remote branch shows.
-    private func endRun(_ id: String, outcome forced: PilotRun.Outcome? = nil) {
-        guard let live = liveRuns.removeValue(forKey: id) else { return }
-        let screen = TerminalSurfaces.shared.visibleText(paneID: live.paneID).map { text in
-            text.split(separator: "\n", omittingEmptySubsequences: false).suffix(40).joined(separator: "\n")
-        }
-        TerminalSurfaces.shared.close(paneID: live.paneID)
-        runStates[live.paneID] = nil
-        if var layout = layouts[live.sessionID], let index = layout.tabs.firstIndex(where: { $0.id == live.tabID }) {
-            layout.removeTab(at: index)
-            commit(.layoutChanged(session: live.sessionID, layout))
-        }
-        Task {
-            let after = await Git.remoteSHA(live.record, branch: live.prBranch)
-            let before = runs.first { $0.id == id }?.startSHA
-            let count = if let before, let after, before != after {
-                await Git.commitCount(live.record, from: before, to: after)
-            } else {
-                0
-            }
-            await Git.removeWorktree(live.record, path: live.worktree, branch: live.branch)
-            await Git.fastForwardIfClean(at: live.mainPath)
-            guard var run = runs.first(where: { $0.id == id }) else { return }
-            run.endedAt = Date()
-            run.outcome = forced ?? Runs.outcome(before: before, after: after, commits: count)
-            run.screen = screen
-            commit(.runUpdated(run))
-            logPilot(live.ref, .helperDone, "\(run.goal.rawValue) run: \(run.outcome?.text ?? "ended")")
-            // The next round, if one waited for this run.
-            if pendingDelivery.contains(live.ref) { deliver(live.ref, explicit: false) }
-        }
-    }
-
-    /// Runs still working after `run_timeout` are stopped.
-    private func endTimedOutRuns() {
-        let now = Date()
-        for (id, live) in liveRuns {
-            guard let run = runs.first(where: { $0.id == id }),
-                  Runs.timedOut(run, timeout: pilotSettings(for: live.ref).runTimeout, now: now)
-            else { continue }
-            endRun(id, outcome: .timedOut)
-        }
-    }
-
-    /// At launch: runs that were still going when heed quit are recorded as interrupted (their tabs are dropped with
-    /// the layouts); what they left is removed by the sweep, safely.
-    private func interruptRuns() {
-        let open = runs.filter(\.isRunning)
-        for var run in open {
-            run.endedAt = Date()
-            run.outcome = .interrupted
-            commit(.runUpdated(run))
-        }
-    }
-
-    /// Removes what runs left behind (`heed/…` branches and their worktrees) that is safe to remove, in every repo
-    /// on this Mac. Once at launch.
-    func cleanUpRunLeftovers() async -> [RunCleanup.Leftover] {
-        let live = Set(liveRuns.values.map(\.branch))
-        var result: [RunCleanup.Leftover] = []
-        for record in repos {
-            result += await RunCleanup.clean(record, live: live)
-        }
-        return result
-    }
-
-    /// A fixture's run tabs, as if heed had started them: working on their session's first PR.
-    private func adoptFixtureRuns() {
-        for (sessionID, layout) in layouts {
-            guard let ref = sessions.first(where: { $0.id == sessionID })?.trackedPRs.first else { continue }
-            for tab in layout.tabs {
-                guard let pane = tab.tree.panes.first(where: { $0.role == .helper }),
-                      let run = runs.first(where: { $0.ref == ref && $0.isRunning })
-                else { continue }
-                liveRuns[run.id] = LiveRun(
-                    runID: run.id, ref: ref, sessionID: sessionID, tabID: tab.id, paneID: pane.id,
-                    record: RepoRecord(repo: ref.repo, path: ""), worktree: run.worktree, branch: run.branch,
-                    prBranch: run.prBranch, mainPath: ""
-                )
-                runStates[pane.id] = .working
-            }
-        }
-    }
-
-    /// `:pilot.run`: the session's running run's tab.
-    private func showRun() {
-        guard let session = currentSession,
-              let live = liveRuns.values.first(where: { $0.sessionID == session.id }),
-              let index = layouts[session.id]?.tabs.firstIndex(where: { $0.id == live.tabID })
-        else { return flash = "no run working in this session" }
-        selectTab(index)
-    }
-
-    /// A Runs row: a running one jumps to its tab, an ended one opens in the reader.
-    func open(run: PilotRun) {
-        if run.isRunning, let live = liveRuns[run.id],
-           let index = layouts[live.sessionID]?.tabs.firstIndex(where: { $0.id == live.tabID })
-        {
-            select(sessionID: live.sessionID)
-            selectTab(index)
-        } else {
-            runReader = run
-        }
-    }
-
-    /// Sends a PR's queued feedback to a run of its own (one per PR at a time), when delivery allows.
-    func deliver(_ ref: PullRef, explicit: Bool) {
-        guard let pipeline = feedback[ref.description], let prompt = pipeline.prompt() else {
-            if explicit { flash = "nothing queued (space queues an item)" }
-            return
-        }
-        let effective = pilot(for: ref)
-        guard explicit || (effective.green == .auto && effective.watching && !pipeline.roundsExhausted
-            && !pipeline.isPaused(Clock.now))
-        else {
-            if pipeline.roundsExhausted, effective.green == .auto {
-                flash = "auto-feed stopped on #\(ref.number): \(pipeline.maxRounds) rounds without a new approval"
-                logPilot(ref, .stuck, "\(pipeline.maxRounds) rounds without a new approval: stopped sending")
-            }
-            return
-        }
-        guard let session = sessions.first(where: { $0.trackedPRs.contains(ref) }) else {
-            if explicit { flash = "no session tracks #\(ref.number)" }
-            return
-        }
-        guard !isFixture else {
-            flash = "fixture: no IO"
-            return
-        }
-        // One run per PR at a time: the next round waits for it to end.
-        if liveRun(for: ref) != nil || startingRuns.contains(ref.description) {
-            pendingDelivery.insert(ref)
-            if explicit { flash = "a run is working on #\(ref.number); this goes once it ends" }
-            logPilot(ref, .waiting, "\(pipeline.queued.count) queued, held: a run is working on it")
-            return
-        }
-        startingRuns.insert(ref.description)
-        let items = pipeline.queued.count
-        let sessionID = session.id
-        Task {
-            defer { startingRuns.remove(ref.description) }
-            guard let target = await startRun(ref, prompt: prompt, items: items, sessionID: sessionID),
-                  var pipeline = feedback[ref.description],
-                  var session = sessions.first(where: { $0.id == sessionID })
-            else { return }
-            markSent(ref, pipeline: &pipeline, session: &session, to: target)
-        }
-    }
-
-    /// The queued items went out: the pipeline counts a round, the session and the pilot log say where to.
-    private func markSent(_ ref: PullRef, pipeline: inout PullFeedback, session: inout Session, to target: String) {
-        pendingDelivery.remove(ref)
-        let count = pipeline.queued.count
-        pipeline.markSent(at: pullDetails[ref.description]?.headSHA)
-        session.record("sent \(count) feedback item\(count == 1 ? "" : "s") for #\(ref.number) to \(target)")
-        commit([.feedbackChanged(pipeline), .sessionUpserted(session)])
-        logPilot(ref, .sent, "sent \(count) item\(count == 1 ? "" : "s") to \(target) (round \(pipeline.rounds))")
-        flash = "sent \(count) item\(count == 1 ? "" : "s") to \(target)"
-    }
-
-    // MARK: Copilot resolves conflicts
-
-    /// Whether GitHub's Copilot coding agent can work in a repo, by slug, as last asked (`suggestedActors`).
-    private(set) var copilotRepos: [String: Bool] = [:]
-    private var copilotAskedRepos: [String: Date] = [:]
-
-    func copilotAvailable(_ repo: Repo) -> Bool? { isFixture ? true : copilotRepos[repo.slug] }
-
-    /// Asks GitHub (at most every six hours per repo) whether Copilot can be assigned there.
-    private func checkCopilot(_ repo: Repo) async -> Bool {
-        if isFixture { return true }
-        if let known = copilotRepos[repo.slug], let at = copilotAskedRepos[repo.slug],
-           Clock.now.timeIntervalSince(at) < 6 * 3600
-        {
-            return known
-        }
-        copilotAskedRepos[repo.slug] = Clock.now
-        let available = await (try? GitHub.copilotAvailable(repo)) ?? false
-        copilotRepos[repo.slug] = available
-        return available
-    }
-
-    /// Asks Copilot, in one comment on the PR, to resolve its merge conflicts and address its review comments. On its
-    /// own (after a fetch) for what `copilot_conflicts` and `copilot_comments` hand it, when the PR is watched, not
-    /// paused and get it green is not off; by hand (`C`) for both, whatever the settings say.
-    private func askCopilot(_ refs: [PullRef], byHand: Bool) async {
-        var asked = 0
-        var problem: String?
-        for ref in refs {
-            guard let pipeline = feedback[ref.description], let detail = pullDetails[ref.description] else { continue }
-            let effective = pilot(for: ref)
-            if !byHand {
-                guard effective.watching, effective.green != .off, !pipeline.isPaused(Clock.now) else { continue }
-            }
-            // Cheap checks first: only something to ask about costs a GitHub call.
-            let settings = pilotSettings(for: ref)
-            guard !CopilotAsk.items(pipeline, settings: settings, everything: byHand).isEmpty else { continue }
-            guard await checkCopilot(ref.repo) else {
-                problem = "Copilot coding agent is not enabled for \(ref.repo.slug)"
-                continue
-            }
-            var current = feedback[ref.description] ?? pipeline
-            let items = CopilotAsk.items(current, settings: settings, everything: byHand)
-            guard !items.isEmpty else { continue }
-            if !isFixture {
-                do {
-                    try await GitHub.comment(ref, body: CopilotAsk.comment(base: detail.baseBranch, items: items))
-                } catch {
-                    problem = "could not ask Copilot on #\(ref.number): \(error)"
-                    continue
-                }
-            }
-            current = feedback[ref.description] ?? current
-            CopilotAsk.asked(&current, items: items.map(\.id), at: Clock.now)
-            commit(.feedbackChanged(current))
-            let conflict = items.contains { if case .conflict = $0.kind { true } else { false } }
-            let comments = items.count - (conflict ? 1 : 0)
-            let what = [
-                conflict ? "merge in \(detail.baseBranch) and resolve the conflicts" : nil,
-                comments > 0 ? "address \(comments) review comment\(comments == 1 ? "" : "s")" : nil,
-            ].compactMap(\.self).joined(separator: " and ")
-            logPilot(ref, .copilot, "asked Copilot to \(what)" + (byHand ? " (by you)" : ""))
-            asked += 1
-        }
-        if asked > 0, byHand {
-            flash = "asked Copilot on \(asked) PR\(asked == 1 ? "" : "s")"
-        } else if let problem, byHand || problem.hasPrefix("could not") {
-            flash = problem
-        } else if byHand {
-            flash = "nothing for Copilot: no merge conflict or new review comment it was not asked about"
-        }
-    }
-
-    /// Asks the configured reviewers (`[pilot] reviewers`) to review a PR, once each, when it is open and ready. By
-    /// hand (`:pilot.reviewers`) whatever watching and pausing say.
-    private func requestReviews(_ refs: [PullRef], byHand: Bool) async {
-        var asked = 0
-        for ref in refs {
-            guard let detail = pullDetails[ref.description] else { continue }
-            let pipeline = feedback[ref.description] ?? PullFeedback(ref: ref)
-            if !byHand {
-                guard pilot(for: ref).watching, !pipeline.isPaused(Clock.now) else { continue }
-            }
-            let wanted = ReviewRequests.wanted(
-                pilotSettings(for: ref), detail: detail, asked: pipeline.reviewersRequested
-            )
-            guard !wanted.isEmpty else { continue }
-            let who = wanted.joined(separator: ", ")
-            var failure: String?
-            if !isFixture {
-                do {
-                    try await GitHub.requestReviews(ref, from: wanted)
-                } catch {
-                    failure = "\(error)"
-                }
-            }
-            // Asked once either way: a reviewer GitHub refuses is not asked again on every fetch.
-            var current = feedback[ref.description] ?? pipeline
-            current.reviewersRequested += wanted
-            commit(.feedbackChanged(current))
-            if let failure {
-                logPilot(ref, .review, "could not ask \(who) to review: \(failure)")
-            } else {
-                logPilot(ref, .review, "asked \(who) to review" + (byHand ? " (by you)" : ""))
-                asked += 1
-            }
-        }
-        if byHand {
-            flash = asked > 0 ? "asked for reviews on \(asked) PR\(asked == 1 ? "" : "s")"
-                : "no one to ask: [pilot] reviewers names who, and each is asked once"
-        }
-    }
-
-    // MARK: Get it merged
-
-    /// Queues running now, so a schedule tick or a second `:merge.run` does not start another.
-    private(set) var mergeRunning: Set<String> = []
-
-    /// The tracked PRs with get it merged on, by repo slug: the merge queues.
-    var mergeQueues: [String: [PullRef]] {
-        Dictionary(grouping: Set(sessions.flatMap(\.trackedPRs)).filter { pilot(for: $0).merge != .off }) {
-            $0.repo.slug
-        }
-    }
-
-    func nextMergeRun(_ repo: String) -> Date? {
-        guard let first = mergeQueues[repo]?.first else { return nil }
-        return MergeRun.nextRun(
-            last: mergeRuns[repo]?.first?.at, every: pilotSettings(for: first).mergeSchedule, now: Clock.now
-        )
-    }
-
-    /// What the next run would do with a PR, from what heed knows now.
-    func mergePlan(_ ref: PullRef) -> MergeQueue.Action? {
-        guard pilot(for: ref).merge != .off, let detail = pullDetails[ref.description] else { return nil }
-        return MergeQueue.action(for: mergeEntry(ref, detail))
-    }
-
-    private func mergeEntry(_ ref: PullRef, _ detail: PullDetail) -> MergeQueue.Entry {
-        MergeQueue.Entry(
-            ref: ref, detail: detail, settings: pilotSettings(for: ref),
-            paused: feedback[ref.description]?.isPaused(Clock.now) == true, mode: pilot(for: ref).merge,
-            selfReview: feedback[ref.description]?.selfReview, now: Clock.now
-        )
-    }
-
-    /// `M`: get it merged, cycled from the first target's (off → auto → heed). On also turns watching on, and runs
-    /// the repo's queue; off turns GitHub's auto-merge off again where it is on.
-    private func togglePilotMerge() {
-        let refs = pilotTargets
-        guard let first = refs.first else { return flash = "no PR here" }
-        let mode = pilot(for: first).merge.next
-        editPilot(refs) { pipeline in
-            pipeline.merge = mode
-            pipeline.mergeSet = true
-            if mode != .off, !pipeline.watching {
-                pipeline.watching = true
-                pipeline.watchSet = true
-            }
-        }
-        for ref in refs {
-            logPilot(ref, .merge, "merge: \(mode.configName) (by you)")
-        }
-        flash = "merge \(mode.configName) on \(refs.count) PR\(refs.count == 1 ? "" : "s")"
-        if mode == .off {
-            let enabled = refs.filter { pullDetails[$0.description]?.autoMergeEnabled == true }
-            guard !enabled.isEmpty, !isFixture else { return }
-            Task {
-                for ref in enabled {
-                    if await (try? GitHub.disableAutoMerge(ref)) != nil {
-                        logPilot(ref, .autoMerge, "auto-merge off (merge turned off)")
-                    }
-                    fetchDetail(ref)
-                }
-            }
-        } else {
-            for repo in Set(refs.map(\.repo.slug)) {
-                runMergeQueue(repo, why: "merge turned on")
-            }
-        }
-    }
-
-    /// `:merge.run [repo|all]`.
-    private func runMergeCommand(_ argument: String?) {
-        let queues = mergeQueues
-        let repos: [String] = switch argument {
-        case "all": queues.keys.sorted()
-        case let name?:
-            queues.keys.filter { $0 == name || $0.hasSuffix("/\(name)") }
-        case nil:
-            pilotTargets.first.map { [$0.repo.slug] } ?? []
-        }
-        guard !repos.isEmpty else {
-            return flash = queues.isEmpty ? "no merge queues: \(keyText(for: "pilot.merge")) turns get it merged on for a PR"
-                : "no merge queue for \(argument ?? "this PR's repo")"
-        }
-        for repo in repos {
-            runMergeQueue(repo, why: "asked")
-        }
-        flash = "running \(repos.count == 1 ? repos[0] : "\(repos.count) merge queues")"
-    }
-
-    /// Queues whose time has come, on the sync tick.
-    private func runDueMergeQueues() {
-        let now = Clock.now
-        for repo in mergeQueues.keys where (nextMergeRun(repo).map { $0 <= now } ?? false) {
-            runMergeQueue(repo, why: "schedule")
-        }
-    }
-
-    /// A PR that just turned green runs its queue, unless the queue ran in the last few minutes.
-    private func mergeIfTurnedGreen(_ ref: PullRef, _ detail: PullDetail) {
-        guard pilot(for: ref).merge != .off, detail.autoMergeEnabled != true, GreenVerdict.of(detail).isGreen,
-              mergeRuns[ref.repo.slug]?.first.map({ Clock.now.timeIntervalSince($0.at) > 300 }) ?? true
-        else { return }
-        runMergeQueue(ref.repo.slug, why: "#\(ref.number) turned green")
-    }
-
-    /// One run of a repo's queue: fresh details for its PRs, the plan, the `gh` calls, a run log entry, and the
-    /// pilot's log for each PR something happened to.
-    func runMergeQueue(_ repo: String, why: String) {
-        guard let refs = mergeQueues[repo], !mergeRunning.contains(repo) else { return }
-        mergeRunning.insert(repo)
-        Task {
-            defer { mergeRunning.remove(repo) }
-            var details: [PullRef: PullDetail] = [:]
-            for ref in refs {
-                if !isFixture, let detail = try? await GitHub.pullDetail(ref) {
-                    commit(.pullDetailFetched(detail))
-                    details[ref] = detail
-                } else if let detail = pullDetails[ref.description] {
-                    details[ref] = detail
-                }
-            }
-            let steps = MergeQueue.plan(details.map { mergeEntry($0.key, $0.value) })
-            var lines: [MergeRun.Line] = []
-            var events: [PilotEvent] = []
-            func record(_ ref: PullRef, _ kind: PilotEvent.Kind?, _ action: String, _ detail: String, ok: Bool = true) {
-                lines.append(MergeRun.Line(ref: ref, action: action, detail: detail, ok: ok))
-                if let kind { events.append(PilotEvent(
-                    at: Clock.now,
-                    ref: ref,
-                    kind: kind,
-                    text: "\(action): \(detail)"
-                )) }
-            }
-            for step in steps {
-                let ref = step.ref
-                switch step.action {
-                case let .enableAutoMerge(method):
-                    do {
-                        if !isFixture { try await GitHub.enableAutoMerge(ref, method: method) }
-                        record(
-                            ref,
-                            .autoMerge,
-                            "auto-merge on",
-                            "\(method); GitHub merges once its requirements are met"
-                        )
-                    } catch {
-                        record(ref, .held, "could not turn auto-merge on", "\(error)", ok: false)
-                    }
-                case let .disableAutoMerge(reason):
-                    do {
-                        if !isFixture { try await GitHub.disableAutoMerge(ref) }
-                        record(ref, .autoMerge, "auto-merge off", reason)
-                    } catch {
-                        record(ref, .held, "could not turn auto-merge off", "\(error)", ok: false)
-                    }
-                case .updateBranch:
-                    do {
-                        if !isFixture { try await GitHub.updateBranch(ref) }
-                        record(
-                            ref,
-                            .updated,
-                            "brought up to date",
-                            "merged \(details[ref]?.baseBranch ?? "the base") in"
-                        )
-                    } catch {
-                        record(ref, .held, "could not update the branch", "\(error)", ok: false)
-                    }
-                case let .merge(method, admin):
-                    await heedMerge(ref, method: method, admin: admin, details: details, record: record)
-                case .selfReview:
-                    guard let detail = details[ref] else { break }
-                    let review = await runSelfReview(ref, detail)
-                    guard review.approved else {
-                        record(ref, .held, "self-review asked for changes", review.summary)
-                        break
-                    }
-                    record(ref, nil, "self-review approved", String(detail.headSHA.prefix(7)))
-                    // Approved: the rules hold now, unless something else moved meanwhile.
-                    if case let .merge(method, admin) = MergeQueue.action(for: mergeEntry(ref, detail)) {
-                        await heedMerge(ref, method: method, admin: admin, details: details, record: record)
-                    }
-                case let .waiting(text):
-                    record(ref, nil, "waiting", text)
-                case let .hold(reason):
-                    // Held for the same reason as last run: in the run log, not again in the activity.
-                    let last = pilotLog.first { $0.ref == ref && $0.kind == .held }
-                    record(ref, last?.text == "held: \(reason)" ? nil : .held, "held", reason)
-                }
-            }
-            commit(.mergeRan(MergeRun(repo: repo, at: Clock.now, why: why, lines: lines)))
-            if !events.isEmpty { commit(.pilotLogged(events)) }
-            // What GitHub did with it shows on the next look.
-            for ref in steps.map(\.ref) where !isFixture {
-                fetchDetail(ref)
-            }
-        }
-    }
-
-    /// Merges a PR the heed rules hold for, on the head commit they were checked on, and says why on the PR.
-    private func heedMerge(
-        _ ref: PullRef, method: String, admin: Bool, details: [PullRef: PullDetail],
-        record: (PullRef, PilotEvent.Kind?, String, String, Bool) -> Void
-    ) async {
-        guard let detail = details[ref] else { return }
-        let verdict = HeedMerge.verdict(
-            detail, settings: pilotSettings(for: ref), selfReview: feedback[ref.description]?.selfReview, now: Clock.now
-        )
-        if isFixture { return record(ref, .merged, "merged", "\(method) (fixture: nothing merged)", true) }
-        var used = method
-        do {
-            try await GitHub.merge(ref, method: method, head: detail.headSHA)
-        } catch {
-            guard admin else { return record(ref, .held, "merge refused", "\(error)", false) }
-            do {
-                try await GitHub.merge(ref, method: method, head: detail.headSHA, admin: true)
-                used = "\(method), --admin"
-            } catch {
-                return record(ref, .held, "merge refused, even with --admin", "\(error)", false)
-            }
-        }
-        record(ref, .merged, "merged", "\(used): every merge rule held", true)
-        try? await GitHub.comment(ref, body: HeedMerge.comment(verdict, method: used))
-    }
-
-    /// The `self_review` command's verdict on the PR's diff at its head commit, kept on the pipeline.
-    private func runSelfReview(_ ref: PullRef, _ detail: PullDetail) async -> SelfReview {
-        guard let command = pilotSettings(for: ref).selfReview else {
-            return SelfReview(sha: detail.headSHA, approved: false, summary: "no self_review command", at: Clock.now)
-        }
-        let review: SelfReview
-        if isFixture {
-            review = SelfReview(sha: detail.headSHA, approved: true, summary: "approved", at: Clock.now)
-        } else {
-            do {
-                let diff = try await GitHub.diff(ref)
-                let output = try await SelfReview.run(command, prompt: SelfReview.prompt(detail, diff: diff))
-                review = SelfReview.parse(output, sha: detail.headSHA, at: Clock.now)
-            } catch {
-                review = SelfReview(
-                    sha: detail.headSHA, approved: false, summary: "the self-review failed: \(error)", at: Clock.now
-                )
-            }
-        }
-        if var pipeline = feedback[ref.description] {
-            pipeline.selfReview = review
-            commit(.feedbackChanged(pipeline))
-        }
-        return review
+        list.group(of: session.id) ?? SessionGroup.of(session)
     }
 
     // MARK: Diff overlay
@@ -4056,8 +2970,6 @@ final class AppModel {
     /// session is touched; they come back on the next launch. And none count while heed quits.
     func paneExited(_ paneID: String) {
         guard !terminating else { return }
-        // A run's agent exited: the run is over.
-        if let id = liveRuns.first(where: { $0.value.paneID == paneID })?.key { return endRun(id) }
         exitedPanes.insert(paneID)
         guard exitedPanes.count == 1 else { return }
         Task { @MainActor in
@@ -4103,10 +3015,6 @@ final class AppModel {
             guard let self, var layout = layouts[session.id], layout.tabs.indices.contains(index) else { return }
             layout.removeTab(at: index)
             commit(.layoutChanged(session: session.id, layout))
-            // A run's tab closed by you: the run is stopped, and cleaned up like any other.
-            for pane in panes {
-                if let id = liveRuns.first(where: { $0.value.paneID == pane.id })?.key { endRun(id, outcome: .stopped) }
-            }
             for pane in panes {
                 TerminalSurfaces.shared.close(paneID: pane.id)
             }
@@ -4344,9 +3252,4 @@ enum HintTarget: Hashable {
     case pane(String)
     /// A row in a view's list, by position.
     case row(AppView, Int)
-}
-
-extension String {
-    /// Nil for "", so an optional detail stays out.
-    var nilIfEmpty: String? { isEmpty ? nil : self }
 }

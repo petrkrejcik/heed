@@ -56,8 +56,7 @@ toc:
       - file: issues.md
       - file: pull-requests.md
       - file: reading.md
-      - file: review-feedback.md
-      - file: watch.md
+      - file: pr-overlay.md
       - file: tracking-prs.md
   - folder: worktrees
     children:

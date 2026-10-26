@@ -100,101 +100,6 @@ public enum Git {
         )
     }
 
-    /// A run's worktree, on its own branch `runBranch` (`heed/get-it-green/<branch>`: git checks a branch out once,
-    /// and the PR's is in the session's worktree), started at the remote's tip of `branch` and tracking it. The run
-    /// pushes to the PR's branch with `git push origin HEAD:<branch>`. Returns its real path.
-    public static func addRunWorktree(
-        _ record: RepoRecord, path: String, branch: String, runBranch: String
-    ) async throws -> String {
-        _ = try? await ProcessRunner.run(
-            "git", ["-C", record.path, "fetch", "origin", branch], timeout: .seconds(30)
-        )
-        let hasRemote = await (try? ProcessRunner.run(
-            "git", ["-C", record.path, "rev-parse", "--verify", "--quiet", "origin/\(branch)"],
-            timeout: .seconds(5)
-        ))?.succeeded ?? false
-        let parent = (path as NSString).deletingLastPathComponent
-        try FileManager.default.createDirectory(atPath: parent, withIntermediateDirectories: true)
-        _ = try await ProcessRunner.output(
-            "git",
-            // -B: a branch left behind by an earlier helper starts over.
-            ["-C", record.path, "worktree", "add", "-B", runBranch, path, hasRemote ? "origin/\(branch)" : branch]
-        )
-        if hasRemote {
-            _ = try? await ProcessRunner.run(
-                "git", ["-C", path, "branch", "--set-upstream-to", "origin/\(branch)"],
-                timeout: .seconds(5)
-            )
-        }
-        let top = try await ProcessRunner.output("git", ["-C", path, "rev-parse", "--show-toplevel"])
-        return top.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
-    /// Removes a worktree heed made for itself (a run's), changes and all, and its branch.
-    public static func removeWorktree(_ record: RepoRecord, path: String, branch: String? = nil) async {
-        _ = try? await ProcessRunner.run(
-            "git", ["-C", record.path, "worktree", "remove", "--force", path],
-            timeout: .seconds(30)
-        )
-        if let branch {
-            _ = try? await ProcessRunner.run(
-                "git", ["-C", record.path, "branch", "-D", branch], timeout: .seconds(10)
-            )
-        }
-    }
-
-    /// The remote's commit for `branch`, fetched fresh; nil when it has none.
-    public static func remoteSHA(_ record: RepoRecord, branch: String) async -> String? {
-        _ = try? await ProcessRunner.run(
-            "git", ["-C", record.path, "fetch", "origin", branch], timeout: .seconds(30)
-        )
-        let sha = try? await ProcessRunner.output(
-            "git", ["-C", record.path, "rev-parse", "--verify", "--quiet", "origin/\(branch)"]
-        )
-        return sha?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
-    }
-
-    /// Commits in `to` that are not in `from`.
-    public static func commitCount(_ record: RepoRecord, from: String, to: String) async -> Int {
-        let text = try? await ProcessRunner.output(
-            "git", ["-C", record.path, "rev-list", "--count", "\(from)..\(to)"]
-        )
-        return Int(text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "") ?? 0
-    }
-
-    /// Branches a run made (`heed/get-it-green/*`, `heed/get-it-merged/*`), with the worktree each is checked out in.
-    public static func runBranches(_ record: RepoRecord) async -> [(branch: String, worktree: String?)] {
-        let refs = await (try? ProcessRunner.output(
-            "git",
-            ["-C", record.path, "for-each-ref", "--format=%(refname:short)", "refs/heads/heed/"]
-        )) ?? ""
-        let porcelain = await (try? ProcessRunner.output(
-            "git", ["-C", record.path, "worktree", "list", "--porcelain"]
-        )) ?? ""
-        var checkedOut: [String: String] = [:]
-        var path: String?
-        for line in porcelain.split(separator: "\n").map(String.init) {
-            if line.hasPrefix("worktree ") { path = String(line.dropFirst("worktree ".count)) }
-            if line.hasPrefix("branch refs/heads/"),
-               let path { checkedOut[String(line.dropFirst("branch refs/heads/".count))] = path }
-        }
-        return refs.split(separator: "\n").map(String.init).filter(Runs.isRunBranch).map { ($0, checkedOut[$0]) }
-    }
-
-    /// Brings a worktree up to its upstream when it has no changes of its own and can fast-forward (after a helper
-    /// pushed to its branch). True when it moved.
-    @discardableResult
-    public static func fastForwardIfClean(at path: String) async -> Bool {
-        guard let status = try? await self.status(at: path),
-              status.changedFiles == 0, status.untrackedFiles == 0, status.ahead == 0
-        else { return false }
-        _ = try? await ProcessRunner.run("git", ["-C", path, "fetch"], timeout: .seconds(30))
-        let result = try? await ProcessRunner.run(
-            "git", ["-C", path, "merge", "--ff-only", "@{u}"], timeout: .seconds(30)
-        )
-        return result?.succeeded ?? false
-    }
-
     /// Re-adds a worktree for an existing local `branch` (a reopened session whose worktree was cleaned up).
     public static func restoreWorktree(_ record: RepoRecord, path: String, branch: String) async throws -> Worktree {
         try FileManager.default.createDirectory(
@@ -273,8 +178,4 @@ public enum Git {
         }
         return status
     }
-}
-
-extension String {
-    var nilIfEmpty: String? { isEmpty ? nil : self }
 }

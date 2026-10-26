@@ -36,7 +36,8 @@ public struct SessionLayout: Hashable, Sendable, Codable {
 }
 
 /// Everything Heed knows, as one value. The window is drawn from this (plus input state), it is what the cache
-/// stores, and fixtures are just instances of it, so the UI can start in any state without IO.
+/// stores, and fixtures are just instances of it, so the UI can start in any state without IO. A cache with fields this
+/// build no longer has still loads: decoding skips unknown keys.
 public struct Domain: Hashable, Sendable, Codable {
     public var repos: [RepoRecord]
     public var worktrees: [Worktree]
@@ -47,26 +48,13 @@ public struct Domain: Hashable, Sendable, Codable {
     public var github: GitHubState
     /// PR details by `org/name#n`, for the reader (cached, so it opens offline).
     public var pullDetails: [String: PullDetail]
-    /// Feedback pipelines by `org/name#n`.
-    public var feedback: [String: PullFeedback]
-    /// What the pilot noticed and did, newest first, capped (`PilotEvent.logLimit`).
-    public var pilotLog: [PilotEvent]
-    /// Each repo's merge queue runs by `org/name`, newest first, capped (`MergeRun.keep`).
-    public var mergeRuns: [String: [MergeRun]]
-    /// Get it green / get it merged runs, newest first, capped (`PilotRun.keep`).
-    public var runs: [PilotRun]
 
     public init(
         repos: [RepoRecord] = [], worktrees: [Worktree] = [], sessions: [Session] = [],
         layouts: [String: SessionLayout] = [:], history: [HistoryEntry] = [], github: GitHubState = GitHubState(),
-        pullDetails: [String: PullDetail] = [:], feedback: [String: PullFeedback] = [:], pilotLog: [PilotEvent] = [],
-        mergeRuns: [String: [MergeRun]] = [:], runs: [PilotRun] = []
+        pullDetails: [String: PullDetail] = [:]
     ) {
-        self.runs = runs
-        self.mergeRuns = mergeRuns
         self.pullDetails = pullDetails
-        self.feedback = feedback
-        self.pilotLog = pilotLog
         self.history = history
         self.github = github
         self.repos = repos
@@ -76,26 +64,6 @@ public struct Domain: Hashable, Sendable, Codable {
     }
 
     public static let empty = Domain()
-
-    private enum CodingKeys: String, CodingKey {
-        case repos, worktrees, sessions, layouts, history, github, pullDetails, feedback, pilotLog, mergeRuns, runs
-    }
-
-    /// Caches from before the pilot log still load (no version bump, which would drop sessions).
-    public init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        repos = try container.decode([RepoRecord].self, forKey: .repos)
-        worktrees = try container.decode([Worktree].self, forKey: .worktrees)
-        sessions = try container.decode([Session].self, forKey: .sessions)
-        layouts = try container.decode([String: SessionLayout].self, forKey: .layouts)
-        history = try container.decode([HistoryEntry].self, forKey: .history)
-        github = try container.decode(GitHubState.self, forKey: .github)
-        pullDetails = try container.decode([String: PullDetail].self, forKey: .pullDetails)
-        feedback = try container.decode([String: PullFeedback].self, forKey: .feedback)
-        pilotLog = try container.decodeIfPresent([PilotEvent].self, forKey: .pilotLog) ?? []
-        mergeRuns = try container.decodeIfPresent([String: [MergeRun]].self, forKey: .mergeRuns) ?? [:]
-        runs = try container.decodeIfPresent([PilotRun].self, forKey: .runs) ?? []
-    }
 
     public func repo(_ slug: String) -> RepoRecord? { repos.first { $0.id == slug } }
 
@@ -121,15 +89,8 @@ public enum DomainChange: Hashable, Sendable, Codable {
     case githubSynced(GitHubState)
     /// Notification threads marked read.
     case inboxRead([String])
-    /// A PR's detail arrived; it is merged into the PR's feedback pipeline.
+    /// A PR's detail arrived.
     case pullDetailFetched(PullDetail)
-    case feedbackChanged(PullFeedback)
-    /// Something the pilot did that the domain cannot see happen (sent, waiting, a mode or pause changed).
-    case pilotLogged([PilotEvent])
-    /// A repo's merge queue ran.
-    case mergeRan(MergeRun)
-    /// A get it green / get it merged run started or ended (by id: a later one replaces it).
-    case runUpdated(PilotRun)
 }
 
 public extension Domain {
@@ -179,31 +140,7 @@ public extension Domain {
         case let .githubSynced(state):
             github = state
         case let .pullDetailFetched(detail):
-            let merged = detail.state == "MERGED" && pullDetails[detail.ref.description]
-                .map { $0.state != "MERGED" } == true
             pullDetails[detail.ref.description] = detail
-            if merged {
-                pilotLog = PilotEvent.log(pilotLog, adding: [PilotEvent(
-                    at: detail.fetchedAt, ref: detail.ref, kind: .merged, text: "merged into \(detail.baseBranch)"
-                )])
-            }
-            let before = feedback[detail.ref.description]
-            var pipeline = before ?? PullFeedback(ref: detail.ref)
-            pipeline.merge(detail)
-            feedback[detail.ref.description] = pipeline
-            pilotLog = PilotEvent.log(
-                pilotLog,
-                adding: PilotEvent.changes(from: before, to: pipeline, at: detail.fetchedAt)
-            )
-        case let .pilotLogged(events):
-            pilotLog = PilotEvent.log(pilotLog, adding: events)
-        case let .runUpdated(run):
-            runs.removeAll { $0.id == run.id }
-            runs = Array(([run] + runs).sorted { $0.startedAt > $1.startedAt }.prefix(PilotRun.keep))
-        case let .mergeRan(run):
-            mergeRuns[run.repo] = Array(([run] + (mergeRuns[run.repo] ?? [])).prefix(MergeRun.keep))
-        case let .feedbackChanged(pipeline):
-            feedback[pipeline.ref.description] = pipeline
         case let .inboxRead(ids):
             for index in github.inbox.indices where ids.contains(github.inbox[index].id) {
                 github.inbox[index].unread = false

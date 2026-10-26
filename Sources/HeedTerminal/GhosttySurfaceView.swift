@@ -76,27 +76,6 @@ public final class GhosttySurfaceView: NSView, @preconcurrency NSTextInputClient
         if surface == nil { NSLog("heed: ghostty_surface_new failed for \(launch.directory)") }
     }
 
-    // MARK: Reading the screen
-
-    /// The visible screen as text, for guessing agent states from output. Cheap enough to poll a few times a second.
-    public func visibleText() -> String? {
-        guard let surface else { return nil }
-        let size = ghostty_surface_size(surface)
-        let selection = ghostty_selection_s(
-            top_left: ghostty_point_s(tag: GHOSTTY_POINT_VIEWPORT, coord: GHOSTTY_POINT_COORD_TOP_LEFT, x: 0, y: 0),
-            bottom_right: ghostty_point_s(
-                tag: GHOSTTY_POINT_VIEWPORT, coord: GHOSTTY_POINT_COORD_BOTTOM_RIGHT,
-                x: UInt32(max(size.columns, 1) - 1), y: UInt32(max(size.rows, 1) - 1)
-            ),
-            rectangle: false
-        )
-        var text = ghostty_text_s()
-        guard ghostty_surface_read_text(surface, selection, &text) else { return nil }
-        defer { ghostty_surface_free_text(surface, &text) }
-        guard let pointer = text.text else { return "" }
-        return String(decoding: UnsafeRawBufferPointer(start: pointer, count: Int(text.text_len)), as: UTF8.self)
-    }
-
     /// Types `text` without pressing Return, leaving it for the user to finish.
     public func typeText(_ text: String) {
         guard let surface else { return }

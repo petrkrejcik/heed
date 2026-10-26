@@ -90,7 +90,7 @@ This page is generated from the code (`mise run shots`).
 | `agents.stop` |  | stop every agent and shell in every pane (with [sessions] persist = "zmx") |
 | `tools.detect` |  | find git and gh again (login shell PATH, usual places, [tools]) |
 | `app.quit` |  | quit Heed |
-| `settings.open` `[section]` | `<D-,>` | open Settings, on a section (general, agents, colors, worktrees, pilot, keys) |
+| `settings.open` `[section]` | `<D-,>` | open Settings, on a section (general, agents, colors, worktrees, keys) |
 | `app.activate` |  | bring Heed's window to the front, as the global shortcut does |
 | `welcome` |  | show the getting-started checks again |
 
@@ -124,22 +124,7 @@ This page is generated from the code (`mise run shots`).
 | `issues.repo.prev` | `<S-Tab>` (issues) | previous repo in the Issues repo column |
 | `issues.repo` `[name]` |  | show one repo's issues (no name: every repo) |
 | `issues.visibility` | `w` (issues), `w` (repos) | flip the repo under the cursor between all issues and only yours |
-| `feedback.queue` | `<Space>` (pr) | queue / unqueue the item |
-| `feedback.send` | `s` (pr) | send queued feedback to the session |
-| `feedback.mode` |  | pilot.green, by its former name |
-| `feedback.watch` |  | pilot.watch, by its former name |
-| `pilot.why` |  | what holds the PR back from green |
-| `pilot.watch` | `zw` | watch or stop watching the PR (or the picked PRs) |
-| `pilot.green` | `zg` | cycle get it green for the PR: off, ask, auto |
-| `pilot.run` |  | show the session's running get it green / get it merged run |
-| `pilot.retry` | `zr` | one more round of get it green for a stalled PR (or the picked PRs) |
-| `pilot.copilot` | `C` (pr) | ask GitHub's Copilot coding agent to resolve the PR's conflicts and address its comments |
-| `pilot.reviewers` |  | ask the PR's configured reviewers ([pilot] reviewers) to review it |
-| `pilot.merge` | `zm` | get it merged for the PR (or the picked PRs): off or auto |
-| `merge.run` `[repo|all]` |  | run a repo's merge queue now (no name: the PR's repo; all: every queue) |
-| `pilot.pause` `[duration]` | `zp`, `zp` (VISUAL) | pause the PR (or the picked PRs), or resume: 30m, 1h, 4h, 1d, forever, off |
-| `feedback.dismiss` | `x` (pr) | dismiss the item |
-| `feedback.session` | `S` (pr) | start a new session from this PR |
+| `pr.start` | `S` (pr) | start a new session from this PR |
 | `diff.hunk.next` | `n` (diff) | next hunk |
 | `diff.hunk.prev` | `N` (diff) | previous hunk |
 | `diff.file.next` | `]f` (diff) | next file |

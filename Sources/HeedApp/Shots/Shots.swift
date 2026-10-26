@@ -5,8 +5,8 @@ import SwiftUI
 /// docs/images/shots; pages reference them as `../images/shots/<id>.png`.
 @MainActor
 enum Shots {
-    static let all: [Shot] = landing + home + gettingStarted + concepts + sessions + startWork + pilot +
-        github + worktrees + diff + history + keyboard + outside + configuration
+    static let all: [Shot] = landing + home + gettingStarted + concepts + sessions + startWork + github +
+        worktrees + diff + history + keyboard + outside + configuration
 
     /// Types a sentence (spaces become <Space>).
     static func typed(_ text: String) -> String {
@@ -54,7 +54,7 @@ enum Shots {
         Shot(id: "getting-started/first-session-2-working", highlight: [.panes]),
         Shot(id: "getting-started/first-session-3-blocked", keys: "j", highlight: [.sidebar, .panes]),
         Shot(id: "getting-started/first-session-4-insert", keys: "ji", highlight: [.panes]),
-        Shot(id: "getting-started/first-session-5-feedback", keys: "go", highlight: [.pipeline]),
+        Shot(id: "getting-started/first-session-5-pr", keys: "go"),
         Shot(id: "getting-started/first-session-6-history", keys: "gh", highlight: [.historyList]),
     ]
 
@@ -77,6 +77,7 @@ enum Shots {
         Shot(id: "landing/agents", subject: .settings(.agents), size: CGSize(width: 1100, height: 700)),
         Shot(id: "landing/keys", chrome: false, keys: "?"),
         Shot(id: "landing/prs", chrome: false, keys: "gp"),
+        Shot(id: "landing/pr", chrome: false, keys: "go"),
         Shot(id: "landing/worktrees", chrome: false, keys: "gr4jvj"),
         Shot(id: "landing/resume", chrome: false, prepare: { $0.showResumeForFixture() }),
         Shot(id: "landing/diff", chrome: false, keys: "gd"),
@@ -91,7 +92,6 @@ enum Shots {
     static let sessions: [Shot] = [
         Shot(id: "sessions/anatomy", highlight: [.sidebar, .center, .inspector]),
         Shot(id: "sessions/sidebar", size: CGSize(width: 1440, height: 640), crop: .sidebar),
-        Shot(id: "sessions/watching", size: CGSize(width: 1440, height: 1000), keys: "jjj", crop: .sidebar),
         Shot(id: "sessions/rail", size: CGSize(width: 1440, height: 640), keys: "zs", crop: .rail),
         Shot(id: "sessions/moving", size: CGSize(width: 1440, height: 640), keys: "2j", crop: .sidebar),
         Shot(id: "sessions/attention", size: CGSize(width: 1440, height: 640), keys: "ga", crop: .sidebar),
@@ -99,8 +99,6 @@ enum Shots {
         Shot(id: "sessions/insert-after", keys: "i", crop: .panes),
         Shot(id: "sessions/split", keys: "<C-w>v", highlight: [.panes]),
         Shot(id: "sessions/tab-strip", crop: .tabStrip, cropPadding: 6),
-        Shot(id: "sessions/run-tab", keys: "4j", crop: .center),
-        Shot(id: "sessions/run-reader", crop: .dialog, prepare: { $0.runReader = $0.runs.first { !$0.isRunning } }),
         Shot(id: "sessions/tab-strip-insert", keys: "i", crop: .tabStrip, cropPadding: 6),
         Shot(id: "sessions/zoom", keys: "<C-w>z", highlight: [.panes]),
         Shot(id: "sessions/inspector", crop: .inspector, cropPadding: 0),
@@ -127,11 +125,6 @@ enum Shots {
 
     static let short = CGSize(width: 1440, height: 640)
 
-    static let pilot: [Shot] = [
-        Shot(id: "watch/inspector", crop: .inspector),
-        Shot(id: "watch/prs", keys: "gp", crop: .list),
-    ]
-
     static let github: [Shot] = [
         Shot(id: "github/offline", keys: "gm", highlight: [.syncBanner], prepare: { model in
             var state = model.github
@@ -145,9 +138,7 @@ enum Shots {
         Shot(id: "github/prs", keys: "gp"),
         Shot(id: "github/reader-pr", keys: "gpgo"),
         Shot(id: "github/reader-issue", size: CGSize(width: 1200, height: 420), keys: "gigo", crop: .reader),
-        Shot(id: "github/feedback", keys: "go"),
-        Shot(id: "github/delivery", keys: "go", crop: .delivery),
-        Shot(id: "github/prompt", keys: "go", crop: .promptPreview),
+        Shot(id: "github/pr-overlay", keys: "go"),
     ]
 
     static let worktrees: [Shot] = [

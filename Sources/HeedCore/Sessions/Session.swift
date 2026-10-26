@@ -170,77 +170,18 @@ public struct Session: Identifiable, Hashable, Sendable, Codable {
 public enum SessionGroup: String, CaseIterable, Sendable {
     case pinned = "Pinned"
     case needsYou = "Needs you"
-    /// A PR of the session used its get-it-green rounds without a new approval.
-    case stalled = "Stalled"
     case working = "Working"
-    /// Heed is getting a PR of the session green or merged, and you have not typed in it since heed last acted.
-    case watching = "Watching"
     case parked = "Parked"
 
     public static let maxPins = 9
 
-    /// Pinned, then what needs you, then what you parked; then stalled, then watching (heed is driving, the session is
-    /// not yours); then the agent's state decides, working or parked.
-    public static func of(_ session: Session, pilot: SessionPilot = SessionPilot()) -> SessionGroup {
+    /// Pinned, then what needs you, then what you parked; then the agent's state decides, working or parked.
+    public static func of(_ session: Session) -> SessionGroup {
         if session.pinned { return .pinned }
-        if session.state.state.needsYou || pilot.status?.needsYou == true || pilot.helperNeedsYou { return .needsYou }
-        if session.parked { return .parked }
-        if case .stalled = pilot.status { return .stalled }
-        if pilot.acting, !pilot.yours { return .watching }
+        if session.state.state.needsYou { return .needsYou }
         if session.parked || session.state.state == .done || session.state.state == .idle
             || session.state.state == .exited { return .parked }
         return .working
-    }
-}
-
-/// The session under the cursor, as the list last showed it: its group, and whether you had pinned or parked it.
-public struct SessionHold: Equatable, Sendable {
-    public let id: String
-    public let group: SessionGroup
-    public let pinned: Bool
-    public let parked: Bool
-
-    public init(id: String, group: SessionGroup, pinned: Bool = false, parked: Bool = false) {
-        self.id = id
-        self.group = group
-        self.pinned = pinned
-        self.parked = parked
-    }
-}
-
-extension SessionGroup {
-    /// The group of the session under the cursor: a move the pilot causes (into or out of Watching or Stalled) waits
-    /// until the cursor leaves it; what you do yourself (pin, park) and what needs you show at once.
-    static func held(_ held: SessionGroup, natural: SessionGroup) -> SessionGroup {
-        let pilot: Set<SessionGroup> = [.watching, .stalled]
-        guard held != natural, pilot.contains(held) || pilot.contains(natural),
-              ![held, natural].contains(.pinned), natural != .needsYou
-        else { return natural }
-        return held
-    }
-}
-
-/// What the pilot says about a session, for its group: its most urgent PR state, whether heed is acting on any of its
-/// PRs, and whether you typed in it since heed last did something there.
-public struct SessionPilot: Equatable, Sendable {
-    public var status: PilotStatus?
-    public var acting: Bool
-    public var yours: Bool
-    /// A helper tab of the session (`send_to = "tab"`) is asking or blocked: waiting on you.
-    public var helperNeedsYou: Bool
-
-    public init(status: PilotStatus? = nil, acting: Bool = false, yours: Bool = false, helperNeedsYou: Bool = false) {
-        self.status = status
-        self.acting = acting
-        self.yours = yours
-        self.helperNeedsYou = helperNeedsYou
-    }
-
-    /// Yours: you typed in the session after heed's last action on any of its PRs.
-    public static func yours(lastTyped: Date?, lastAction: Date?) -> Bool {
-        guard let lastTyped else { return false }
-        guard let lastAction else { return true }
-        return lastTyped > lastAction
     }
 }
 
@@ -255,17 +196,8 @@ public struct SessionList: Sendable {
     /// Every session in display order.
     public let ordered: [Session]
 
-    /// `pilot` says what the pilot knows of each session. `hold` keeps one session (the one under the cursor) in the
-    /// group it had while the pilot would move it; pinning or parking it moves it at once.
-    public init(
-        _ sessions: [Session], pilot: (Session) -> SessionPilot = { _ in SessionPilot() }, hold: SessionHold? = nil
-    ) {
-        let grouped = Dictionary(grouping: sessions) { session in
-            let natural = SessionGroup.of(session, pilot: pilot(session))
-            guard let hold, hold.id == session.id, hold.pinned == session.pinned, hold.parked == session.parked
-            else { return natural }
-            return SessionGroup.held(hold.group, natural: natural)
-        }
+    public init(_ sessions: [Session]) {
+        let grouped = Dictionary(grouping: sessions) { SessionGroup.of($0) }
         sections = SessionGroup.allCases.compactMap { group in
             guard let members = grouped[group], !members.isEmpty else { return nil }
             return Section(group: group, sessions: members)

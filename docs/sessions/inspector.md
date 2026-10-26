@@ -11,14 +11,15 @@ The inspector, on the right of the Sessions view, shows the selected session's s
 - **Worktrees**: each worktree's path, its upstream, how far ahead and behind it is, and whether it has uncommitted
   changes.
 - **Links**: the session's pull requests, then its issues. Open PRs come first, then merged, then closed; each shows
-  its checks bar, its review state, and what heed is doing about it. A merged or closed PR keeps its checks as they
+  its checks bar, its review state, its [state](../github/pr-overlay.md#the-state-of-a-pr), and the first green rule
+  holding it back. A merged or closed PR keeps its checks as they
   finished and says it is done. Issues show their title and whether they are open.
 - **Agent events**: the latest states the agent reported, newest first. A turn's working steps show while it runs and
   fold away once it ends, leaving how it ended.
 
 ## Links
 
-**Click a link** to open it here: a PR in the [PR overlay](../github/review-feedback.md), an issue in the
+**Click a link** to open it here: a PR in the [PR overlay](../github/pr-overlay.md), an issue in the
 [reader](../github/reading.md). **⌘-click** opens it on GitHub. `go` opens the PR overlay from the keyboard.
 
 A session's issues come from three places:

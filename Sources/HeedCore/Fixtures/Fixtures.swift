@@ -9,17 +9,6 @@ public enum Fixtures {
     /// What the fixtures' config would say about issues: docs-builder and the nullean org show all of them.
     public static let issueRules = IssueRules(orgs: ["nullean": .all], repos: ["elastic/docs-builder": .all])
 
-    /// Org and repo overrides for Settings › Orgs & repos: none changes what the other screens show.
-    public static let pilotRules: PilotRules = {
-        var org = PilotOverrides(reviewers: ["copilot"])
-        org.quietMinutes = 10
-        var repo = PilotOverrides()
-        repo.quietMinutes = 15
-        repo.gateChecks = ["build", "integration"]
-        repo.holdLabels = ["do-not-merge"]
-        return PilotRules(orgs: ["elastic": org], repos: ["elastic/docs-builder": repo])
-    }()
-
     /// What the issue links of the fake world fetched: their titles and states.
     public static let issueInfo: [IssueRef: IssueInfo] = [
         IssueRef(repo: docsContent, number: 88): IssueInfo(
@@ -107,14 +96,6 @@ public enum Fixtures {
             }
             layouts[session.id] = SessionLayout(tabs: tabs(for: session, root: root))
         }
-        // s5's PR has a get it green run working in the background, in a tab next to its agent tab.
-        if var layout = layouts["s5"] {
-            layout.tabs.append(PaneTab(id: "s5-helper-tab", title: "get it green", tree: .leaf(PaneSpec(
-                id: "s5-helper", role: .helper, title: "get it green",
-                directory: "\(root)/wt/editorconfig/bump-spec-tests"
-            ))))
-            layouts["s5"] = layout
-        }
         // Worktrees made outside Heed, with no session yet: what `I` in Sessions imports.
         worktrees += [
             Worktree(
@@ -128,220 +109,17 @@ public enum Fixtures {
             Worktree(repo: ingest, path: "\(root)/ingest", branch: "main", head: "0000000", isMain: true),
         ]
         let detail = pullDetail
-        var pipeline = PullFeedback(ref: detail.ref)
-        pipeline.merge(detail)
-        if let index = pipeline.items.firstIndex(where: { $0.id == "T1" }) { pipeline.items[index].status = .queued }
-        if let index = pipeline.items
-            .firstIndex(where: { $0.id == "check:lint" }) { pipeline.items[index].status = .queued }
-        var resolved = FeedbackItem(
-            id: "T0",
-            kind: .review(location: "RedirectFile.cs:41", author: "reviewer"),
-            text: "Use the shared slug helper.",
-            status: .resolved
-        )
-        resolved.resolvedAt = Clock.now
-        pipeline.items.append(resolved)
-        var (pilots, log) = pilotStates
-        // editorconfig#412 conflicts, and Copilot was asked to resolve it.
-        if let conflicting = otherDetails.first(where: { $0.mergeable == "CONFLICTING" }) {
-            var copilot = PullFeedback(ref: conflicting.ref)
-            copilot.merge(conflicting)
-            CopilotAsk.asked(&copilot, items: ["conflict"], at: Clock.now.addingTimeInterval(-12 * 60))
-            copilot.reviewersRequested = ["@copilot"]
-            pilots[conflicting.ref.description] = copilot
-            log.insert(PilotEvent(
-                at: Clock.now.addingTimeInterval(-12 * 60), ref: conflicting.ref, kind: .copilot,
-                text: "asked Copilot to merge in main and resolve the conflicts"
-            ), at: 0)
-            log.append(PilotEvent(
-                at: Clock.now.addingTimeInterval(-3 * 3600), ref: conflicting.ref, kind: .review,
-                text: "asked @copilot to review"
-            ))
-            log.sort { $0.at > $1.at }
-        }
-        // heed merges #2841 (held: lint failed), docs-content#1920 has auto-merge on.
-        pipeline.merge = .heed
-        pipeline.mergeSet = true
         return Domain(
             repos: repos, worktrees: worktrees, sessions: sessions, layouts: layouts,
             history: history, github: github,
-            pullDetails: Dictionary(([detail] + otherDetails).map { ($0.ref.description, $0) }) { first, _ in first },
-            feedback: pilots.merging([detail.ref.description: pipeline]) { _, main in main }, pilotLog: log,
-            mergeRuns: mergeRuns, runs: runs
+            pullDetails: Dictionary(([detail] + otherDetails).map { ($0.ref.description, $0) }) { first, _ in first }
         )
     }()
 
-    /// The pilot's other states: #2852 paused, ingest#31 not watched (set by hand), mermaider#418 stuck after three
-    /// rounds, and a morning of activity.
-    static let pilotStates: ([String: PullFeedback], [PilotEvent]) = {
-        let now = Clock.now
-        func ago(_ minutes: Double) -> Date { now.addingTimeInterval(-minutes * 60) }
-        let nav = PullRef(repo: docsBuilder, number: 2852)
-        let ingestPR = PullRef(repo: ingest, number: 31)
-        let arrows = PullRef(repo: mermaider, number: 418)
-        let anchors = PullRef(repo: docsBuilder, number: 2841)
-        let redirects = PullRef(repo: docsContent, number: 1920)
-        var paused = PullFeedback(ref: nav)
-        paused.pausedUntil = now.addingTimeInterval(42 * 60)
-        var unwatched = PullFeedback(ref: ingestPR, watching: false)
-        unwatched.watchSet = true
-        var merging = PullFeedback(ref: redirects)
-        merging.merge = .auto
-        merging.mergeSet = true
-        var stuck = PullFeedback(ref: arrows, items: [FeedbackItem(
-            id: "A1", kind: .review(location: "Arrow.cs:57", author: "reviewer"),
-            text: "Arrowheads still detach below 50% zoom.", status: .new
-        )])
-        stuck.rounds = 3
-        let log = [
-            PilotEvent(at: ago(6), ref: anchors, kind: .waiting, text: "2 queued, held: the agent is working"),
-            PilotEvent(at: ago(9), ref: anchors, kind: .items, text: "2 review threads and check lint arrived"),
-            PilotEvent(at: ago(18), ref: nav, kind: .pause, text: "paused for 1h (by you)"),
-            PilotEvent(
-                at: ago(24),
-                ref: arrows,
-                kind: .stuck,
-                text: "3 rounds without a new approval: stopped sending"
-            ),
-            PilotEvent(at: ago(31), ref: arrows, kind: .sent, text: "sent 1 item to claude (round 3)"),
-            PilotEvent(
-                at: ago(40), ref: redirects, kind: .autoMerge,
-                text: "auto-merge on: squash; GitHub merges once its requirements are met"
-            ),
-            PilotEvent(at: ago(44), ref: redirects, kind: .resolved, text: "check link-check resolved"),
-            PilotEvent(at: ago(52), ref: redirects, kind: .addressed, text: "the agent pushed: 1 item addressed"),
-            PilotEvent(at: ago(70), ref: redirects, kind: .sent, text: "sent 1 item to claude (round 1)"),
-            PilotEvent(at: ago(95), ref: ingestPR, kind: .watch, text: "stopped watching (by you)"),
-            PilotEvent(at: ago(100), ref: redirects, kind: .merge, text: "merge: auto (by you)"),
-        ]
-        return (
-            [
-                nav.description: paused, ingestPR.description: unwatched, arrows.description: stuck,
-                redirects.description: merging,
-            ],
-            log
-        )
-    }()
-
-    /// The merge queues' runs: docs-content turned green and got auto-merge, docs-builder holds #2841 on lint.
-    /// Get it green runs: one working on s5's PR, and s1's history (pushed, nothing to change, timed out).
-    static let runs: [PilotRun] = {
-        let now = Clock.now
-        func ago(_ minutes: Double) -> Date { now.addingTimeInterval(-minutes * 60) }
-        func run(
-            _ id: String, _ ref: PullRef, _ session: String, agent: String, model: String?, started: Double,
-            minutes: Double?, items: Int, outcome: PilotRun.Outcome?, screen: String? = nil
-        ) -> PilotRun {
-            let branch = ref.number == 412 ? "bump-spec-tests" : "fix-anchors-redirects"
-            var run = PilotRun(
-                id: id, ref: ref, sessionID: session, goal: .green, agent: agent, model: model, startedAt: ago(started),
-                items: items, prBranch: branch, branch: Runs.branch(.green, prBranch: branch),
-                worktree: "~/code/wt/heed/\(ref.repo.name)/get-it-green-\(branch)", startSHA: nil
-            )
-            if let minutes {
-                run.endedAt = ago(started - minutes)
-                run.outcome = outcome
-                run.screen = screen
-            }
-            return run
-        }
-        let anchors = PullRef(repo: docsBuilder, number: 2841)
-        return [
-            run(
-                "r4",
-                PullRef(repo: editorconfig, number: 412),
-                "s5",
-                agent: "codex",
-                model: "gpt-5-codex",
-                started: 3,
-                minutes: nil,
-                items: 2,
-                outcome: nil
-            ),
-            run(
-                "r3",
-                anchors,
-                "s1",
-                agent: "codex",
-                model: "gpt-5-codex",
-                started: 40,
-                minutes: 6,
-                items: 3,
-                outcome: .pushed(2),
-                screen: """
-                ✓ Fixed the anchor slugs in redirects.yml (2 files)
-                ✓ lint passes locally
-                $ git push origin HEAD:fix-anchors-redirects
-                To github.com:elastic/docs-builder.git
-                   4f2a1c9..b81e0d3  HEAD -> fix-anchors-redirects
-                Done: pushed 2 commits.
-                """
-            ),
-            run(
-                "r2",
-                anchors,
-                "s1",
-                agent: "claude",
-                model: "haiku",
-                started: 95,
-                minutes: 3,
-                items: 1,
-                outcome: .noChanges,
-                screen: "The review thread asks a question; nothing to change in the code."
-            ),
-            run(
-                "r1",
-                anchors,
-                "s1",
-                agent: "codex",
-                model: nil,
-                started: 180,
-                minutes: 30,
-                items: 4,
-                outcome: .timedOut
-            ),
-        ]
-    }()
-
-    static let mergeRuns: [String: [MergeRun]] = {
-        let now = Clock.now
-        func ago(_ minutes: Double) -> Date { now.addingTimeInterval(-minutes * 60) }
-        let anchors = PullRef(repo: docsBuilder, number: 2841)
-        let redirects = PullRef(repo: docsContent, number: 1920)
-        return [
-            docsBuilder.slug: [
-                MergeRun(repo: docsBuilder.slug, at: ago(20), why: "schedule", lines: [
-                    .init(ref: anchors, action: "held", detail: "Green: checks pass: lint failed"),
-                ]),
-                MergeRun(repo: docsBuilder.slug, at: ago(80), why: "merge turned on", lines: [
-                    .init(ref: anchors, action: "brought up to date", detail: "merged main in"),
-                ]),
-            ],
-            docsContent.slug: [
-                MergeRun(repo: docsContent.slug, at: ago(40), why: "#1920 turned green", lines: [
-                    .init(
-                        ref: redirects, action: "auto-merge on",
-                        detail: "squash; GitHub merges once its requirements are met"
-                    ),
-                ]),
-                MergeRun(repo: docsContent.slug, at: ago(100), why: "merge turned on", lines: [
-                    .init(ref: redirects, action: "held", detail: "Checks pass: link-check failed"),
-                ]),
-            ],
-        ]
-    }()
-
-    /// A PR storm: every review comment and failing check on #2841 is new, and it is the PR updated last,
-    /// while the session that owns it is busy working.
+    /// A PR storm: #2841, with its review comments and failing check, is the PR updated last, while the session that
+    /// owns it is busy working.
     public static let prStorm: Domain = {
         var domain = main
-        for key in domain.feedback.keys {
-            for index in domain.feedback[key]!.items.indices
-                where domain.feedback[key]!.items[index].status != .resolved
-            {
-                domain.feedback[key]!.items[index].status = .new
-            }
-        }
         if let index = domain.github.pulls.firstIndex(where: { $0.ref == pullDetail.ref }) {
             var pull = domain.github.pulls.remove(at: index)
             pull.updatedAt = Clock.now
@@ -356,7 +134,6 @@ public enum Fixtures {
         domain.sessions = []
         domain.layouts = [:]
         domain.history = []
-        domain.feedback = [:]
         return domain
     }()
 
@@ -448,8 +225,6 @@ public enum Fixtures {
         detail.mergeState = "BLOCKED"
         detail.reviewDecision = "CHANGES_REQUESTED"
         detail.requiredChecks = ["build", "lint"]
-        detail.repoAllowsAutoMerge = true
-        detail.repoMergeMethods = ["squash"]
         // The companion change links here (yours, tracked); someone's docs PR mentions it (suggested, not tracked).
         detail.references = [
             PullDetail.Reference(
@@ -461,7 +236,6 @@ public enum Fixtures {
                 author: "docs-writer", state: "OPEN", createdAt: Clock.now.addingTimeInterval(-50 * 60)
             ),
         ]
-        detail.autoMergeEnabled = false
         return detail
     }()
 
@@ -483,11 +257,6 @@ public enum Fixtures {
             detail.mergeState = state
             detail.reviewDecision = review
             detail.requiredChecks = ["build"]
-            detail.repoAllowsAutoMerge = true
-            detail.repoMergeMethods = ["squash", "merge"]
-            // The green one is waiting on GitHub's auto-merge (the fixture never merges).
-            detail.autoMergeEnabled = state == "CLEAN"
-            detail.autoMergeMethod = state == "CLEAN" ? "squash" : nil
             return detail
         }
         return [

@@ -81,7 +81,7 @@ struct ReposView: View {
                                 isSelected: selected.contains(worktree.id),
                                 roots: model.settings.pathRoots,
                                 query: model.filter(for: .repos),
-                                pilot: model.session(for: worktree).flatMap { model.pilotStatus(of: $0) }
+                                pull: model.session(for: worktree).flatMap { model.pullStatus(of: $0) }
                             )
                             .hint(model.hintLabel(for: .row(.repos, index)))
                             .contentShape(Rectangle())
@@ -148,7 +148,7 @@ private struct WorktreeRow: View {
     /// The view's filter, marked where it matches.
     let query: String
     /// The state of the session's PR, by the PR number.
-    let pilot: PilotStatus?
+    let pull: PullStatus?
 
     var body: some View {
         HStack(spacing: 0) {
@@ -190,7 +190,7 @@ private struct WorktreeRow: View {
                 Text(session?.trackedPRs.first { $0.repo == worktree.repo }.map { "#\(String($0.number))" } ?? "no PR")
                     .font(Theme.mono(12))
                     .foregroundStyle(session?.trackedPRs.isEmpty == false ? Theme.fg : Theme.fg3)
-                if let pilot, pilot != .unwatched { PilotMark(status: pilot, compact: true) }
+                if let pull { PullMark(status: pull, compact: true) }
             }
             .frame(width: 110, alignment: .leading)
         }

@@ -15,8 +15,8 @@ when its checks or review threads change.
 | [Inbox](inbox.md) | `gm` | Your notifications |
 | [Issues](issues.md) | `gi` | Issues assigned to you or mentioning you, and every issue in repos you watch |
 | [Pull requests](pull-requests.md) | `gp` | Your open pull requests and the ones your sessions track |
-From any of them you can [read](reading.md) an item in the app, [start a session](../start-work/from-github.md) from
-it, and feed [review feedback](review-feedback.md) back to the agent working on it.
+From any of them you can [read](reading.md) an item in the app and [start a session](../start-work/from-github.md) from
+it. A session's own PRs open in the [PR overlay](pr-overlay.md), with what holds each back from green.
 
 ## When GitHub can't be reached
 
