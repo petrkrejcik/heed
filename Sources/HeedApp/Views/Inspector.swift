@@ -100,9 +100,7 @@ struct Inspector: View {
                     .foregroundStyle(Theme.busy)
                     .contentShape(Rectangle())
                     .onTapGesture {
-                        if let url = URL(string: IssueLinks.compareURL(repo: Kibana.repo, branch: branch)) {
-                            NSWorkspace.shared.open(url)
-                        }
+                        model.openLink(IssueLinks.compareURL(repo: Kibana.repo, branch: branch), from: task.id)
                     }
             }
         } else {

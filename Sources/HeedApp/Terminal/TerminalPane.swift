@@ -58,7 +58,9 @@ final class TerminalSurfaces {
     var onPaneClick: ((String) -> Void)?
     /// A pane's terminal ended: its shell exited (`exit`, ⌃D) or its command finished.
     var onPaneExited: ((String) -> Void)?
-    private var exitsWired = false
+    /// A URL ⌘-clicked in a pane's terminal: pane, URL.
+    var onPaneOpenURL: ((String, String) -> Void)?
+    private var runtimeWired = false
     /// `[sessions] persist`: with zmx, a pane's terminal attaches to its zmx session instead of starting a shell.
     var persist: PanePersistence = .none
     /// Panes whose zmx session is alive: they reattach as they are, and nothing is typed into them.
@@ -105,19 +107,24 @@ final class TerminalSurfaces {
             (view as? GhosttySurfaceView)?.onClick = { [weak self] in self?.onPaneClick?(paneID) }
         #endif
         views[pane.id] = view
-        wireExits()
+        wireRuntime()
         return view
     }
 
-    /// libghostty asks to close a surface when its process ends; that is the pane's terminal ending.
-    private func wireExits() {
-        guard !exitsWired else { return }
-        exitsWired = true
+    /// libghostty asks to close a surface when its process ends; that is the pane's terminal ending. It also hands
+    /// over the URLs you ⌘-click.
+    private func wireRuntime() {
+        guard !runtimeWired else { return }
+        runtimeWired = true
         #if HEED_GHOSTTY
             GhosttyRuntime.shared.onSurfaceClosed = { [weak self] view, _ in
                 guard let self, let id = views.first(where: { $0.value === view })?.key else { return }
                 views.removeValue(forKey: id)?.removeFromSuperview()
                 onPaneExited?(id)
+            }
+            GhosttyRuntime.shared.onOpenURL = { [weak self] view, url in
+                guard let self, let id = views.first(where: { $0.value === view })?.key else { return }
+                onPaneOpenURL?(id, url)
             }
         #endif
     }

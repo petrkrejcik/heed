@@ -138,6 +138,7 @@ final class ModelHost {
         let model = current
         TerminalSurfaces.shared.onPaneClick = { [weak model] paneID in model?.clickedPane(paneID) }
         TerminalSurfaces.shared.onPaneExited = { [weak model] paneID in model?.paneExited(paneID) }
+        TerminalSurfaces.shared.onPaneOpenURL = { [weak model] paneID, url in model?.openLink(url, fromPane: paneID) }
         BrowserSurfaces.shared.onPaneClick = { [weak model] paneID in model?.clickedPane(paneID) }
         BrowserSurfaces.shared.onNavigated = { [weak model] paneID, url, title in
             model?.pageChanged(paneID, url: url, title: title)
@@ -154,5 +155,10 @@ struct HostedMainWindow: View {
 
     var body: some View {
         MainWindow().environment(host.current)
+            // Links in rendered text (an issue's body) open as pages too.
+            .environment(\.openURL, OpenURLAction { [host] url in
+                host.current.openLink(url.absoluteString, from: host.current.linkSource)
+                return .handled
+            })
     }
 }

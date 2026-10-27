@@ -96,10 +96,10 @@ public enum Commands {
         .init("jump.back", "back", .views),
         .init(
             "open.browser",
-            "open in the browser: the item under the cursor; in Tasks its PR or issue (a picker when there are both, Kibana when there are none)",
+            "open as a web page in a tab: the item under the cursor; in Tasks its PR or issue (a picker when there are both, Kibana when there are none)",
             .views
         ),
-        .init("open.repo", "open the repo under the cursor on GitHub", .views),
+        .init("open.repo", "open the repo under the cursor on GitHub, as a web page in a tab", .views),
         .init("links.pick", "pick the task's PR or issue to open in the browser", .views),
         .init("open.reader", "read inbox item, issue or PR", .views),
         .init("inspector.toggle", "collapse / expand the inspector", .views),

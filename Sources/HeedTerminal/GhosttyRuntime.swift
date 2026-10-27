@@ -16,6 +16,8 @@ public final class GhosttyRuntime {
 
     /// Called when a surface's process ends and Ghostty asks to close it (`processAlive` false), or the user closed it.
     public var onSurfaceClosed: ((GhosttySurfaceView, _ processAlive: Bool) -> Void)?
+    /// A URL ⌘-clicked in a surface (or opened by a program through OSC 8).
+    public var onOpenURL: ((GhosttySurfaceView, String) -> Void)?
 
     private init() {
         if ghostty_init(UInt(CommandLine.argc), CommandLine.unsafeArgv) != GHOSTTY_SUCCESS {
@@ -68,7 +70,7 @@ public final class GhosttyRuntime {
             userdata: nil,
             supports_selection_clipboard: false,
             wakeup_cb: { _ in GhosttyRuntime.wakeup() },
-            action_cb: { _, _, _ in false },
+            action_cb: { _, target, action in GhosttyRuntime.action(target, action) },
             read_clipboard_cb: { userdata, location, state, mimes, count, _ in
                 GhosttyRuntime.readClipboard(userdata, location: location, state: state, mimes: mimes, count: count)
             },
@@ -109,6 +111,24 @@ public final class GhosttyRuntime {
                 runtime.tick()
             }
         }
+    }
+
+    /// Only opening a URL is Heed's; every other action keeps libghostty's default (returning false says so).
+    private nonisolated static func action(_ target: ghostty_target_s, _ action: ghostty_action_s) -> Bool {
+        guard action.tag == GHOSTTY_ACTION_OPEN_URL, target.tag == GHOSTTY_TARGET_SURFACE,
+              let handle = target.target.surface, let pointer = action.action.open_url.url
+        else { return false }
+        let url = String(
+            decoding: UnsafeRawBufferPointer(start: pointer, count: Int(action.action.open_url.len)), as: UTF8.self
+        )
+        let userdata = RawPointer(ghostty_surface_userdata(handle))
+        DispatchQueue.main.async {
+            MainActor.assumeIsolated {
+                guard let view = surface(userdata.value) else { return }
+                GhosttyRuntime.shared.onOpenURL?(view, url)
+            }
+        }
+        return true
     }
 
     nonisolated static func surface(_ userdata: UnsafeMutableRawPointer?) -> GhosttySurfaceView? {

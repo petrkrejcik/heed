@@ -1814,14 +1814,52 @@ final class AppModel {
             }
             return
         }
-        guard let text = urlUnderCursor, let url = URL(string: text) else {
+        guard let text = urlUnderCursor else {
             flash = "nothing to open"
             return
         }
-        NSWorkspace.shared.open(url)
+        openLink(text, from: linkSource)
     }
 
     // MARK: Links
+
+    /// The task a link opened from the screen came from: the current one in Tasks (its PR card, its overlay, its
+    /// inspector); none in the other views, so their links go to Kibana main.
+    var linkSource: String? { view == .tasks ? currentTask?.id : nil }
+
+    /// A URL ⌘-clicked in a terminal: a page in that terminal's task, next to its tab.
+    func openLink(_ url: String, fromPane paneID: String) {
+        openLink(url, from: currentDomain.task(ofPane: paneID), nextTo: paneID)
+    }
+
+    /// Every link opened in Heed. A web link becomes a page in the task it came from, else in Kibana main, and Heed
+    /// shows it, because you asked for it. Other links (`mailto:`, a file) go to the app macOS picks for them.
+    func openLink(_ url: String, from source: String?, nextTo paneID: String? = nil) {
+        guard LinkTarget.opensAsPage(url) else {
+            let target = url.hasPrefix("/") ? URL(fileURLWithPath: url) : URL(string: url)
+            if let target { NSWorkspace.shared.open(target) }
+            return
+        }
+        guard let taskID = LinkTarget.task(from: source, in: tasks), let task = task(taskID) else {
+            if let target = URL(string: url) { NSWorkspace.shared.open(target) }
+            flash = "no Kibana main task to open pages in; opened in your browser"
+            return
+        }
+        var layout = layouts[taskID] ?? TaskLayout(tabs: [])
+        layout.openPage(url, nextTo: paneID, directory: task.directory, show: true)
+        commit(.layoutChanged(task: taskID, layout))
+        linkPicker = nil
+        overlay = nil
+        reader = nil
+        issueReader = nil
+        view = .tasks
+        select(taskID: taskID)
+        if mode == .insert {
+            let before = engine.mode
+            engine.enter(.normal)
+            modeChanged(from: before)
+        }
+    }
 
     /// A task's issues: its own, then those its PR closes.
     func issues(of task: WorkTask) -> [IssueRef] {
@@ -1847,12 +1885,12 @@ final class AppModel {
         )
     }
 
-    /// A link clicked or picked: a PR opens the overlay on it, an issue the reader; `browser` (⌘-click, `gB`) opens it
-    /// on GitHub instead.
+    /// A link clicked or picked: a PR opens the overlay on it, an issue the reader; `browser` (⌘-click, `gB`) opens its
+    /// GitHub page in Heed instead.
     func open(_ link: TaskLink, browser: Bool = false) {
         linkPicker = nil
         if browser {
-            if let url = URL(string: link.url) { NSWorkspace.shared.open(url) }
+            openLink(link.url, from: linkSource)
             return
         }
         switch link {

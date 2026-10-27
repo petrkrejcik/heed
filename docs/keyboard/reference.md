@@ -80,8 +80,8 @@ This page is generated from the code (`mise run shots`).
 | `overlay.close` | `<Esc>`, `<Esc>` (diff), `<Esc>` (issue), `<Esc>` (pr) | close overlay |
 | `pr.task` | `gS` | jump from a PR to its task |
 | `jump.back` | `<C-o>` | back |
-| `open.browser` | `gB` | open in the browser: the item under the cursor; in Tasks its PR or issue (a picker when there are both, Kibana when there are none) |
-| `open.repo` | `gR` | open the repo under the cursor on GitHub |
+| `open.browser` | `gB` | open as a web page in a tab: the item under the cursor; in Tasks its PR or issue (a picker when there are both, Kibana when there are none) |
+| `open.repo` | `gR` | open the repo under the cursor on GitHub, as a web page in a tab |
 | `links.pick` |  | pick the task's PR or issue to open in the browser |
 | `open.reader` | `<CR>` | read inbox item, issue or PR |
 | `inspector.toggle` | `zi` | collapse / expand the inspector |
