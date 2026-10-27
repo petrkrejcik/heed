@@ -52,6 +52,24 @@ struct PaneTreeTests {
         #expect(tab.focused == "a")
     }
 
+    @Test func aDraggedDividerSetsItsOwnSplitWithinBounds() {
+        // a | (b over c)
+        let tree = PaneTree.leaf(pane("a")).splitting("a", axis: .horizontal, with: pane("b"))
+            .splitting("b", axis: .vertical, with: pane("c"))
+        /// Every split's ratio, outer first.
+        func ratios(_ tree: PaneTree) -> [Double] {
+            guard case let .split(_, first, second, ratio) = tree else { return [] }
+            return [ratio] + ratios(first) + ratios(second)
+        }
+        #expect(ratios(tree.settingRatio(0.3, at: [1])) == [0.5, 0.3])
+        #expect(ratios(tree.settingRatio(1.4, at: [])) == [0.9, 0.5])
+        #expect(ratios(tree.settingRatio(-1, at: [])) == [0.1, 0.5])
+        #expect(tree.settingRatio(0.3, at: [1]).panes == tree.panes)
+        #expect(tree.settingRatio(0.3, at: [0]) == tree)
+        #expect(tree.settingRatio(0.3, at: [1, 1]) == tree)
+        #expect(tree.settingRatio(0.3, at: [7]) == tree)
+    }
+
     @Test func closingCollapsesToTheSibling() {
         var tab = PaneTab(title: "t", tree: .leaf(pane("a")))
         tab.split(.horizontal, with: pane("b"))
@@ -88,6 +106,21 @@ struct TaskLayoutTests {
         let final = layout.removePane(tests.id)
         #expect(final)
         #expect(layout.tabs.isEmpty)
+    }
+
+    @Test func aDraggedTabMovesAndTheActiveTabStaysTheSameTab() {
+        let tabs = ["a", "b", "c", "d"].map { PaneTab(id: $0, title: $0, tree: .leaf(pane($0))) }
+        var layout = TaskLayout(tabs: tabs, activeTab: 1)
+        layout.moveTab("a", to: 2)
+        #expect(layout.tabs.map(\.id) == ["b", "c", "a", "d"])
+        #expect(layout.activeTab == 0)
+        layout.moveTab("d", to: 0)
+        #expect(layout.tabs.map(\.id) == ["d", "b", "c", "a"])
+        #expect(layout.activeTab == 1)
+        layout.moveTab("c", to: 99)
+        #expect(layout.tabs.map(\.id) == ["d", "b", "a", "c"])
+        layout.moveTab("nope", to: 0)
+        #expect(layout.tabs.map(\.id) == ["d", "b", "a", "c"])
     }
 
     @Test func removingATabKeepsTheActiveOne() {

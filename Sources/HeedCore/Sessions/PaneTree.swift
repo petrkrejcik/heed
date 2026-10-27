@@ -96,6 +96,24 @@ public indirect enum PaneTree: Hashable, Sendable, Codable {
         }
     }
 
+    /// How far a split's divider can be dragged: each side keeps a tenth of the space.
+    public static let ratios: ClosedRange<Double> = 0.1 ... 0.9
+
+    /// The same tree with the split at `path` (0 is a split's first side, 1 its second, from the root) at `ratio`,
+    /// kept within `ratios`. Unchanged when `path` leads to no split.
+    public func settingRatio(_ ratio: Double, at path: [Int]) -> PaneTree {
+        guard case let .split(axis, first, second, current) = self else { return self }
+        guard let step = path.first else {
+            return .split(axis, first, second, ratio: min(max(ratio, Self.ratios.lowerBound), Self.ratios.upperBound))
+        }
+        let rest = Array(path.dropFirst())
+        return switch step {
+        case 0: .split(axis, first.settingRatio(ratio, at: rest), second, ratio: current)
+        case 1: .split(axis, first, second.settingRatio(ratio, at: rest), ratio: current)
+        default: self
+        }
+    }
+
     /// Removes pane `id`; its sibling takes the space. Nil when it was the last pane.
     public func removing(_ id: String) -> PaneTree? {
         switch self {

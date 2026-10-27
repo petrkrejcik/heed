@@ -193,6 +193,12 @@ final class AppModel {
         didSet { if !isFixture { UserDefaults.standard.set(sidebarCollapsed, forKey: "sidebarCollapsed") } }
     }
 
+    /// Widths of the side columns, dragged by their edge; kept in UserDefaults once a drag ends.
+    static let sidebarWidths: ClosedRange<Double> = 200 ... 560
+    static let inspectorWidths: ClosedRange<Double> = 240 ... 600
+    private(set) var sidebarWidth = UserDefaults.standard.object(forKey: "sidebarWidth") as? Double ?? 330
+    private(set) var inspectorWidth = UserDefaults.standard.object(forKey: "inspectorWidth") as? Double ?? 320
+
     private(set) var commandText = ""
     private(set) var flash: String?
     private(set) var hintText = ""
@@ -214,6 +220,8 @@ final class AppModel {
             // UserDefaults reads the real Mac's preferences even with HOME pointed elsewhere.
             inspectorVisible = true
             sidebarCollapsed = false
+            sidebarWidth = 330
+            inspectorWidth = 320
             zmxHealth = ZmxHealth(path: "/opt/homebrew/bin/zmx", version: "0.8.1")
             issueInfo = Fixtures.issueInfo
         }
@@ -2602,12 +2610,15 @@ final class AppModel {
         return false
     }
 
-    /// A page's own chord (`[keys.browser]`) or ⌘T while you type in its address field: it still reaches Heed.
+    /// A page's own chord (`[keys.browser]`) or a ⌘ chord Heed binds (⌘T, ⌘⇧]) while you type in its address field:
+    /// it still reaches Heed. Other ⌘ keys (⌘A, ⌘V) are the field's.
     func isPageChord(_ stroke: KeyStroke) -> Bool {
         guard editingAddress != nil else { return false }
         if case .command = engine.scopedKeymaps["browser"]?.lookup([stroke]) { return true }
-        guard case let .command(line) = engine.keymaps[.normal]?.lookup([stroke]) else { return false }
-        return CommandInvocation(parsing: line).name == "browser.new"
+        guard stroke.modifiers.contains(.command), case .command = engine.keymaps[.normal]?.lookup([stroke]) else {
+            return false
+        }
+        return true
     }
 
     /// `browser.new` (⌘T): a tab in the current task with a page at `text`, or an empty one with its address field
@@ -2702,6 +2713,30 @@ final class AppModel {
 
     func toggleSidebar() { sidebarCollapsed.toggle() }
     func toggleInspector() { inspectorVisible.toggle() }
+
+    /// A side column's edge dragged to `width`; `done` when the mouse is let go, which keeps it for the next launch.
+    func resizeSidebar(to width: Double, done: Bool) {
+        sidebarWidth = min(max(width, Self.sidebarWidths.lowerBound), Self.sidebarWidths.upperBound)
+        if done, !isFixture { UserDefaults.standard.set(sidebarWidth, forKey: "sidebarWidth") }
+    }
+
+    func resizeInspector(to width: Double, done: Bool) {
+        inspectorWidth = min(max(width, Self.inspectorWidths.lowerBound), Self.inspectorWidths.upperBound)
+        if done, !isFixture { UserDefaults.standard.set(inspectorWidth, forKey: "inspectorWidth") }
+    }
+
+    /// A split's divider let go at `ratio`, in tab `tabID` of the task on screen.
+    func setSplitRatio(_ ratio: Double, at path: [Int], inTab tabID: String) {
+        updateLayout { layout in
+            guard let index = layout.tabs.firstIndex(where: { $0.id == tabID }) else { return }
+            layout.tabs[index].tree = layout.tabs[index].tree.settingRatio(ratio, at: path)
+        }
+    }
+
+    /// A tab dragged in the tab strip onto position `index`.
+    func moveTab(_ id: String, to index: Int) {
+        updateLayout { $0.moveTab(id, to: index) }
+    }
 
     func focusPane(_ paneID: String) {
         updateTab { $0.focused = paneID }

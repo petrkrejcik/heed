@@ -16,11 +16,26 @@ struct MainWindow: View {
                         if model.sidebarCollapsed {
                             TaskRail().shotRegion(.rail)
                         } else {
-                            Sidebar(width: geometry.size.width < 1000 ? 260 : 330).shotRegion(.sidebar)
+                            let width = geometry.size.width < 1000 ? min(model.sidebarWidth, 260) : model.sidebarWidth
+                            Sidebar(width: width).shotRegion(.sidebar)
+                                .overlay(alignment: .trailing) {
+                                    ColumnEdge(width: width) { model.resizeSidebar(to: $0, done: $1) }.offset(x: 3)
+                                }
+                                // Above the center, so the edge's outer half takes the mouse too.
+                                .zIndex(1)
                         }
                         CenterArea().shotRegion(.center)
                         // The inspector gives way first on narrow windows; `zi` hides it outright.
-                        if model.inspectorVisible, geometry.size.width >= 1180 { Inspector().shotRegion(.inspector) }
+                        if model.inspectorVisible, geometry.size.width >= 1180 {
+                            Inspector().shotRegion(.inspector)
+                                .overlay(alignment: .leading) {
+                                    ColumnEdge(width: model.inspectorWidth, growsLeft: true) {
+                                        model.resizeInspector(to: $0, done: $1)
+                                    }
+                                    .offset(x: -3)
+                                }
+                                .zIndex(1)
+                        }
                     case .inbox:
                         InboxView()
                     case .issues:

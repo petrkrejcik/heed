@@ -14,7 +14,7 @@ vim.
 | `⌃w h` `⌃w j` `⌃w k` `⌃w l` | Focus the pane left, below, above, right (`h` and `l` alone work too) |
 | `⌃w z` | Zoom the focused pane (again to unzoom) |
 | `⌃w q` | Close the focused pane; an agent's pane asks first |
-| `gt` / `gT` | Next / previous tab |
+| `gt` / `gT` | Next / previous tab (also `⌘⇧]` / `⌘⇧[`, in INSERT too) |
 | `gn` | New tab with a shell (or click `+`) |
 | `gc` | The task's agent: to its tab; when it was closed, it comes back with its conversation; else a new agent |
 | `:tab.close` | Close the tab and every pane in it (or click its `×`); a tab with an agent asks first |
@@ -24,6 +24,10 @@ vim.
 ![The tab strip: two agent tabs, a jest tab and a Kibana page](../images/shots/tasks/tab-strip.png)
 
 A task can have several agent tabs. Each has its own glyph in the tab strip, its own state and its own Claude session.
+
+Drag a divider between panes to resize them; each task's splits keep their sizes across relaunches. The sidebar's and
+the inspector's edges drag too; their widths are the same for every task. Drag a tab along the strip to move it; the
+tab numbers follow the new order.
 
 The right of the tab strip shows the keys that matter where you are looking, as you have them bound: in NORMAL,
 `i` to type into the pane, the splits and the next tab; in INSERT, how to get back out.

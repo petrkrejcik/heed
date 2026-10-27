@@ -1,5 +1,6 @@
 import HeedCore
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// Tabs and the focused tab's split panes.
 struct CenterArea: View {
@@ -30,6 +31,8 @@ struct CenterArea: View {
 
 private struct TabStrip: View {
     @Environment(AppModel.self) private var model
+    /// The tab being dragged to a new place.
+    @State private var draggedTab: String?
 
     var body: some View {
         HStack(spacing: 0) {
@@ -111,6 +114,12 @@ private struct TabStrip: View {
                 .overlay(alignment: .bottom) { if on { Theme.inverse.frame(height: 2) } }
                 .contentShape(Rectangle())
                 .onTapGesture { model.selectTab(index) }
+                // Dragged along the strip, a tab takes the place of the one it passes over.
+                .onDrag {
+                    draggedTab = tab.id
+                    return NSItemProvider(object: tab.id as NSString)
+                }
+                .onDrop(of: [.text], delegate: TabDrop(target: tab.id, dragged: $draggedTab, model: model))
                 .id(tab.id)
             }
             Text("+").font(Theme.mono(13)).foregroundStyle(Theme.fg3).padding(.horizontal, 14)
@@ -135,6 +144,27 @@ extension TabStrip {
     }
 }
 
+/// A tab dragged over another one moves into its place, so the strip shows the new order while you drag.
+private struct TabDrop: DropDelegate {
+    let target: String
+    @Binding var dragged: String?
+    let model: AppModel
+
+    func dropEntered(info _: DropInfo) {
+        guard let dragged, dragged != target,
+              let index = model.currentTabs.firstIndex(where: { $0.id == target })
+        else { return }
+        model.moveTab(dragged, to: index)
+    }
+
+    func dropUpdated(info _: DropInfo) -> DropProposal? { DropProposal(operation: .move) }
+
+    func performDrop(info _: DropInfo) -> Bool {
+        dragged = nil
+        return true
+    }
+}
+
 /// A tab's ×: closes the tab (asking first when the agent is in it).
 private struct TabCloseButton: View {
     let action: () -> Void
@@ -154,8 +184,13 @@ private struct TabCloseButton: View {
 }
 
 private struct PaneTreeView: View {
+    @Environment(AppModel.self) private var model
     let tree: PaneTree
     let tab: PaneTab
+    /// Where this part sits in the tab's tree (0 a split's first side, 1 its second): how a divider names its split.
+    var path: [Int] = []
+    /// The ratio while the divider is dragged; the layout gets it when the mouse is let go.
+    @State private var dragging: Double?
 
     var body: some View {
         switch tree {
@@ -163,16 +198,36 @@ private struct PaneTreeView: View {
             PaneView(pane: pane, number: (tab.tree.panes.firstIndex(of: pane) ?? 0) + 1, tab: tab)
         case let .split(axis, first, second, ratio):
             GeometryReader { geometry in
-                if axis == .horizontal {
-                    HStack(spacing: 1) {
-                        PaneTreeView(tree: first, tab: tab).frame(width: (geometry.size.width - 1) * ratio)
-                        PaneTreeView(tree: second, tab: tab)
+                let sideways = axis == .horizontal
+                let length = max((sideways ? geometry.size.width : geometry.size.height) - 1, 1)
+                let shown = dragging ?? ratio
+                let dragged = { (distance: CGFloat) in
+                    min(max(ratio + distance / length, PaneTree.ratios.lowerBound), PaneTree.ratios.upperBound)
+                }
+                Group {
+                    if sideways {
+                        HStack(spacing: 1) {
+                            PaneTreeView(tree: first, tab: tab, path: path + [0]).frame(width: length * shown)
+                            PaneTreeView(tree: second, tab: tab, path: path + [1])
+                        }
+                    } else {
+                        VStack(spacing: 1) {
+                            PaneTreeView(tree: first, tab: tab, path: path + [0]).frame(height: length * shown)
+                            PaneTreeView(tree: second, tab: tab, path: path + [1])
+                        }
                     }
-                } else {
-                    VStack(spacing: 1) {
-                        PaneTreeView(tree: first, tab: tab).frame(height: (geometry.size.height - 1) * ratio)
-                        PaneTreeView(tree: second, tab: tab)
-                    }
+                }
+                .overlay(alignment: .topLeading) {
+                    ResizeHandle(
+                        axis: sideways ? .horizontal : .vertical,
+                        moved: { dragging = dragged($0) },
+                        ended: {
+                            model.setSplitRatio(dragged($0), at: path, inTab: tab.id)
+                            dragging = nil
+                        }
+                    )
+                    .frame(width: sideways ? 7 : nil, height: sideways ? nil : 7)
+                    .offset(x: sideways ? length * shown - 3 : 0, y: sideways ? 0 : length * shown - 3)
                 }
             }
             .background(Theme.line)

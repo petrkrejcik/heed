@@ -23,7 +23,8 @@ final class KeyRouter {
     func start() {
         guard monitor == nil else { return }
         // Clicks: one in a terminal or a web page enters INSERT there (the pane's view reports it); one anywhere else
-        // in the main window leaves INSERT, so keys never keep going to a pane you clicked away from.
+        // in the main window leaves INSERT, so keys never keep going to a pane you clicked away from. Dragging a
+        // divider changes nothing.
         mouseMonitor = NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown) { [weak self] event in
             guard let window = event.window, window.identifier == AppModel.mainWindowID,
                   let frame = window.contentView?.superview
@@ -69,7 +70,9 @@ final class KeyRouter {
     private static func isPane(_ view: NSView?) -> Bool {
         var current = view
         while let candidate = current {
-            if TerminalSurfaces.shared.isTerminalView(candidate) || BrowserSurfaces.shared.isBrowserView(candidate) {
+            if TerminalSurfaces.shared.isTerminalView(candidate) || BrowserSurfaces.shared.isBrowserView(candidate)
+                || candidate is ResizeHandleView
+            {
                 return true
             }
             current = candidate.superview

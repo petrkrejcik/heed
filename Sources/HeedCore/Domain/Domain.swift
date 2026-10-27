@@ -41,6 +41,15 @@ public struct TaskLayout: Hashable, Sendable, Codable {
 
     public func contains(pane id: String) -> Bool { tabs.contains { $0.tree.contains(id) } }
 
+    /// Moves tab `id` to position `index` (dragged in the tab strip). The active tab stays the same tab.
+    public mutating func moveTab(_ id: String, to index: Int) {
+        guard let from = tabs.firstIndex(where: { $0.id == id }) else { return }
+        let active = tabs.indices.contains(activeTab) ? tabs[activeTab].id : nil
+        let tab = tabs.remove(at: from)
+        tabs.insert(tab, at: min(max(index, 0), tabs.count))
+        if let active, let now = tabs.firstIndex(where: { $0.id == active }) { activeTab = now }
+    }
+
     /// A page went somewhere or got its title: its pane keeps both, and a page alone in its tab names the tab.
     public mutating func pageChanged(_ id: String, url: String, title: String) {
         for index in tabs.indices where tabs[index].tree.contains(id) {

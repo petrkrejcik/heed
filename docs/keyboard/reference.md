@@ -50,8 +50,8 @@ This page is generated from the code (`mise run shots`).
 | `pane.zoom` | `<C-w>z` | zoom pane |
 | `pane.close` | `<C-w>q`, `<D-w>` (browser) | close pane |
 | `tab.close` |  | close the tab, every pane in it |
-| `tab.next` | `gt` | next tab |
-| `tab.prev` | `gT` | previous tab |
+| `tab.next` | `gt`, `<D-}>`, `<D-}>` (INSERT) | next tab |
+| `tab.prev` | `gT`, `<D-{>`, `<D-{>` (INSERT) | previous tab |
 | `tab.new` | `gn` | new tab with shell |
 | `tab.agent` | `gc` | the task's agent: its tab, else the agent closed last (resumed), else a new one |
 | `tab.go` `<n>` |  | go to tab n |

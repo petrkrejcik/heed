@@ -266,6 +266,17 @@ struct ViewBindingClashTests {
         #expect(Keymaps.build().problems.isEmpty)
     }
 
+    @Test func browserStyleTabKeysWorkInNormalAndInsert() {
+        var engine = engine()
+        // ⌘⇧] arrives as ⌘} (macOS keeps shift in the character).
+        #expect(engine.handle(KeyStroke("}", .command)) == .run(CommandInvocation(name: "tab.next")))
+        #expect(engine.handle(KeyStroke("}")) == .run(CommandInvocation(name: "group.next")))
+        engine.enter(.insert)
+        #expect(engine.handle(KeyStroke("{", .command)) == .run(CommandInvocation(name: "tab.prev")))
+        #expect(engine.handle(KeyStroke("}", .command)) == .run(CommandInvocation(name: "tab.next")))
+        #expect(engine.handle(KeyStroke("{")) == .terminal)
+    }
+
     @Test func visualActsOnTheSelectedItems() {
         let built = Keymaps.build()
         var engine = ModeEngine(keymaps: built.keymaps, scoped: built.scoped)

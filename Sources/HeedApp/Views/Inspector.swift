@@ -77,7 +77,7 @@ struct Inspector: View {
             }
             Spacer()
         }
-        .frame(width: 320)
+        .frame(width: model.inspectorWidth)
         .background(Theme.bg2)
         .overlay(alignment: .leading) { Theme.line.frame(width: 1) }
     }
