@@ -70,6 +70,7 @@ global_activate = "<C-M-h>"
 
 # Bindings per mode ([keys.normal], [keys.visual], ...) or per view ([keys.tasks], [keys.inbox], [keys.issues],
 # [keys.diff], [keys.pr]), in vim notation, each naming a command (the same names : completes). "" unbinds.
+# [keys.browser] is for a focused web page: single ⌘ or ⌃ chords, which work while you type in the page too.
 # [keys.normal]
 # "gB" = ""
 # "<C-j>" = "row.next"

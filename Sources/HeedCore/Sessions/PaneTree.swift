@@ -8,11 +8,14 @@ public struct PaneSpec: Hashable, Sendable, Codable, Identifiable {
         case shell
         /// A pinned command (`[commands]`: test, build); its exit code sets the tab's glyph.
         case command
+        /// A web page (`url`), not a terminal: `title` is the page's.
+        case browser
 
         /// A pane that shows a terminal and takes keys in INSERT.
         public var isTerminal: Bool {
             switch self {
             case .agent, .shell, .command: true
+            case .browser: false
             }
         }
 
@@ -28,15 +31,19 @@ public struct PaneSpec: Hashable, Sendable, Codable, Identifiable {
     public var directory: String
     /// Typed into the shell once it starts (the agent command, a pinned command). Nil for a plain shell.
     public var command: String?
+    /// The address a page pane shows, as last navigated; nil for terminals and for a page not given one yet.
+    public var url: String?
 
     public init(
-        id: String = UUID().uuidString, role: Role, title: String, directory: String, command: String? = nil
+        id: String = UUID().uuidString, role: Role, title: String, directory: String, command: String? = nil,
+        url: String? = nil
     ) {
         self.id = id
         self.role = role
         self.title = title
         self.directory = directory
         self.command = command
+        self.url = url
     }
 }
 

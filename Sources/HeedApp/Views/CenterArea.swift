@@ -33,40 +33,13 @@ private struct TabStrip: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            ForEach(Array(model.currentTabs.enumerated()), id: \.element.id) { index, tab in
-                let on = index == model.currentTabIndex
-                HStack(spacing: 8) {
-                    if let agent = tab.tree.panes.first(where: { $0.role == .agent }) {
-                        let state = (model.agents[agent.id] ?? AgentTab()).state
-                        StateGlyph(state: state.state, guessed: state.source == .guessed, size: 11)
-                    } else if let command = tab.tree.panes.first(where: { $0.role == .command }),
-                              let code = model.commandResults[command.id]
-                    {
-                        // A pinned command's last run: done when it passed, a red square when it failed.
-                        if code == 0 {
-                            StateGlyph(state: .done, size: 11)
-                        } else {
-                            RoundedRectangle(cornerRadius: 2).fill(Theme.err).frame(width: 9, height: 9)
-                        }
-                    }
-                    Text(tab.title).lineLimit(1).fixedSize()
-                    TabCloseButton { model.closeTab(index) }
-                }
-                .font(Theme.mono(12))
-                .foregroundStyle(on ? Theme.fg : Theme.fg3)
-                .padding(.horizontal, 14)
-                .frame(height: 36)
-                .background(on ? Theme.pane : .clear)
-                .overlay(alignment: .bottom) { if on { Theme.inverse.frame(height: 2) } }
-                .contentShape(Rectangle())
-                .onTapGesture { model.selectTab(index) }
+            // More tabs than fit scroll sideways rather than push the inspector off the window; the active one stays in
+            // view.
+            ScrollViewReader { proxy in
+                ScrollView(.horizontal, showsIndicators: false) { tabs }
+                    .onAppear { reveal(proxy) }
+                    .onChange(of: model.currentTab?.id) { reveal(proxy) }
             }
-            Text("+").font(Theme.mono(13)).foregroundStyle(Theme.fg3).padding(.horizontal, 14)
-                .frame(height: 36)
-                .contentShape(Rectangle())
-                .onTapGesture { model.perform(CommandInvocation(name: "tab.new")) }
-                .help("New tab (:tab.new)")
-            Spacer()
             HStack(spacing: 10) {
                 // What the keys do here, as you have them bound: into the terminal in NORMAL, back out in INSERT.
                 if model.mode == .insert {
@@ -96,6 +69,51 @@ private struct TabStrip: View {
         .frame(height: 36)
         .background(Theme.bg2)
         .overlay(alignment: .bottom) { Theme.line.frame(height: 1) }
+    }
+
+    private func reveal(_ proxy: ScrollViewProxy) {
+        if let id = model.currentTab?.id { proxy.scrollTo(id) }
+    }
+
+    private var tabs: some View {
+        HStack(spacing: 0) {
+            ForEach(Array(model.currentTabs.enumerated()), id: \.element.id) { index, tab in
+                let on = index == model.currentTabIndex
+                HStack(spacing: 8) {
+                    if let agent = tab.tree.panes.first(where: { $0.role == .agent }) {
+                        let state = (model.agents[agent.id] ?? AgentTab()).state
+                        StateGlyph(state: state.state, guessed: state.source == .guessed, size: 11)
+                    } else if let command = tab.tree.panes.first(where: { $0.role == .command }),
+                              let code = model.commandResults[command.id]
+                    {
+                        // A pinned command's last run: done when it passed, a red square when it failed.
+                        if code == 0 {
+                            StateGlyph(state: .done, size: 11)
+                        } else {
+                            RoundedRectangle(cornerRadius: 2).fill(Theme.err).frame(width: 9, height: 9)
+                        }
+                    } else if tab.tree.panes.allSatisfy({ $0.role == .browser }) {
+                        Image(systemName: "globe").font(.system(size: 10))
+                    }
+                    Text(tab.title).lineLimit(1).fixedSize()
+                    TabCloseButton { model.closeTab(index) }
+                }
+                .font(Theme.mono(12))
+                .foregroundStyle(on ? Theme.fg : Theme.fg3)
+                .padding(.horizontal, 14)
+                .frame(height: 36)
+                .background(on ? Theme.pane : .clear)
+                .overlay(alignment: .bottom) { if on { Theme.inverse.frame(height: 2) } }
+                .contentShape(Rectangle())
+                .onTapGesture { model.selectTab(index) }
+                .id(tab.id)
+            }
+            Text("+").font(Theme.mono(13)).foregroundStyle(Theme.fg3).padding(.horizontal, 14)
+                .frame(height: 36)
+                .contentShape(Rectangle())
+                .onTapGesture { model.perform(CommandInvocation(name: "tab.new")) }
+                .help("New tab (:tab.new)")
+        }
     }
 }
 
@@ -172,8 +190,12 @@ private struct PaneView: View {
                     .foregroundStyle(active ? Theme.ink : Theme.fg)
                     .padding(.horizontal, 5)
                     .background(RoundedRectangle(cornerRadius: 3).fill(active ? Theme.inverse : Theme.selected))
-                Text(pane.title)
-                Spacer()
+                if pane.role == .browser {
+                    BrowserToolbar(pane: pane)
+                } else {
+                    Text(pane.title)
+                    Spacer()
+                }
                 if pane.role == .agent {
                     let state = (model.agents[pane.id] ?? AgentTab()).state.state
                     Text(state.rawValue).foregroundStyle(stateColor(state))
@@ -182,11 +204,21 @@ private struct PaneView: View {
             .font(Theme.mono(11))
             .foregroundStyle(active ? Theme.fg : Theme.fg3)
             .padding(.horizontal, 10)
-            .frame(height: 26)
+            .frame(height: pane.role == .browser ? 30 : 26)
             .background(Theme.paneHeader)
 
             if ShotMode.active {
-                FakeTerminal(pane: pane)
+                if pane.role == .browser { FakeBrowser(pane: pane) } else { FakeTerminal(pane: pane) }
+            } else if pane.role == .browser, model.isFixture {
+                // Pages in fixtures and snapshots stay off the network.
+                FakeBrowser(pane: pane)
+            } else if pane.role == .browser {
+                BrowserPane(
+                    pane: pane, isFocused: active && model.mode == .insert, focusRequest: model.terminalFocusRequest
+                )
+                .overlay {
+                    if let failure = BrowserSurfaces.shared.page(for: pane).failure { PageFailure(message: failure) }
+                }
             } else if !model.terminalsReady {
                 // The PATH and zmx sessions are not known yet; a terminal made now would start with the wrong ones.
                 Theme.pane
@@ -212,7 +244,10 @@ private struct PaneView: View {
             if let hint = model.hintLabel(for: .pane(pane.id)) { HintBadge(label: hint).padding(30) }
         }
         .contentShape(Rectangle())
-        .onTapGesture { model.clickedPane(pane.id) }
+        .onTapGesture {
+            // A page reports clicks into it itself; its header holds the address field, which must keep the click.
+            if pane.role == .browser { model.focusPane(pane.id) } else { model.clickedPane(pane.id) }
+        }
     }
 
     private func stateColor(_ state: AgentState) -> Color {

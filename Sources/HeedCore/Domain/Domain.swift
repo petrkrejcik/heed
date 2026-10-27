@@ -36,6 +36,37 @@ public struct TaskLayout: Hashable, Sendable, Codable {
         activeTab = max(0, min(activeTab, tabs.count - 1))
     }
 
+    public func contains(pane id: String) -> Bool { tabs.contains { $0.tree.contains(id) } }
+
+    /// A page went somewhere or got its title: its pane keeps both, and a page alone in its tab names the tab.
+    public mutating func pageChanged(_ id: String, url: String, title: String) {
+        for index in tabs.indices where tabs[index].tree.contains(id) {
+            tabs[index].tree = tabs[index].tree.updating(id) { pane in
+                pane.url = url
+                pane.title = title
+            }
+            if tabs[index].tree.panes.count == 1 {
+                tabs[index].title = BrowserAddress.tabTitle(title: title, url: url)
+            }
+        }
+    }
+
+    /// A tab with a page at `url`, right after the tab with pane `id` (a link opened from it), else at the end.
+    /// `show` makes it the active tab; otherwise the active one stays. Returns the new pane.
+    @discardableResult
+    public mutating func openPage(_ url: String?, nextTo id: String? = nil, directory: String, show: Bool) -> PaneSpec {
+        let pane = PaneSpec(role: .browser, title: "", directory: directory, url: url)
+        let tab = PaneTab(title: BrowserAddress.tabTitle(title: "", url: url), tree: .leaf(pane))
+        let index = id.flatMap { id in tabs.firstIndex { $0.tree.contains(id) } }.map { $0 + 1 } ?? tabs.count
+        tabs.insert(tab, at: index)
+        if show {
+            activeTab = index
+        } else if tabs.count > 1, activeTab >= index {
+            activeTab += 1
+        }
+        return pane
+    }
+
     /// The first agent pane (its tab index and id), else the first pane: where prompts are typed.
     public var agentPane: (tab: Int, pane: String)? {
         for (index, tab) in tabs.enumerated() {

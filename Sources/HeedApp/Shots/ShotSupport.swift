@@ -84,6 +84,25 @@ struct ShotFrame<Content: View>: View {
     }
 }
 
+/// A web page in shot mode: its title and address on a blank page, with nothing loaded.
+struct FakeBrowser: View {
+    let pane: PaneSpec
+
+    var body: some View {
+        if let failure = Fixtures.pageFailures[pane.id] {
+            PageFailure(message: failure)
+        } else {
+            VStack(spacing: 8) {
+                Text(pane.title.isEmpty ? "New page" : pane.title).font(Theme.ui(15, weight: .medium))
+                Text(pane.url ?? "").font(Theme.mono(11.5)).foregroundStyle(Theme.fg3)
+            }
+            .foregroundStyle(Theme.fg)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(Theme.pane)
+        }
+    }
+}
+
 /// A pane's terminal in shot mode: the fixture's transcript, styled like the real terminal.
 struct FakeTerminal: View {
     let pane: PaneSpec

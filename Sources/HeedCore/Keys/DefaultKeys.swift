@@ -17,7 +17,7 @@ public enum DefaultKeys {
         ("<C-w>v", "pane.split.right"), ("<C-w>s", "pane.split.below"), ("<C-w>z", "pane.zoom"),
         ("<C-w>q", "pane.close"), ("<C-w>h", "pane.left"), ("<C-w>l", "pane.right"), ("<C-w>j", "pane.down"),
         ("<C-w>k", "pane.up"),
-        ("gt", "tab.next"), ("gT", "tab.prev"), ("gn", "tab.new"),
+        ("gt", "tab.next"), ("gT", "tab.prev"), ("gn", "tab.new"), ("<D-t>", "browser.new"),
         ("gs", "view.tasks"), ("gm", "view.inbox"), ("gi", "view.issues"), ("gp", "view.prs"),
         ("go", "overlay.item"), ("gd", "overlay.diff"), ("gS", "pr.task"),
         ("<C-o>", "jump.back"), ("gB", "open.browser"), ("gR", "open.repo"),
@@ -36,6 +36,7 @@ public enum DefaultKeys {
 
     public static let insert: [(String, String)] = [
         (insertEscape, "mode.normal"), ("<S-Esc>", "mode.normal"), ("<D-/>", "overlay.help"),
+        ("<D-t>", "browser.new"),
     ]
 
     public static let command: [(String, String)] = [
@@ -47,8 +48,18 @@ public enum DefaultKeys {
         ("<Esc>", "mode.normal"), ("<D-/>", "overlay.help"),
     ]
 
-    /// Bindings that only apply in one view, keyed by view name.
+    /// Scopes that follow the focused pane rather than the view: they apply in INSERT too (`ModeEngine.paneScope`).
+    public static let paneScopes: Set<String> = ["browser"]
+
+    /// Bindings that only apply in one view, or to one kind of pane (`paneScopes`), keyed by its name.
     public static let scoped: [String: [(String, String)]] = [
+        /// A focused web page: a browser's own shortcuts, as single ⌘ chords. ⌘← and ⌘→ are the page's (back and
+        /// forward outside a text field, start and end of line in one).
+        "browser": [
+            ("<D-[>", "browser.back"), ("<D-]>", "browser.forward"), ("<D-l>", "browser.location"),
+            ("<D-r>", "browser.reload"), ("<D-=>", "browser.zoom.in"), ("<D-+>", "browser.zoom.in"),
+            ("<D-->", "browser.zoom.out"), ("<D-w>", "pane.close"),
+        ],
         "tasks": [("r", "tasks.refresh")],
         "inbox": [
             ("<Space>", "select.toggle"), ("s", "items.start"), ("x", "items.read"),
@@ -151,6 +162,15 @@ public enum Keymaps {
                             mode: .normal,
                             keys: notation,
                             message: "unknown command in [keys.\(scope)]"
+                        ))
+                        continue
+                    }
+                    if DefaultKeys.paneScopes.contains(scope),
+                       keys.count != 1 || keys[0].modifiers.isDisjoint(with: [.command, .control])
+                    {
+                        problems.append(Problem(
+                            mode: .normal, keys: notation,
+                            message: "[keys.\(scope)]: one ⌘ or ⌃ chord; other keys are typed into the page"
                         ))
                         continue
                     }

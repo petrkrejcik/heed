@@ -29,8 +29,11 @@ public struct ModeEngine: Sendable {
     public private(set) var keymaps: [Mode: Keymap]
     /// Per-view bindings (`[keys.repos]`), checked before NORMAL's own; VISUAL keeps to its own keymap.
     public private(set) var scopedKeymaps: [String: Keymap]
-    /// The view whose scoped bindings apply, e.g. `repos`.
+    /// The view whose scoped bindings apply, e.g. `inbox`.
     public var scope: String?
+    /// The kind of the focused pane whose bindings apply (`browser`), checked first in NORMAL and in INSERT alike:
+    /// single ⌘ or ⌃ chords, so a web page answers ⌘L while you type in it.
+    public var paneScope: String?
 
     public init(keymaps: [Mode: Keymap], scoped: [String: Keymap] = [:]) {
         self.keymaps = keymaps
@@ -76,14 +79,23 @@ public struct ModeEngine: Sendable {
         let keymap = keymaps[mode] ?? Keymap()
         switch mode {
         case .insert:
+            if let line = paneCommand(stroke) { return run(line, count: nil) }
             if case let .command(line) = keymap.lookup([stroke]) { return run(line, count: nil) }
             return .terminal
         case .command, .hint:
             if case let .command(line) = keymap.lookup([stroke]) { return run(line, count: nil) }
             return .text(stroke)
+        case .normal where pending.isEmpty && count == nil:
+            if let line = paneCommand(stroke) { return run(line, count: nil) }
+            return handleSequence(stroke, keymap: keymap)
         case .normal, .visual:
             return handleSequence(stroke, keymap: keymap)
         }
+    }
+
+    private func paneCommand(_ stroke: KeyStroke) -> String? {
+        guard let paneScope, case let .command(line) = scopedKeymaps[paneScope]?.lookup([stroke]) else { return nil }
+        return line
     }
 
     private mutating func handleSequence(_ stroke: KeyStroke, keymap: Keymap) -> Outcome {

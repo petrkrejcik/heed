@@ -103,8 +103,18 @@ public enum Fixtures {
                 PaneTab(id: "t2-t3", title: "jest", tree: .leaf(PaneSpec(
                     id: "t2-jest", role: .command, title: "jest", directory: upload, command: "yarn test:jest"
                 ))),
+                PaneTab(id: "t2-t4", title: "Agent Builder - Elastic", tree: .leaf(PaneSpec(
+                    id: "t2-page", role: .browser, title: "Agent Builder - Elastic", directory: upload,
+                    url: "http://299433-fix-image-upload-403.localhost/app/agent_builder"
+                ))),
             ]),
-            "t3": TaskLayout(tabs: [agentTab("t3", review)]),
+            "t3": TaskLayout(tabs: [
+                agentTab("t3", review),
+                PaneTab(id: "t3-t2", title: "localhost", tree: .leaf(PaneSpec(
+                    id: "t3-page", role: .browser, title: "", directory: review,
+                    url: "http://localhost:5603/app/agent_builder"
+                ))),
+            ]),
             "t4": TaskLayout(tabs: [agentTab("t4", undo)]),
             "t5": TaskLayout(tabs: [agentTab("t5", main)]),
         ]

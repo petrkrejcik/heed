@@ -22,22 +22,24 @@ final class KeyRouter {
 
     func start() {
         guard monitor == nil else { return }
-        // Clicks: one in a terminal enters INSERT there (the terminal view reports it); one anywhere else in the main
-        // window leaves INSERT, so keys never keep going to a terminal you clicked away from.
+        // Clicks: one in a terminal or a web page enters INSERT there (the pane's view reports it); one anywhere else
+        // in the main window leaves INSERT, so keys never keep going to a pane you clicked away from.
         mouseMonitor = NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown) { [weak self] event in
             guard let window = event.window, window.identifier == AppModel.mainWindowID,
                   let frame = window.contentView?.superview
             else { return event }
             let hit = frame.hitTest(frame.convert(event.locationInWindow, from: nil))
-            if !Self.isTerminal(hit) {
+            if !Self.isPane(hit) {
                 MainActor.assumeIsolated { self?.model?.clickedOutsideTerminal() }
             }
             return event
         }
         monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             // Only the main window is Heed's keyboard; Settings and other windows get their keys untouched.
-            // ⌘Q ⌘W ⌘H ⌘M are the app menu's, whatever has focus: a focused terminal would otherwise take them.
-            if event.window?.identifier == AppModel.mainWindowID, Self.isMenuShortcut(event),
+            // ⌘Q ⌘W ⌘H ⌘M are the app menu's, whatever has focus: a focused terminal would otherwise take them. On a
+            // web page ⌘W is the browser's: it closes the page ([keys.browser]).
+            let onPage = MainActor.assumeIsolated { self?.model?.focusedBrowserPane != nil }
+            if event.window?.identifier == AppModel.mainWindowID, Self.isMenuShortcut(event, onPage: onPage),
                NSApp.mainMenu?.performKeyEquivalent(with: event) == true
             {
                 return nil
@@ -50,10 +52,10 @@ final class KeyRouter {
     }
 
     /// The standard window and app shortcuts every Mac app answers, and nothing else (⌘C, ⌘V stay the terminal's).
-    private static func isMenuShortcut(_ event: NSEvent) -> Bool {
+    private static func isMenuShortcut(_ event: NSEvent, onPage: Bool) -> Bool {
         let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
         guard flags == .command, let key = event.charactersIgnoringModifiers?.lowercased() else { return false }
-        return ["q", "w", "h", "m"].contains(key)
+        return (onPage ? ["q", "h", "m"] : ["q", "w", "h", "m"]).contains(key)
     }
 
     func stop() {
@@ -63,19 +65,22 @@ final class KeyRouter {
         mouseMonitor = nil
     }
 
-    private static func isTerminal(_ view: NSView?) -> Bool {
+    private static func isPane(_ view: NSView?) -> Bool {
         var current = view
         while let candidate = current {
-            if TerminalSurfaces.shared.isTerminalView(candidate) { return true }
+            if TerminalSurfaces.shared.isTerminalView(candidate) || BrowserSurfaces.shared.isBrowserView(candidate) {
+                return true
+            }
             current = candidate.superview
         }
         return false
     }
 
-    /// True when the app used the key; false sends it on to the focused view (the terminal, a text field).
+    /// True when the app used the key; false sends it on to the focused view (the terminal, a text field). A page's
+    /// own chords (⌘W, ⌘R) still work while you type in its address field.
     private func route(_ stroke: KeyStroke) -> Bool {
         guard let model else { return false }
-        if model.textInputActive, stroke != .escape { return false }
+        if model.textInputActive, stroke != .escape, !model.isPageChord(stroke) { return false }
         return model.handle(stroke)
     }
 }

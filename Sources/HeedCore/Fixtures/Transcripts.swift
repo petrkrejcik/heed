@@ -3,6 +3,11 @@ import Foundation
 /// What the fixture panes show in screenshots (shot mode draws these instead of starting a shell), keyed by pane id.
 /// Markup: `{dim}`, `{bold}`, `{green}`, `{blue}`, `{amber}`, `{red}`, `{violet}` start a style, `{/}` ends it.
 public extension Fixtures {
+    /// Fixture pages that failed to load, keyed by pane id, with the reason the page shows.
+    static let pageFailures: [String: String] = [
+        "t3-page": "Could not connect to the server.",
+    ]
+
     static let transcripts: [String: String] = [
         "t2-agent": """
         {bold}claude{/} {dim}· 299433-fix-image-upload-403{/}

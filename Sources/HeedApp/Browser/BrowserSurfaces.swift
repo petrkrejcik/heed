@@ -1,25 +1,50 @@
 import AppKit
+import HeedCore
 import SwiftUI
 import WebKit
 
-/// A web page, drawn from the web view `BrowserSurfaces` keeps for `id`, so it survives re-layout as a terminal does.
-struct BrowserView: NSViewRepresentable {
-    let id: String
-    /// Loaded when the page's web view is first made.
-    let url: String?
-    /// True when the page should own the keyboard.
+/// A web page pane: the pane's web view, kept by `BrowserSurfaces` so it survives re-layout as a terminal does. The
+/// web view is made the first time the pane is drawn, so a page saved in a tab you have not looked at since a relaunch
+/// costs nothing until you do.
+struct BrowserPane: NSViewRepresentable {
+    let pane: PaneSpec
+    /// True when this pane should own the keyboard (focused pane, INSERT).
     let isFocused: Bool
+    let focusRequest: Int
 
     func makeNSView(context _: Context) -> NSView {
-        BrowserSurfaces.shared.view(id, url: url)
+        BrowserSurfaces.shared.view(for: pane)
     }
 
     func updateNSView(_ view: NSView, context _: Context) {
-        if isFocused, let window = view.window, window.firstResponder !== view { window.makeFirstResponder(view) }
+        if isFocused { takeKeyboard(view) }
     }
 }
 
-/// What a page is doing right now, for whatever draws its controls.
+/// Over a page that could not load at all: why, and how to try again.
+struct PageFailure: View {
+    @Environment(AppModel.self) private var model
+    let message: String
+
+    var body: some View {
+        VStack(spacing: 10) {
+            Text("Can't open the page").font(Theme.ui(15, weight: .medium)).foregroundStyle(Theme.fg)
+            Text(message).font(Theme.mono(11.5)).foregroundStyle(Theme.fg3).multilineTextAlignment(.center)
+            if let key = model.keyLabel(for: "browser.reload") {
+                HStack(spacing: 6) {
+                    KeyCap(text: key)
+                    Text("try again").foregroundStyle(Theme.fg3)
+                }
+                .font(Theme.ui(11.5))
+            }
+        }
+        .padding(24)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Theme.pane)
+    }
+}
+
+/// What a page is doing, for its toolbar. The address and title that outlive it are the pane's (`PaneSpec`).
 @MainActor @Observable
 final class BrowserPage {
     var url: String
@@ -38,33 +63,45 @@ final class BrowserPage {
     }
 }
 
-/// Owns every page's web view and state, keyed by an id of the caller's (a pane's). One cookie store for all of them:
-/// you sign in once.
+/// Owns every page pane's web view and state, keyed by pane id. One cookie store for all of them: you sign in to a
+/// host once, and it stays signed in across relaunches.
 @MainActor
 final class BrowserSurfaces {
     static let shared = BrowserSurfaces()
-    private var views: [String: PageWebView] = [:]
+    private var views: [String: HeedWebView] = [:]
     private var pages: [String: BrowserPage] = [:]
     private var observations: [String: [NSKeyValueObservation]] = [:]
     private lazy var delegate = BrowserDelegate(surfaces: self)
 
-    /// A click in a page.
-    var onClick: ((String) -> Void)?
-    /// A page went somewhere or got a title: id, address, title.
+    /// A click in a page (the model focuses its pane and enters INSERT).
+    var onPaneClick: ((String) -> Void)?
+    /// A page went somewhere or got a title: pane, address, title.
     var onNavigated: ((String, String, String) -> Void)?
-    /// A page asked for a new tab: id, address, and whether to show it (a link with a target) or open it behind
-    /// (⌘-click).
+    /// A page asked for a new tab (a link with a target, ⌘-click): pane, address, whether to show it.
     var onOpenTab: ((String, URL, Bool) -> Void)?
 
-    func page(_ id: String, url: String? = nil) -> BrowserPage {
-        if let page = pages[id] { return page }
-        let page = BrowserPage(url: url)
-        pages[id] = page
+    /// Safari's ⌘← and ⌘→: back and forward, unless you are typing in a field (there they move the caret).
+    private static let historyKeys = """
+    document.addEventListener('keydown', (e) => {
+      if (!e.metaKey || e.altKey || e.ctrlKey || e.shiftKey) return;
+      if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+      const el = document.activeElement;
+      if (el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName))) return;
+      e.preventDefault();
+      if (e.key === 'ArrowLeft') history.back(); else history.forward();
+    }, true);
+    """
+
+    func page(for pane: PaneSpec) -> BrowserPage {
+        if let page = pages[pane.id] { return page }
+        let page = BrowserPage(url: pane.url)
+        page.title = pane.title
+        pages[pane.id] = page
         return page
     }
 
-    func view(_ id: String, url: String?) -> NSView {
-        if let existing = views[id] {
+    func view(for pane: PaneSpec) -> NSView {
+        if let existing = views[pane.id] {
             existing.removeFromSuperview()
             return existing
         }
@@ -72,55 +109,28 @@ final class BrowserSurfaces {
         configuration.websiteDataStore = .default()
         // Without Safari's tokens some sites (Google sign-in) turn an embedded browser away.
         configuration.applicationNameForUserAgent = "Version/26.0 Safari/605.1.15"
-        let view = PageWebView(frame: .zero, configuration: configuration)
+        configuration.userContentController.addUserScript(WKUserScript(
+            source: Self.historyKeys, injectionTime: .atDocumentStart, forMainFrameOnly: true
+        ))
+        // Inspect Element in the page's menu. WebKit has no public switch for it; Safari's Develop menu works too.
+        configuration.preferences.setValue(true, forKey: "developerExtrasEnabled")
+        let view = HeedWebView(frame: .zero, configuration: configuration)
         view.allowsBackForwardNavigationGestures = true
-        // Safari's Develop menu can inspect it.
         view.isInspectable = true
         view.navigationDelegate = delegate
         view.uiDelegate = delegate
-        view.onClick = { [weak self] in self?.onClick?(id) }
-        views[id] = view
-        _ = page(id, url: url)
-        observe(view, id: id)
-        if let url = url.flatMap(URL.init(string:)) { view.load(URLRequest(url: url)) }
+        let paneID = pane.id
+        view.onClick = { [weak self] in self?.onPaneClick?(paneID) }
+        views[paneID] = view
+        let start = page(for: pane).url
+        observe(view, paneID: paneID)
+        if !start.isEmpty, let url = URL(string: start) { view.load(URLRequest(url: url)) }
         return view
     }
 
-    func isBrowserView(_ view: NSView) -> Bool {
-        views.values.contains { $0 === view }
-    }
-
-    func load(_ address: String, in id: String) {
-        guard let url = URL(string: address) else { return }
-        views[id]?.load(URLRequest(url: url))
-    }
-
-    func back(_ id: String) { views[id]?.goBack() }
-    func forward(_ id: String) { views[id]?.goForward() }
-
-    func reloadOrStop(_ id: String) {
-        guard let view = views[id] else { return }
-        if view.isLoading { view.stopLoading() } else { view.reload() }
-    }
-
-    /// Multiplies the page's zoom by `factor`; nil is actual size.
-    func zoom(_ id: String, by factor: Double?) {
-        guard let view = views[id] else { return }
-        view.pageZoom = factor.map { min(max(view.pageZoom * $0, 0.5), 3) } ?? 1
-    }
-
-    /// A page closed for good: its web view goes, and with it its web content process.
-    func close(_ id: String) {
-        observations.removeValue(forKey: id)
-        pages.removeValue(forKey: id)
-        guard let view = views.removeValue(forKey: id) else { return }
-        view.stopLoading()
-        view.removeFromSuperview()
-    }
-
-    private func observe(_ view: WKWebView, id: String) {
-        let sync: @Sendable () -> Void = { [weak self] in MainActor.assumeIsolated { self?.sync(id) } }
-        observations[id] = [
+    private func observe(_ view: WKWebView, paneID: String) {
+        let sync: @Sendable () -> Void = { [weak self] in MainActor.assumeIsolated { self?.sync(paneID) } }
+        observations[paneID] = [
             view.observe(\.url) { _, _ in sync() },
             view.observe(\.title) { _, _ in sync() },
             view.observe(\.isLoading) { _, _ in sync() },
@@ -130,8 +140,8 @@ final class BrowserSurfaces {
         ]
     }
 
-    private func sync(_ id: String) {
-        guard let view = views[id], let page = pages[id] else { return }
+    private func sync(_ paneID: String) {
+        guard let view = views[paneID], let page = pages[paneID] else { return }
         let url = view.url?.absoluteString ?? page.url
         let title = view.title ?? ""
         let moved = url != page.url || title != page.title
@@ -141,36 +151,84 @@ final class BrowserSurfaces {
         page.progress = view.estimatedProgress
         page.canGoBack = view.canGoBack
         page.canGoForward = view.canGoForward
-        if moved, !url.isEmpty { onNavigated?(id, url, title) }
+        if moved, !url.isEmpty { onNavigated?(paneID, url, title) }
     }
 
-    fileprivate func id(of view: WKWebView) -> String? {
-        views.first { $0.value === view }?.key
-    }
-
+    /// A page started loading: what went wrong last time no longer applies.
     fileprivate func started(_ view: WKWebView) {
-        guard let id = id(of: view), let page = pages[id] else { return }
+        guard let id = paneID(of: view), let page = pages[id] else { return }
         page.status = nil
         page.failure = nil
     }
 
     fileprivate func responded(_ view: WKWebView, status: Int) {
-        guard let id = id(of: view) else { return }
+        guard let id = paneID(of: view) else { return }
         pages[id]?.status = status >= 400 ? status : nil
     }
 
     fileprivate func failed(_ view: WKWebView, _ error: Error) {
         let error = error as NSError
-        // Cancelled (another load took over) and interrupted (handed to a download or another app) are not failures.
+        // Cancelled (another load took over) and handed off (a download, another app) are not failures.
         let cancelled = error.domain == NSURLErrorDomain && error.code == NSURLErrorCancelled
-        let interrupted = error.domain == "WebKitErrorDomain" && error.code == 102
-        guard !cancelled, !interrupted, let id = id(of: view) else { return }
+        let handedOff = error.domain == "WebKitErrorDomain" && error.code == 102
+        guard !cancelled, !handedOff, let id = paneID(of: view) else { return }
         pages[id]?.failure = error.localizedDescription
+    }
+
+    func isBrowserView(_ view: NSView) -> Bool {
+        views.values.contains { $0 === view }
+    }
+
+    fileprivate func paneID(of view: WKWebView) -> String? {
+        views.first { $0.value === view }?.key
+    }
+
+    /// Loads `address` in the pane's page. A page whose web view is not made yet (its tab not drawn) keeps the
+    /// address and loads it when it is.
+    func load(_ address: String, paneID: String) {
+        guard let url = URL(string: address) else { return }
+        pages[paneID]?.url = address
+        pages[paneID]?.failure = nil
+        views[paneID]?.load(URLRequest(url: url))
+    }
+
+    func back(_ paneID: String) { views[paneID]?.goBack() }
+    func forward(_ paneID: String) { views[paneID]?.goForward() }
+
+    func reloadOrStop(_ paneID: String) {
+        guard let view = views[paneID] else { return }
+        if view.isLoading {
+            view.stopLoading()
+        } else if view.url == nil, let url = pages[paneID].flatMap({ URL(string: $0.url) }) {
+            // Nothing loaded yet (the first load failed): try the address again.
+            view.load(URLRequest(url: url))
+        } else {
+            view.reload()
+        }
+    }
+
+    /// Multiplies the page's zoom by `factor`; nil is actual size.
+    func zoom(_ paneID: String, by factor: Double?) {
+        guard let view = views[paneID] else { return }
+        view.pageZoom = factor.map { min(max(view.pageZoom * $0, 0.5), 3) } ?? 1
+    }
+
+    func address(of paneID: String) -> String? {
+        views[paneID]?.url?.absoluteString ?? pages[paneID]?.url
+    }
+
+    /// A pane closed for good: its page goes, and with it its web content process.
+    func close(paneID: String) {
+        observations.removeValue(forKey: paneID)
+        pages.removeValue(forKey: paneID)
+        guard let view = views.removeValue(forKey: paneID) else { return }
+        view.stopLoading()
+        view.removeFromSuperview()
     }
 }
 
-/// A web view that says when it is clicked, as a terminal does.
-private final class PageWebView: WKWebView {
+/// A web view that says when it is clicked, as a terminal does, so a click into a page means typing there.
+final class HeedWebView: WKWebView {
     var onClick: (() -> Void)?
 
     override func mouseDown(with event: NSEvent) {
@@ -235,12 +293,13 @@ private final class BrowserDelegate: NSObject, WKNavigationDelegate, WKUIDelegat
         return nil
     }
 
+    /// The page's web content process died (a crash, memory pressure): load it again rather than leave it blank.
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
         webView.reload()
     }
 
     private func openTab(from webView: WKWebView, _ url: URL, show: Bool) {
-        guard let surfaces, let id = surfaces.id(of: webView) else { return }
-        surfaces.onOpenTab?(id, url, show)
+        guard let surfaces, let paneID = surfaces.paneID(of: webView) else { return }
+        surfaces.onOpenTab?(paneID, url, show)
     }
 }
