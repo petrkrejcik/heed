@@ -29,7 +29,8 @@ private let listOutput = """
 {"version":1,"id":"heed-1","type":"progress","stage":"started","message":"Listing tasks"}
 {"version":1,"id":"heed-1","type":"result","data":{"tasks":[{"id":"t-1","title":"Fix upload","status":"In Progress",\
 "pinned":true,"kind":null,"issue":"https://github.com/elastic/kibana/issues/1","pr":null,\
-"worktree":"/w/fix-upload","branch":"fix-upload","port":5602,"running":false,"notePath":"/v/Projects/Fix upload.md",\
+"worktree":"/w/fix-upload","branch":"fix-upload","port":5602,"running":false,\
+"kibanaUrl":"http://fix-upload.localhost/app/agent_builder","notePath":"/v/Projects/Fix upload.md",\
 "epic":null,"created":"2026-10-20"},{"id":"t-2","title":"Plan","status":"To Do","pinned":false,"kind":null,\
 "issue":null,"pr":null,"worktree":null,"branch":null,"port":5601,"running":true,"notePath":"/v/Projects/Plan.md",\
 "epic":"Agent Builder","created":null}],"warnings":["Projects/Odd.md: no status"]}}
@@ -56,6 +57,10 @@ struct PkBridgeTests {
         #expect(list.tasks.map(\.id) == ["t-1", "t-2"])
         #expect(list.tasks[0].pinned && list.tasks[0].port == 5602 && list.tasks[0].worktree == "/w/fix-upload")
         #expect(list.tasks[1].running && list.tasks[1].epic == "Agent Builder" && list.tasks[1].created == nil)
+        #expect(list.tasks[0].kibanaUrl == "http://fix-upload.localhost/app/agent_builder")
+        // An older pk sends no kibanaUrl.
+        #expect(list.tasks[1].kibanaUrl == nil)
+        #expect(WorkTask(list.tasks[0], keeping: nil)?.kibanaURL == "http://fix-upload.localhost/app/agent_builder")
         #expect(list.warnings == ["Projects/Odd.md: no status"])
     }
 

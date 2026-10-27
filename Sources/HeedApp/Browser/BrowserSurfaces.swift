@@ -199,7 +199,16 @@ final class BrowserSurfaces {
         guard let view = views[paneID] else { return }
         if view.isLoading {
             view.stopLoading()
-        } else if view.url == nil, let url = pages[paneID].flatMap({ URL(string: $0.url) }) {
+        } else {
+            reload(paneID)
+        }
+    }
+
+    /// A page not made yet loads fresh when its tab is first drawn, so it has nothing to reload.
+    func reload(_ paneID: String) {
+        guard let view = views[paneID] else { return }
+        pages[paneID]?.failure = nil
+        if view.url == nil, let url = pages[paneID].flatMap({ URL(string: $0.url) }) {
             // Nothing loaded yet (the first load failed): try the address again.
             view.load(URLRequest(url: url))
         } else {

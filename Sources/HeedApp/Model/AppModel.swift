@@ -319,8 +319,37 @@ final class AppModel {
                 let listening = await PortProbe.listening(ports)
                 let changes = TaskSync.running(listening: listening, probed: ports, in: tasks)
                 if !changes.isEmpty { commit(changes) }
+                kibanaProbed = true
                 try? await Task.sleep(for: .seconds(3))
             }
+        }
+    }
+
+    /// Set after the first probe: a Kibana found running at launch (or cached as running) was not started now.
+    private var kibanaProbed = false
+
+    /// Each started Kibana gets its page about 5 seconds later, as pk waited before opening Chrome.
+    private func kibanaStarted(_ taskIDs: [String]) {
+        for id in taskIDs {
+            Task { [weak self] in
+                try? await Task.sleep(for: .seconds(5))
+                self?.openKibanaPage(id)
+            }
+        }
+    }
+
+    /// In the background: a new tab at the end with the active tab kept, or a reload of the page already there.
+    private func openKibanaPage(_ taskID: String) {
+        guard let task = task(taskID), task.running, !task.status.endsTask else { return }
+        switch KibanaPage.action(url: task.kibanaURL, layout: layouts[taskID]) {
+        case let .open(url):
+            var layout = layouts[taskID] ?? TaskLayout(tabs: [])
+            layout.openPage(url, directory: task.directory, show: false)
+            commit(.layoutChanged(task: taskID, layout))
+        case let .reload(pane):
+            BrowserSurfaces.shared.reload(pane)
+        case nil:
+            break
         }
     }
 
@@ -757,6 +786,7 @@ final class AppModel {
         if after.layouts != before.layouts { layouts = after.layouts }
         if after.agents != before.agents { agents = after.agents }
         if let store { Task { await store.apply(changes) } }
+        if kibanaProbed { kibanaStarted(KibanaPage.started(by: changes, in: before.tasks)) }
     }
 
     func commit(_ change: DomainChange) { commit([change]) }

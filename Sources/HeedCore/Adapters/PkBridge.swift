@@ -37,6 +37,8 @@ public struct PkTask: Hashable, Sendable, Codable {
     public var branch: String?
     public var port: Int?
     public var running: Bool
+    /// The address `pk kbn` would open for the task's checkout; nil until it has a port.
+    public var kibanaUrl: String?
     public var notePath: String?
     public var epic: String?
     public var created: String?
@@ -44,8 +46,9 @@ public struct PkTask: Hashable, Sendable, Codable {
     public init(
         id: String?, title: String, status: String, pinned: Bool = false, kind: String? = nil, issue: String? = nil,
         pr: String? = nil, worktree: String? = nil, branch: String? = nil, port: Int? = nil, running: Bool = false,
-        notePath: String? = nil, epic: String? = nil, created: String? = nil
+        kibanaUrl: String? = nil, notePath: String? = nil, epic: String? = nil, created: String? = nil
     ) {
+        self.kibanaUrl = kibanaUrl
         self.id = id
         self.title = title
         self.status = status

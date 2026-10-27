@@ -87,6 +87,7 @@ final class TerminalSurfaces {
             HeedEnvironment.sessionID: sessionID,
             HeedEnvironment.socket: HeedEnvironment.defaultSocketPath(),
             HeedEnvironment.pane: pane.id,
+            HeedEnvironment.pkBrowser: "heed",
         ]
         var launch = pane
         if autostartPanes.remove(pane.id) == nil { launch.command = nil }

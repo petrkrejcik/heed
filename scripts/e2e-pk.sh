@@ -91,5 +91,10 @@ has "Seeded task [5602]" && fail "port 5602 before it was written: $(sidebar)"
 echo "seeded-task:5602" >>"$PK_KBNI_PORTS"
 wait_for "the sidebar shows Seeded task on 5602" has "Seeded task [5602]"
 
+step "pk gives the task's Kibana URL (no Caddy route here, so the port)"
+heed list >"$tmp/list"
+grep -q "^In Progress	Seeded task	5602	http://localhost:5602/app/agent_builder$" "$tmp/list" \
+  || fail "no Kibana URL for Seeded task: $(cat "$tmp/list")"
+
 [[ ! -s "$tmp/watch.err" ]] || fail "watch reported: $(cat "$tmp/watch.err")"
 echo "e2e: OK"

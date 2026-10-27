@@ -93,6 +93,8 @@ public struct WorkTask: Identifiable, Hashable, Sendable, Codable {
     public var port: Int?
     /// Whether something listens on `port`.
     public var running: Bool
+    /// pk's address for the task's Kibana (its Caddy host, else the port); nil until it has a port.
+    public var kibanaURL: String?
     public var epic: String?
     /// `2026-10-21`, as the note has it.
     public var created: String?
@@ -103,9 +105,11 @@ public struct WorkTask: Identifiable, Hashable, Sendable, Codable {
     public init(
         id: String = UUID().uuidString.lowercased(), title: String, status: TaskStatus = .inProgress,
         pinned: Bool = false, kind: String? = nil, issue: String? = nil, pr: String? = nil, worktree: String? = nil,
-        branch: String? = nil, notePath: String? = nil, port: Int? = nil, running: Bool = false, epic: String? = nil,
-        created: String? = nil, lastActivity: Date = Date(), timeline: [TimelineEvent] = []
+        branch: String? = nil, notePath: String? = nil, port: Int? = nil, running: Bool = false,
+        kibanaURL: String? = nil, epic: String? = nil, created: String? = nil, lastActivity: Date = Date(),
+        timeline: [TimelineEvent] = []
     ) {
+        self.kibanaURL = kibanaURL
         self.id = id
         self.title = title
         self.status = status

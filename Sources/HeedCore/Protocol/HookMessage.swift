@@ -7,6 +7,8 @@ public enum HeedEnvironment {
     public static let pane = "HEED_PANE_ID"
     /// Absolute path of the bundled `heed`, for hooks that should not depend on PATH.
     public static let binary = "HEED_BIN"
+    /// Set to `heed` in every terminal Heed starts: `pk kbn` then opens no browser, Heed opens the page.
+    public static let pkBrowser = "PK_BROWSER"
 
     /// `~/Library/Application Support/Heed/heed.sock`, unless overridden.
     public static func defaultSocketPath() -> String {

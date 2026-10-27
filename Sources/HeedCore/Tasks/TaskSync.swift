@@ -9,7 +9,7 @@ public extension WorkTask {
         self.init(
             id: id, title: pk.title, status: TaskStatus(rawValue: pk.status), pinned: pk.pinned, kind: pk.kind,
             issue: pk.issue, pr: pk.pr, worktree: pk.worktree, branch: pk.branch, notePath: pk.notePath,
-            port: pk.port, running: pk.running, epic: pk.epic, created: pk.created,
+            port: pk.port, running: pk.running, kibanaURL: pk.kibanaUrl, epic: pk.epic, created: pk.created,
             lastActivity: existing?.lastActivity ?? pk.created.flatMap(TaskSync.day) ?? now,
             timeline: existing?.timeline ?? []
         )

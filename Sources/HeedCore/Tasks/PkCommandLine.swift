@@ -37,7 +37,9 @@ public enum PkCommandLine {
                 }
             case "list":
                 for task in try await bridge.list().tasks {
-                    write("\(task.status)\t\(task.title)\t\(task.port.map(String.init) ?? "-")")
+                    write(
+                        "\(task.status)\t\(task.title)\t\(task.port.map(String.init) ?? "-")\t\(task.kibanaUrl ?? "-")"
+                    )
                 }
             case "new":
                 let title = args.joined(separator: " ")
