@@ -7,8 +7,8 @@ import HeedCore
 /// - `.terminal`: the event is returned untouched, so it reaches the focused terminal view (INSERT).
 /// - anything else: the event is swallowed and the model acts on it. Outside INSERT a terminal never sees a key.
 ///
-/// Text fields that own the keyboard (the Start work prompt, the filter) set `model.textInputActive`; the router
-/// then lets keys through, except Escape, which always returns to the app.
+/// A page's address field is the one real text field in the window: while it has the keyboard the router lets keys
+/// through to it, except Escape, which always returns to the app.
 @MainActor
 final class KeyRouter {
     private var monitor: Any?
@@ -46,7 +46,8 @@ final class KeyRouter {
             }
             guard event.window?.identifier == AppModel.mainWindowID, let stroke = KeyStroke(event: event)
             else { return event }
-            let used = MainActor.assumeIsolated { self?.route(stroke) ?? false }
+            let fieldFocused = (event.window?.firstResponder as? NSTextView)?.isFieldEditor == true
+            let used = MainActor.assumeIsolated { self?.route(stroke, fieldFocused: fieldFocused) ?? false }
             return used ? nil : event
         }
     }
@@ -77,10 +78,12 @@ final class KeyRouter {
     }
 
     /// True when the app used the key; false sends it on to the focused view (the terminal, a text field). A page's
-    /// own chords (⌘W, ⌘R) still work while you type in its address field.
-    private func route(_ stroke: KeyStroke) -> Bool {
+    /// own chords (⌘W, ⌘R) and ⌘T still work while you type in its address field.
+    private func route(_ stroke: KeyStroke, fieldFocused: Bool) -> Bool {
         guard let model else { return false }
-        if model.textInputActive, stroke != .escape, !model.isPageChord(stroke) { return false }
+        if model.addressFieldOwnsKeys(fieldFocused: fieldFocused), stroke != .escape, !model.isPageChord(stroke) {
+            return false
+        }
         return model.handle(stroke)
     }
 }

@@ -201,8 +201,6 @@ final class AppModel {
     private(set) var newTask: NewTaskForm?
     /// Bumped when the focused terminal should take keyboard focus (entering INSERT, moving panes).
     private(set) var terminalFocusRequest = 0
-    /// A text field owns the keyboard; the key router lets keys through to it.
-    var textInputActive = false
 
     init(domain: Domain, settings: WorkSettings = .default, isFixture: Bool) {
         self.settings = settings
@@ -2565,12 +2563,22 @@ final class AppModel {
     /// The page whose address field you are typing in.
     private(set) var editingAddress: String?
 
-    /// A page's own chord (`[keys.browser]`) while you type in its address field: it still reaches the page.
+    /// Whether keys go to the address field: only while a text field has the keyboard and its page is the one on
+    /// screen. An edit left without ↩ or ⎋ (its tab or task switched away, focus moved to a terminal) ends here, so
+    /// NORMAL gets its keys back instead of passing them to whatever has focus.
+    func addressFieldOwnsKeys(fieldFocused: Bool) -> Bool {
+        guard let editing = editingAddress else { return false }
+        if fieldFocused, editing == focusedBrowserPane { return true }
+        endAddressEdit()
+        return false
+    }
+
+    /// A page's own chord (`[keys.browser]`) or ⌘T while you type in its address field: it still reaches Heed.
     func isPageChord(_ stroke: KeyStroke) -> Bool {
-        guard editingAddress != nil, case .command = engine.scopedKeymaps["browser"]?.lookup([stroke]) else {
-            return false
-        }
-        return true
+        guard editingAddress != nil else { return false }
+        if case .command = engine.scopedKeymaps["browser"]?.lookup([stroke]) { return true }
+        guard case let .command(line) = engine.keymaps[.normal]?.lookup([stroke]) else { return false }
+        return CommandInvocation(parsing: line).name == "browser.new"
     }
 
     /// `browser.new` (⌘T): a tab in the current task with a page at `text`, or an empty one with its address field
@@ -2615,12 +2623,10 @@ final class AppModel {
         }
         if currentTab?.focused != paneID { focusPane(paneID) }
         editingAddress = paneID
-        textInputActive = true
     }
 
     func endAddressEdit() {
         editingAddress = nil
-        textInputActive = false
     }
 
     /// ↩ in the address field: go there (or search), and hand the keyboard to the page.
