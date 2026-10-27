@@ -100,7 +100,8 @@ enum Shots {
         Shot(id: "tasks/new-task-picked", keys: "gi<Space>j<Space>", highlight: [.list, .pickedPanel]),
         Shot(id: "tasks/new-task-from-github", keys: "gis", crop: .dialog),
         Shot(id: "tasks/web-page", keys: "2jl:tab.go<Space>3<CR>", highlight: [.tabStrip, .panes]),
-        Shot(id: "tasks/web-page-new", keys: "<D-t>", crop: .panes),
+        Shot(id: "tasks/new-tab", keys: "<D-t>", crop: .picker, cropPadding: 30),
+        Shot(id: "tasks/web-page-new", keys: "<D-t>b", crop: .panes),
         Shot(id: "tasks/web-page-failed", keys: "3jl", crop: .panes),
     ]
 

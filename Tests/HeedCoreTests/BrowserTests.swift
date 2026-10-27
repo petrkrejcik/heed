@@ -145,7 +145,7 @@ struct BrowserKeyTests {
         #expect(press(&engine, "<D-=>") == [.run(CommandInvocation(name: "browser.zoom.in"))])
         #expect(press(&engine, "<D-->") == [.run(CommandInvocation(name: "browser.zoom.out"))])
         #expect(press(&engine, "<D-w>") == [.run(CommandInvocation(name: "tab.close"))])
-        #expect(press(&engine, "<D-t>") == [.run(CommandInvocation(name: "browser.new"))])
+        #expect(press(&engine, "<D-t>") == [.run(CommandInvocation(name: "tab.open"))])
         #expect(engine.mode == .insert)
         // Everything else is the page's: letters, ⌘← and ⌘C, and ⌘0 (never a ⌘+number key).
         #expect(press(&engine, "r") == [.terminal])
@@ -159,7 +159,8 @@ struct BrowserKeyTests {
         var engine = engine()
         engine.paneScope = "browser"
         #expect(press(&engine, "<D-r>") == [.run(CommandInvocation(name: "browser.reload"))])
-        #expect(press(&engine, "<D-w>") == [.run(CommandInvocation(name: "tab.close"))])
+        // ⌘W closes only the tab you type in.
+        #expect(press(&engine, "<D-w>") == [.unbound([KeyStroke("w", .command)])])
         #expect(press(&engine, "j") == [.run(CommandInvocation(name: "row.next"))])
         #expect(press(&engine, "gt") == [.pending, .run(CommandInvocation(name: "tab.next"))])
     }
@@ -168,12 +169,19 @@ struct BrowserKeyTests {
         var engine = engine()
         engine.enter(.insert)
         #expect(press(&engine, "<D-l>") == [.terminal])
-        #expect(press(&engine, "<D-w>") == [.terminal])
-        // ⌘T opens a page from a terminal too.
-        #expect(press(&engine, "<D-t>") == [.run(CommandInvocation(name: "browser.new"))])
+        #expect(press(&engine, "<D-w>") == [.run(CommandInvocation(name: "tab.close"))])
+        // ⌘T asks what to open, and ⌘D ⌘⇧D split, from a terminal too.
+        #expect(press(&engine, "<D-t>") == [.run(CommandInvocation(name: "tab.open"))])
+        #expect(press(&engine, "<D-d>") == [.run(CommandInvocation(name: "pane.split.right"))])
+        #expect(press(&engine, "<D-D>") == [.run(CommandInvocation(name: "pane.split.below"))])
+        #expect(engine.mode == .insert)
         engine.enter(.normal)
         #expect(press(&engine, "<D-l>") == [.unbound([KeyStroke("l", .command)])])
-        #expect(press(&engine, "<D-t>") == [.run(CommandInvocation(name: "browser.new"))])
+        #expect(press(&engine, "<D-t>") == [.run(CommandInvocation(name: "tab.open"))])
+        #expect(press(&engine, "<D-d>") == [.run(CommandInvocation(name: "pane.split.right"))])
+        // ⌘⇧D comes from AppKit as ⌘ and a capital D.
+        #expect(KeyStroke("D", [.command, .shift]) == KeyStroke("D", .command))
+        #expect(press(&engine, "<D-D>") == [.run(CommandInvocation(name: "pane.split.below"))])
     }
 
     @Test func noCommandNumberKeys() {
@@ -201,5 +209,32 @@ struct BrowserKeyTests {
         """)
         #expect(problems.isEmpty)
         #expect(config?.scopedKeys["browser"]?.first?.1 == "browser.zoom.reset")
+    }
+}
+
+struct NewTabPickerTests {
+    @Test func aKeyPicksAKindAndReturnRepeatsTheLastOne() {
+        let picker = NewTabPicker(last: .page)
+        #expect(picker.handle(KeyStroke("t")) == .open(.terminal))
+        #expect(picker.handle(KeyStroke("b")) == .open(.page))
+        #expect(picker.handle(KeyStroke("CR")) == .open(.page))
+        #expect(NewTabPicker(last: .terminal).handle(KeyStroke("t", .command)) == .open(.terminal))
+        #expect(picker.handle(.escape) == .cancel)
+        #expect(picker.handle(KeyStroke("q")) == .cancel)
+        #expect(picker.handle(KeyStroke("x")) == .handled)
+        #expect(picker.handle(KeyStroke("t", .control)) == .handled)
+    }
+
+    @Test func aPageOpensInThePaneYouChose() {
+        let agent = PaneTab(title: "agent", pane: PaneSpec(id: "agent", role: .agent, title: "claude", directory: "/w"))
+        var layout = TaskLayout(tabs: [agent])
+        layout.add(
+            PaneTab(title: "shell", pane: PaneSpec(id: "shell", role: .shell, title: "zsh", directory: "/w")),
+            show: false
+        )
+        let left = layout.groups[0].id
+        layout.openPage(nil, directory: "/w", show: true, in: left)
+        #expect(layout.groups.map { $0.tabs.map(\.title) } == [["agent", "new page"], ["shell"]])
+        #expect(layout.focused?.id == left)
     }
 }

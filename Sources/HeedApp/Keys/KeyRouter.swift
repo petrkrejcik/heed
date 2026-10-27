@@ -37,10 +37,8 @@ final class KeyRouter {
         }
         monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             // Only the main window is Heed's keyboard; Settings and other windows get their keys untouched.
-            // ⌘Q ⌘W ⌘H ⌘M are the app menu's, whatever has focus: a focused terminal would otherwise take them. On a
-            // web page ⌘W is the browser's: it closes the page ([keys.browser]).
-            let onPage = MainActor.assumeIsolated { self?.model?.focusedBrowserPane != nil }
-            if event.window?.identifier == AppModel.mainWindowID, Self.isMenuShortcut(event, onPage: onPage),
+            // ⌘Q ⌘H ⌘M are the app menu's, whatever has focus: a focused terminal would otherwise take them.
+            if event.window?.identifier == AppModel.mainWindowID, Self.isMenuShortcut(event),
                NSApp.mainMenu?.performKeyEquivalent(with: event) == true
             {
                 return nil
@@ -49,16 +47,19 @@ final class KeyRouter {
             else { return event }
             let fieldFocused = (event.window?.firstResponder as? NSTextView)?.isFieldEditor == true
             let used = MainActor.assumeIsolated { self?.route(stroke, fieldFocused: fieldFocused) ?? false }
-            return used ? nil : event
+            // ⌘W closes the tab you type in (INSERT) and nothing else: never the window, never the terminal's.
+            return used || stroke == Self.closeKey ? nil : event
         }
     }
 
-    /// The standard window and app shortcuts every Mac app answers, and nothing else (⌘C, ⌘V stay the terminal's).
-    private static func isMenuShortcut(_ event: NSEvent, onPage: Bool) -> Bool {
+    /// The standard app shortcuts every Mac app answers, and nothing else (⌘C, ⌘V stay the terminal's).
+    private static func isMenuShortcut(_ event: NSEvent) -> Bool {
         let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
         guard flags == .command, let key = event.charactersIgnoringModifiers?.lowercased() else { return false }
-        return (onPage ? ["q", "h", "m"] : ["q", "w", "h", "m"]).contains(key)
+        return ["q", "h", "m"].contains(key)
     }
+
+    private static let closeKey = KeyStroke("w", .command)
 
     func stop() {
         if let monitor { NSEvent.removeMonitor(monitor) }
@@ -81,7 +82,7 @@ final class KeyRouter {
     }
 
     /// True when the app used the key; false sends it on to the focused view (the terminal, a text field). A page's
-    /// own chords (⌘W, ⌘R) and ⌘T still work while you type in its address field.
+    /// own chords (⌘R, ⌘L) and ⌘T still work while you type in its address field.
     private func route(_ stroke: KeyStroke, fieldFocused: Bool) -> Bool {
         guard let model else { return false }
         if model.addressFieldOwnsKeys(fieldFocused: fieldFocused), stroke != .escape, !model.isPageChord(stroke) {

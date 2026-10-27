@@ -70,6 +70,9 @@ struct MainWindow: View {
             if let picker = model.linkPicker { LinkPickerView(picker: picker) }
         }
         .overlay {
+            if let picker = model.tabPicker { TabPickerView(picker: picker) }
+        }
+        .overlay {
             if let confirmation = model.confirmation { ConfirmationView(confirmation: confirmation) }
         }
         .overlay {
@@ -582,6 +585,50 @@ struct LinkPickerView: View {
         HStack(spacing: 5) {
             KeyCap(text: keys)
             Text(text).font(Theme.ui(11.5)).foregroundStyle(Theme.fg3)
+        }
+    }
+}
+
+/// `⌘T`: what the new tab shows, one key each.
+struct TabPickerView: View {
+    @Environment(AppModel.self) private var model
+    let picker: NewTabPicker
+
+    var body: some View {
+        ZStack {
+            Color.black.opacity(0.5)
+                .onTapGesture { model.cancelTabPicker() }
+            VStack(alignment: .leading, spacing: 0) {
+                Text("New tab").font(Theme.ui(15, weight: .semibold)).padding(18)
+                ForEach(NewTabPicker.Kind.allCases, id: \.self) { kind in
+                    HStack(spacing: 10) {
+                        KeyCap(text: kind.key)
+                        Image(systemName: kind == .page ? "globe" : "terminal").font(.system(size: 11))
+                            .foregroundStyle(Theme.fg3).frame(width: 16)
+                        Text(kind.label).font(Theme.ui(13))
+                        Spacer(minLength: 8)
+                        if kind == picker.last { Text("↩").font(Theme.mono(11)).foregroundStyle(Theme.fg3) }
+                    }
+                    .padding(.horizontal, 18)
+                    .padding(.vertical, 8)
+                    .background(kind == picker.last ? Theme.bg3 : .clear)
+                    .overlay(alignment: .leading) { if kind == picker.last { Theme.block.frame(width: 2) } }
+                    .contentShape(Rectangle())
+                    .onTapGesture { model.openTab(kind) }
+                }
+                HStack(spacing: 5) {
+                    KeyCap(text: "⎋")
+                    Text("close").font(Theme.ui(11.5)).foregroundStyle(Theme.fg3)
+                }
+                .padding(18)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .overlay(alignment: .top) { Theme.line.frame(height: 1) }
+            }
+            .frame(width: 320, alignment: .leading)
+            .background(RoundedRectangle(cornerRadius: 10).fill(Theme.bg2))
+            .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Theme.line))
+            .shadow(color: .black.opacity(0.5), radius: 30)
+            .shotRegion(.picker)
         }
     }
 }

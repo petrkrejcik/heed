@@ -907,6 +907,10 @@ final class AppModel {
             answerLinkPicker(stroke)
             return true
         }
+        if tabPicker != nil {
+            answerTabPicker(stroke)
+            return true
+        }
         if firstRun != nil {
             if stroke == KeyStroke("CR") || stroke == KeyStroke("CR", .command) || stroke == .escape {
                 firstRun = nil
@@ -930,7 +934,7 @@ final class AppModel {
             handleNewTask(stroke)
             return true
         }
-        // Escape leaves a page's address field, as in a browser; a page chord (⌘W, ⌘R) leaves it and runs.
+        // Escape leaves a page's address field, as in a browser; a page chord (⌘R, ⌘L) leaves it and runs.
         if editingAddress != nil {
             endAddressEdit()
             if stroke == .escape { return true }
@@ -961,8 +965,8 @@ final class AppModel {
             flash = nil
             perform(invocation)
         case let .unbound(keys):
-            // A ⌘ shortcut Heed does not bind is the app menu's, as in any Mac app: ⌘W closes the window, ⌘Q quits,
-            // ⌘H hides, ⌘M minimises.
+            // A ⌘ shortcut Heed does not bind is the app menu's, as in any Mac app (⌘Q quits, ⌘H hides); the key
+            // router keeps ⌘W from it.
             if keys.count == 1, keys[0].modifiers.contains(.command) { return false }
             flash = "\(KeyNotation.format(keys)) is not bound"
         }
@@ -1054,6 +1058,7 @@ final class AppModel {
         case "tab.next": cycleTab(by: count)
         case "tab.prev": cycleTab(by: -count)
         case "tab.new": newTab()
+        case "tab.open": openTabPicker()
         case "tab.agent": openAgentTab()
         case "browser.new": newPageTab(command.arguments.joined(separator: " "))
         case "browser.location":
@@ -1970,6 +1975,44 @@ final class AppModel {
 
     func cancelLinkPicker() { linkPicker = nil }
 
+    // MARK: New tab
+
+    /// The `⌘T` dialog, while it is open.
+    private(set) var tabPicker: NewTabPicker?
+    /// What `↩` in the `⌘T` dialog opens: the kind picked last, kept across launches.
+    private var lastTabKind = UserDefaults.standard.string(forKey: "newTabKind").flatMap(NewTabPicker.Kind.init)
+        ?? .page
+
+    /// `tab.open` (⌘T): asks what the new tab shows.
+    private func openTabPicker() {
+        guard currentTask != nil else { return flash = "no task to open a tab in" }
+        view = .tasks
+        tabPicker = NewTabPicker(last: lastTabKind)
+    }
+
+    private func answerTabPicker(_ stroke: KeyStroke) {
+        guard let picker = tabPicker else { return }
+        switch picker.handle(stroke) {
+        case .handled: break
+        case .cancel: tabPicker = nil
+        case let .open(kind): openTab(kind)
+        }
+    }
+
+    /// A tab of `kind` in the focused pane, even the agent's: a shell taking your keys, or a page with its address
+    /// field ready.
+    func openTab(_ kind: NewTabPicker.Kind) {
+        tabPicker = nil
+        lastTabKind = kind
+        if !isFixture { UserDefaults.standard.set(kind.rawValue, forKey: "newTabKind") }
+        switch kind {
+        case .terminal: newTab()
+        case .page: newPageTab("")
+        }
+    }
+
+    func cancelTabPicker() { tabPicker = nil }
+
     /// Fetches titles and states for the issues tasks link to: those not seen in ten minutes, and `force`.
     func refreshIssueInfo(force: [IssueRef] = []) async {
         guard !isFixture else { return }
@@ -2476,7 +2519,12 @@ final class AppModel {
         guard let task = currentTask, let layout = layouts[task.id],
               let tab = tabID.flatMap({ id in layout.tabs.first { $0.id == id } }) ?? currentGroup?.active
         else { return }
-        let close: @MainActor () -> Void = { [weak self] in self?.removePane(tab.pane.id, in: task.id) }
+        let close: @MainActor () -> Void = { [weak self] in
+            guard let self else { return }
+            removePane(tab.pane.id, in: task.id)
+            // Closed while typing in it: the tab shown next in its pane takes the keys.
+            if mode == .insert, currentPane != nil { terminalFocusRequest += 1 }
+        }
         guard tab.pane.role == .agent else { return close() }
         ask(Confirmation(
             title: "Close the \(tab.title) tab?",
@@ -2581,8 +2629,7 @@ final class AppModel {
         return true
     }
 
-    /// `browser.new` (⌘T): a tab in the current task with a page at `text`, or an empty one with its address field
-    /// ready.
+    /// `browser.new`: a tab in the focused pane with a page at `text`, or an empty one with its address field ready.
     private func newPageTab(_ text: String) {
         guard let task = currentTask else {
             flash = "no task to open a page in"
@@ -2591,7 +2638,7 @@ final class AppModel {
         view = .tasks
         var layout = layouts[task.id] ?? TaskLayout()
         let url = BrowserAddress.url(from: text)
-        let pane = layout.openPage(url, directory: task.directory, show: true)
+        let pane = layout.openPage(url, directory: task.directory, show: true, in: layout.focused?.id)
         commit(.layoutChanged(task: task.id, layout))
         if url == nil { beginAddressEdit(pane.id) }
     }
@@ -2763,6 +2810,7 @@ final class AppModel {
     /// Whether a click on a list may act: not while a dialog or form has the keyboard.
     private var clicksReachLists: Bool {
         newTask == nil && confirmation == nil && resume == nil && firstRun == nil && linkPicker == nil
+            && tabPicker == nil
     }
 
     /// A click on a task in the sidebar or the rail selects it; a double-click also types into its agent pane.

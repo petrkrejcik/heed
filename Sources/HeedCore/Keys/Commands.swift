@@ -71,11 +71,12 @@ public enum Commands {
         .init("tab.next", "next tab in this pane", .panes),
         .init("tab.prev", "previous tab in this pane", .panes),
         .init("tab.new", "new tab with a shell, in this pane", .panes),
+        .init("tab.open", "new tab in this pane: pick a terminal or a web page", .panes),
         .init(
             "tab.agent", "the task's agent: its tab, else the agent closed last (resumed), else a new one", .panes
         ),
         .init("tab.go", "go to tab n of this pane", .panes, arguments: "<n>"),
-        .init("browser.new", "new tab with a web page (no address: type one)", .panes, arguments: "[url]"),
+        .init("browser.new", "new tab in this pane with a web page (no address: type one)", .panes, arguments: "[url]"),
         .init("browser.back", "web page: back", .panes),
         .init("browser.forward", "web page: forward", .panes),
         .init("browser.reload", "web page: reload, or stop loading", .panes),

@@ -43,7 +43,11 @@ public struct KeyStroke: Hashable, Sendable, CustomStringConvertible {
         if modifiers.contains(.control) { out += "⌃" }
         if modifiers.contains(.option) { out += "⌥" }
         if modifiers.contains(.shift) { out += "⇧" }
+        // ⌘ chords read as on a Mac menu: ⌘T, and a capital letter is ⇧⌘D.
+        let letter = modifiers.contains(.command) && key.count == 1 && key.first?.isLetter == true
+        if letter, key == key.uppercased(), !modifiers.contains(.shift) { out += "⇧" }
         if modifiers.contains(.command) { out += "⌘" }
+        if letter { return out + key.uppercased() }
         switch key {
         case "Esc": out += "⎋"
         case "CR": out += "↩"

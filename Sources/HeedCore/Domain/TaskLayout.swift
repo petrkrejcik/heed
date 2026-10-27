@@ -101,11 +101,17 @@ public struct TaskLayout: Hashable, Sendable {
         return groups.first { !$0.hasAgent }?.id
     }
 
-    /// A tab with a page at `url`, next to the tab showing `nextTo` when that is in the work pane. Returns the page.
+    /// A tab with a page at `url` in the work pane (or pane `groupID`), next to the tab showing `nextTo` when that is
+    /// in the same pane. Returns the page.
     @discardableResult
-    public mutating func openPage(_ url: String?, nextTo: String? = nil, directory: String, show: Bool) -> PaneSpec {
+    public mutating func openPage(
+        _ url: String?, nextTo: String? = nil, directory: String, show: Bool, in groupID: String? = nil
+    ) -> PaneSpec {
         let pane = PaneSpec(role: .browser, title: "", directory: directory, url: url)
-        add(PaneTab(title: BrowserAddress.tabTitle(title: "", url: url), pane: pane), show: show, nextTo: nextTo)
+        add(
+            PaneTab(title: BrowserAddress.tabTitle(title: "", url: url), pane: pane), show: show, nextTo: nextTo,
+            in: groupID
+        )
         return pane
     }
 

@@ -8,8 +8,9 @@ The standard Mac shortcuts work in every mode, even with a terminal taking your 
 
 | Key | |
 |---|---|
-| `⌘W` | Close the window. With the [menu bar item](../outside-the-window/menu-bar.md) on, Heed and its agents keep running. On a [web page](../tasks/web-pages.md), it closes the page instead. |
-| `⌘T` | A new [web page](../tasks/web-pages.md) in a new tab |
+| `⌘W` | Close the tab you are typing in (INSERT): a terminal or a [web page](../tasks/web-pages.md). In NORMAL it does nothing; it never closes the window. |
+| `⌘T` | A new tab in the focused pane: `t` a terminal, `b` a [web page](../tasks/web-pages.md), `↩` the kind you picked last |
+| `⌘D` / `⌘⇧D` | A new [pane](../tasks/panes-and-tabs.md) with a shell, on the right / below |
 | `⌘Q` | Quit. With agents running, Heed asks first and lists them. |
 | `⌘H` | Hide Heed |
 | `⌘M` | Minimise |

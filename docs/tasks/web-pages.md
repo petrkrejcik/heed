@@ -17,10 +17,10 @@ and is named after the page's title, else its host.
 
 | Key | |
 |---|---|
-| `⌘T` | A new page in a new tab of the work pane, the address field ready. Works from a terminal in INSERT too. |
+| `⌘T` then `b` | A new page in a new tab of the focused pane, the address field ready. Works from a terminal in INSERT too. |
 | `:browser.new <address>` | A new page at that address |
 
-![⌘T: an empty page with the address field taking the keys](../images/shots/tasks/web-page-new.png)
+![⌘T b: an empty page with the address field taking the keys](../images/shots/tasks/web-page-new.png)
 
 In the address field, `↩` loads what you typed and hands the keys to the page; `⎋` leaves it. A full address stays as
 typed. A bare host gets `http://` when it is local (`localhost`, `127.0.0.1`, anything under `.localhost`) and
@@ -51,7 +51,7 @@ A browser's `⌘` chords work in both modes, also while you type in the page:
 | `⌘R` | Reload (stop while loading) |
 | `⌘[` / `⌘]` | Back / forward (`⌘←` / `⌘→` too, outside a text field) |
 | `⌘=` / `⌘-` | Zoom in / out (`:browser.zoom.reset` for actual size) |
-| `⌘W` | Close the page's tab, not the window |
+| `⌘W` | Close the page's tab while you type in it (INSERT), never the window |
 | `:browser.external` | Open the page in your default browser |
 
 Change them under `[keys.browser]` in config: single `⌘` or `⌃` chords only, since every other key is typed into the

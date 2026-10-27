@@ -25,4 +25,4 @@ Like vim, Heed has modes. The status bar always shows which one you are in.
 ![HINT](../images/shots/concepts/mode-hint.png)
 
 In NORMAL no key ever reaches a terminal, so nothing you type there can end up in an agent by accident. The standard
-Mac shortcuts (`⌘W`, `⌘Q`, `⌘H`, `⌘M`) work in every mode; see [Mac shortcuts](../keyboard/mac-shortcuts.md).
+Mac shortcuts (`⌘Q`, `⌘H`, `⌘M`) work in every mode; `⌘W` closes the tab you type in, in INSERT only; see [Mac shortcuts](../keyboard/mac-shortcuts.md).

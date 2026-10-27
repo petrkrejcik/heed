@@ -10,7 +10,7 @@ in INSERT your keys go to the focused terminal.
 
 ## Sequences
 
-Many commands are two keys: `g` then a letter for views (`gm` Inbox), `⌃w` then a letter for panes (`⌃w v` split).
+Many commands are two keys: `g` then a letter for views (`gm` Inbox), `⌃w` then a letter for panes (`⌃w z` zoom).
 Press the first key and wait: a panel at the bottom lists every key that can follow, and what it does.
 
 ![After g: every key that can follow, and what it does](../images/shots/keyboard/leader.png)

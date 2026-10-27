@@ -14,11 +14,12 @@ public enum DefaultKeys {
         ("dr", "task.status review"), ("W", "task.worktree"), ("K", "kibana.run"),
         ("'1", "pin.jump 1"), ("'2", "pin.jump 2"), ("'3", "pin.jump 3"), ("'4", "pin.jump 4"), ("'5", "pin.jump 5"),
         ("'6", "pin.jump 6"), ("'7", "pin.jump 7"), ("'8", "pin.jump 8"), ("'9", "pin.jump 9"),
+        ("<D-d>", "pane.split.right"), ("<D-D>", "pane.split.below"),
         ("<C-w>v", "pane.split.right"), ("<C-w>s", "pane.split.below"), ("<C-w>z", "pane.zoom"),
         ("<C-w>q", "pane.close"), ("<C-w>h", "pane.left"), ("<C-w>l", "pane.right"), ("<C-w>j", "pane.down"),
         ("<C-w>k", "pane.up"),
         ("gt", "tab.next"), ("gT", "tab.prev"), ("<D-}>", "tab.next"), ("<D-{>", "tab.prev"), ("gn", "tab.new"),
-        ("gc", "tab.agent"), ("<D-t>", "browser.new"),
+        ("gc", "tab.agent"), ("<D-t>", "tab.open"),
         ("gs", "view.tasks"), ("gm", "view.inbox"), ("gi", "view.issues"), ("gp", "view.prs"),
         ("go", "overlay.item"), ("gd", "overlay.diff"), ("gS", "pr.task"),
         ("<C-o>", "jump.back"), ("gB", "open.browser"), ("gR", "open.repo"),
@@ -37,7 +38,8 @@ public enum DefaultKeys {
 
     public static let insert: [(String, String)] = [
         (insertEscape, "mode.normal"), ("<S-Esc>", "mode.normal"), ("<D-/>", "overlay.help"),
-        ("<D-t>", "browser.new"), ("<D-}>", "tab.next"), ("<D-{>", "tab.prev"),
+        ("<D-t>", "tab.open"), ("<D-}>", "tab.next"), ("<D-{>", "tab.prev"), ("<D-w>", "tab.close"),
+        ("<D-d>", "pane.split.right"), ("<D-D>", "pane.split.below"),
     ]
 
     public static let command: [(String, String)] = [
@@ -59,7 +61,7 @@ public enum DefaultKeys {
         "browser": [
             ("<D-[>", "browser.back"), ("<D-]>", "browser.forward"), ("<D-l>", "browser.location"),
             ("<D-r>", "browser.reload"), ("<D-=>", "browser.zoom.in"), ("<D-+>", "browser.zoom.in"),
-            ("<D-->", "browser.zoom.out"), ("<D-w>", "tab.close"),
+            ("<D-->", "browser.zoom.out"),
         ],
         "tasks": [("r", "tasks.refresh")],
         "inbox": [

@@ -257,6 +257,7 @@ private struct StripHints: View {
                     Text("normal").foregroundStyle(Theme.fg3)
                 }
                 .fixedSize()
+                hint(model.keyLabel(for: "pane.split.right"), "split right")
             } else {
                 hint(model.keyLabel(for: "mode.insert"), "insert")
                 hint(model.keyLabel(for: "pane.split.right"), "split right")
