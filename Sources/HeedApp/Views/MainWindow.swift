@@ -280,8 +280,9 @@ struct StatusBar: View {
                     }
                     .padding(.horizontal, 12)
                 }
-                if let tab = model.currentTab, let index = tab.tree.panes.firstIndex(where: { $0.id == tab.focused }) {
-                    let pane = tab.tree.panes[index]
+                if let layout = model.currentLayout, let pane = layout.focusedPane,
+                   let index = layout.groups.firstIndex(where: { $0.id == layout.focused?.id })
+                {
                     let title = pane.role == .browser ? BrowserAddress.tabTitle(title: pane.title, url: pane.url)
                         : pane.title
                     Text("pane \(index + 1) · \(title)")

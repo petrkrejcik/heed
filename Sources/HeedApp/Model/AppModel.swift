@@ -349,7 +349,7 @@ final class AppModel {
         guard let task = task(taskID), task.running, !task.status.endsTask else { return }
         switch KibanaPage.action(url: task.kibanaURL, layout: layouts[taskID]) {
         case let .open(url):
-            var layout = layouts[taskID] ?? TaskLayout(tabs: [])
+            var layout = layouts[taskID] ?? TaskLayout()
             layout.openPage(url, directory: task.directory, show: false)
             commit(.layoutChanged(task: taskID, layout))
         case let .reload(pane):
@@ -491,17 +491,13 @@ final class AppModel {
             var changes: [DomainChange] = []
             var started: [PaneSpec] = []
             for pane in candidate.panes where !live.contains(pane.pane) {
-                guard let tabIndex = layout.tabs.firstIndex(where: { $0.tree.contains(pane.pane) }) else { continue }
-                layout.tabs[tabIndex].tree = layout.tabs[tabIndex].tree.updating(pane.pane) {
-                    $0.command = pane.command
-                }
+                guard layout.contains(pane: pane.pane) else { continue }
+                layout.update(pane: pane.pane) { $0.command = pane.command }
                 var agent = agents[pane.pane] ?? AgentTab()
                 agent.state = ObservedState(.idle, source: .guessed, reason: "resuming")
                 agent.claudeSessionID = pane.claudeSessionID
                 changes.append(.agentChanged(pane: pane.pane, agent))
-                if let spec = layout.tabs[tabIndex].tree.panes.first(where: { $0.id == pane.pane }) {
-                    started.append(spec)
-                }
+                if let spec = layout.pane(pane.pane) { started.append(spec) }
                 if candidate.mode == .resumeThenContinue, !pane.fresh, !settings.continuePrompt.isEmpty {
                     pendingContinue.insert(pane.pane)
                 }
@@ -666,7 +662,7 @@ final class AppModel {
     func receive(_ message: HookMessage) {
         guard var task = task(message.session), let layout = layouts[task.id] else { return }
         let pane = message.pane.flatMap { id in layout.panes.contains { $0.id == id } ? id : nil }
-            ?? layout.agentPane?.pane
+            ?? layout.agentPane
         var changes: [DomainChange] = []
         switch message.kind {
         case let .state(state, reason):
@@ -823,13 +819,10 @@ final class AppModel {
     }
 
     var currentLayout: TaskLayout? { currentTask.flatMap { layouts[$0.id] } }
-    var currentTabs: [PaneTab] { currentLayout?.tabs ?? [] }
-    var currentTabIndex: Int { currentLayout?.activeTab ?? 0 }
-
-    var currentTab: PaneTab? {
-        let all = currentTabs
-        return all.indices.contains(currentTabIndex) ? all[currentTabIndex] : nil
-    }
+    /// The current task's focused pane.
+    var currentGroup: PaneGroup? { currentLayout?.focused }
+    /// What the focused pane's active tab shows: where keys go.
+    var currentPane: PaneSpec? { currentLayout?.focusedPane }
 
     var blockedCount: Int { list.rollups.values.count { $0.agent?.state == .blocked } }
     var askingCount: Int { list.rollups.values.count { $0.agent?.state == .asking } }
@@ -884,13 +877,14 @@ final class AppModel {
         )
     }
 
-    /// Hint labels for every task row and every pane of the current tab, in that order.
+    /// Hint labels for every task row and every pane of the current task (its active tab), in that order.
     /// What `f` labels: in Tasks the tasks and the panes; elsewhere the rows of the view's list.
     var hintTargets: [(label: String, target: HintTarget)] {
         let targets: [HintTarget] = switch view {
         case .tasks:
             list.ordered
-                .map { HintTarget.task($0.id) } + (currentTab?.tree.panes.map { HintTarget.pane($0.id) } ?? [])
+                .map { HintTarget.task($0.id) } +
+                (currentLayout?.groups.compactMap { $0.active.map { HintTarget.pane($0.pane.id) } } ?? [])
         case .inbox, .issues, .prs: itemIDs(view).indices.map { HintTarget.row(view, $0) }
         }
         return zip(HintLabels.generate(count: targets.count), targets).map { ($0, $1) }
@@ -1037,24 +1031,25 @@ final class AppModel {
         case "resume": Task { await offerResume(domain: currentDomain, asked: true) }
         case "task.open": openTask(matching: command.arguments.joined(separator: " "))
         case "tab.go":
-            if let n = command.arguments.first.flatMap(Int.init) ?? command.count, currentTabs.indices.contains(n - 1) {
+            let tabs = currentGroup?.tabs ?? []
+            if let n = command.arguments.first.flatMap(Int.init) ?? command.count, tabs.indices.contains(n - 1) {
                 selectTab(n - 1)
             } else {
-                flash = "no tab \(command.arguments.first ?? "") (this task has \(currentTabs.count))"
+                flash = "no tab \(command.arguments.first ?? "") (this pane has \(tabs.count))"
             }
         case "filter.clear":
             filtering = false
             clearFilter(view)
         case "issues.repo": pickIssueRepo(named: command.arguments.first)
         case "app.activate": activateHeed()
-        case "pane.left": updateTab { $0.focus(.left) }
-        case "pane.right": updateTab { $0.focus(.right) }
-        case "pane.up": updateTab { $0.focus(.up) }
-        case "pane.down": updateTab { $0.focus(.down) }
+        case "pane.left": updateLayout { $0.focus(.left) }
+        case "pane.right": updateLayout { $0.focus(.right) }
+        case "pane.up": updateLayout { $0.focus(.up) }
+        case "pane.down": updateLayout { $0.focus(.down) }
         case "pane.split.right": split(.horizontal)
         case "pane.split.below": split(.vertical)
-        case "pane.zoom": updateTab { $0.zoomed.toggle() }
-        case "pane.close": confirmClosePane()
+        case "pane.zoom": updateLayout { $0.zoomed.toggle() }
+        case "pane.close": closeGroup()
         case "tab.close": closeTab()
         case "tab.next": cycleTab(by: count)
         case "tab.prev": cycleTab(by: -count)
@@ -1089,7 +1084,7 @@ final class AppModel {
         case "inspector.toggle": inspectorVisible.toggle()
         case "sidebar.toggle": sidebarCollapsed.toggle()
         case "mode.normal", "mode.insert", "mode.visual", "mode.command", "mode.hint":
-            if command.name == "mode.insert", view != .tasks || currentTab == nil { engine.enter(.normal) }
+            if command.name == "mode.insert", view != .tasks || currentPane == nil { engine.enter(.normal) }
             hintThenInsert = false
         case "hint.insert":
             engine.enter(.hint)
@@ -1306,9 +1301,9 @@ final class AppModel {
 
     /// A task that ended: every terminal in it closes and its tabs go. The task itself stays (it is a note).
     private func closeTerminals(of id: String, onScreen: Bool) {
-        guard let layout = layouts[id], !layout.tabs.isEmpty else { return }
+        guard let layout = layouts[id], !layout.isEmpty else { return }
         if onScreen { clickedOutsideTerminal() }
-        commit(.layoutChanged(task: id, TaskLayout(tabs: [])))
+        commit(.layoutChanged(task: id, TaskLayout()))
         for pane in layout.panes {
             PaneSurfaces.close(paneID: pane.id)
         }
@@ -1345,13 +1340,10 @@ final class AppModel {
         flash = "the agent is writing the note; the worktree follows when it is done (\(keyText(for: "task.worktree")) again: now)"
     }
 
-    /// The agent tab keys go to: the focused pane of the shown tab when it is an agent, else the task's first agent.
+    /// The agent keys go to: the focused pane's tab when it is an agent, else the task's first agent.
     private func focusedAgentPane(of id: String) -> String? {
         guard let layout = layouts[id] else { return nil }
-        if layout.tabs.indices.contains(layout.activeTab) {
-            let tab = layout.tabs[layout.activeTab]
-            if tab.tree.panes.first(where: { $0.id == tab.focused })?.role == .agent { return tab.focused }
-        }
+        if let pane = layout.focusedPane, pane.role == .agent { return pane.id }
         return layout.panes.first { $0.role == .agent }?.id
     }
 
@@ -1384,7 +1376,7 @@ final class AppModel {
         }
     }
 
-    /// Types `/cd <worktree>` into the agent, records its pane as working there, and adds the setup tabs. The agent's
+    /// Types `/cd <worktree>` into the agent, records its tab as working there, and adds the setup tabs. The agent's
     /// tab is shown, and typed into when the task is still the one on screen.
     private func moveAgent(_ pane: String, of fresh: PkTask, to worktree: String, record: String) {
         guard let task = upsert(fresh, record: record) else { return }
@@ -1392,10 +1384,10 @@ final class AppModel {
             worktree: worktree, bootstrap: pk.commandLine(["kbn", "bootstrap"]), settings: settings
         )
         guard let layout = NewTask.movingAgent(
-            pane, to: worktree, in: layouts[task.id] ?? TaskLayout(tabs: []), adding: added
+            pane, to: worktree, in: layouts[task.id] ?? TaskLayout(), adding: added
         ) else { return }
         if !isFixture { TerminalSurfaces.shared.typeLine(NewTask.moveCommand(to: worktree), paneID: pane) }
-        autostart(added.flatMap(\.tree.panes))
+        autostart(added.map(\.pane))
         commit(.layoutChanged(task: task.id, layout))
         flash = "\(task.title): the agent moved to \((worktree as NSString).lastPathComponent); bootstrapping"
         guard view == .tasks, currentTask?.id == task.id else { return }
@@ -1436,10 +1428,8 @@ final class AppModel {
             worktree: worktree, prompt: prompt, bootstrap: pk.commandLine(["kbn", "bootstrap"]), settings: settings,
             integration: integration
         )
-        var layout = layouts[task.id] ?? TaskLayout(tabs: [])
-        layout.tabs += built.tabs
-        layout.activeTab = layout.tabs.count - 1
-        autostart(built.tabs.flatMap(\.tree.panes))
+        let layout = NewTask.adding(built.tabs, to: layouts[task.id] ?? TaskLayout(), focus: built.agent?.pane)
+        autostart(built.tabs.map(\.pane))
         var changes: [DomainChange] = [.layoutChanged(task: task.id, layout)]
         if let agent = built.agent { changes.append(.agentChanged(pane: agent.pane, agent.tab)) }
         commit(changes)
@@ -1457,15 +1447,15 @@ final class AppModel {
         }
     }
 
-    /// `K`: `pk kbn` in a new tab of the task, where it works. pk picks the port; the Kibana icon follows the probe.
+    /// `K`: `pk kbn` in a new tab of the task's work pane, where it works. pk picks the port; the Kibana icon follows
+    /// the probe.
     private func runKibana() {
         guard let task = currentTask else { return flash = "no task here" }
         if task.running, let port = task.port { return flash = "Kibana already runs on :\(port) for \(task.title)" }
         let pane = PaneSpec(role: .shell, title: "kibana", directory: task.directory, command: pk.commandLine(["kbn"]))
         autostart([pane])
-        var layout = layouts[task.id] ?? TaskLayout(tabs: [])
-        layout.tabs.append(PaneTab(title: "kibana", tree: .leaf(pane)))
-        layout.activeTab = layout.tabs.count - 1
+        var layout = layouts[task.id] ?? TaskLayout()
+        layout.add(PaneTab(title: "kibana", pane: pane), show: true)
         commit(.layoutChanged(task: task.id, layout))
         enterInsert()
     }
@@ -1586,23 +1576,6 @@ final class AppModel {
         return true
     }
 
-    /// Shell panes close at once; an agent pane asks, since its agent stops with it.
-    private func confirmClosePane() {
-        guard let tab = currentTab, let pane = tab.tree.panes.first(where: { $0.id == tab.focused }) else { return }
-        guard pane.role == .agent else {
-            closePane()
-            return
-        }
-        ask(Confirmation(
-            title: "Close the \(pane.title) pane?",
-            lines: [
-                "The agent in it stops; the task and its worktree stay",
-                "\(keyText(for: "tab.agent")) brings the agent back, with its conversation",
-            ],
-            accept: "Close"
-        ) { [weak self] in self?.closePane() })
-    }
-
     private func jump(to target: HintTarget) {
         let thenInsert = hintThenInsert
         hintThenInsert = false
@@ -1612,7 +1585,7 @@ final class AppModel {
             select(taskID: id)
             engine.enter(.normal)
         case let .pane(id):
-            updateTab { $0.focused = id }
+            focusPane(id)
             engine.enter(thenInsert ? .insert : .normal)
             if thenInsert { terminalFocusRequest += 1 }
         case let .row(view, index):
@@ -1885,7 +1858,7 @@ final class AppModel {
             flash = "no Kibana main task to open pages in; opened in your browser"
             return
         }
-        var layout = layouts[taskID] ?? TaskLayout(tabs: [])
+        var layout = layouts[taskID] ?? TaskLayout()
         layout.openPage(url, nextTo: paneID, directory: task.directory, show: true)
         commit(.layoutChanged(task: taskID, layout))
         linkPicker = nil
@@ -2299,15 +2272,14 @@ final class AppModel {
 
     /// Types a question about the hunk into the agent's pane, unsent, and switches to INSERT there to finish it.
     private func askAboutHunk() {
-        guard let location = diffLocation, let task = currentTask, let (tabIndex, paneID) = layouts[task.id]?.agentPane
-        else { return }
+        guard let location = diffLocation, let task = currentTask,
+              let paneID = layouts[task.id]?.agentPane else { return }
         TerminalSurfaces.shared.typeText(
             "About \(location.path) around line \(location.line) (the hunk in my diff): ",
             paneID: paneID
         )
         overlay = nil
-        updateLayout { $0.activeTab = tabIndex }
-        updateTab { $0.focused = paneID }
+        focusPane(paneID)
         engine.enter(.insert)
         terminalFocusRequest += 1
     }
@@ -2421,9 +2393,7 @@ final class AppModel {
             commit(changes)
             view = .tasks
             select(taskID: task.id)
-            if let tab = currentTab, let agent = tab.tree.panes.first(where: { $0.role == .agent }) {
-                focusPane(agent.id)
-            }
+            if let agent = currentLayout?.panes.first(where: { $0.role == .agent }) { focusPane(agent.id) }
             enterInsert()
             flash = "started \(task.title)"
         }
@@ -2437,30 +2407,28 @@ final class AppModel {
         commit(.layoutChanged(task: id, layout))
     }
 
-    private func updateTab(_ edit: (inout PaneTab) -> Void) {
-        updateLayout { layout in
-            guard layout.tabs.indices.contains(layout.activeTab) else { return }
-            edit(&layout.tabs[layout.activeTab])
-        }
-    }
-
+    /// `⌃w v` / `⌃w s`: a new pane beside the focused one, with a shell where the focused tab works.
     private func split(_ axis: PaneTree.Axis) {
         guard let task = currentTask else { return }
-        let directory = currentTab?.tree.panes.first?.directory ?? task.directory
-        updateTab { $0.split(axis, with: PaneSpec(role: .shell, title: "zsh", directory: directory)) }
+        let directory = currentPane?.directory ?? task.directory
+        if layouts[task.id] == nil { commit(.layoutChanged(task: task.id, TaskLayout())) }
+        updateLayout { $0.split(axis, with: NewTask.shellTab(in: directory)) }
+        autoInsert()
     }
 
-    private func closePane() {
-        guard let task = currentTask, let closing = currentTab?.focused else { return }
-        removePane(closing, in: task.id)
+    /// `⌃w q`: the focused pane closes; its tabs join the pane beside it, so nothing stops.
+    private func closeGroup() {
+        var closed = false
+        updateLayout { closed = $0.closeFocusedGroup() }
+        if !closed { flash = "this is the task's only pane" }
     }
 
-    /// Takes a pane out of a task's layout (and its tab, when it was the tab's last).
+    /// Takes a tab out of a task's layout (and its pane, when it was the pane's last).
     private func removePane(_ paneID: String, in taskID: String) {
         guard var layout = layouts[taskID], layout.removePane(paneID) else { return }
         commit(.layoutChanged(task: taskID, layout))
         PaneSurfaces.close(paneID: paneID)
-        if layout.tabs.isEmpty { taskEmptied(taskID) }
+        if layout.isEmpty { taskEmptied(taskID) }
     }
 
     /// A pane's terminal ended (its shell exited): the pane closes, as in any terminal.
@@ -2503,25 +2471,15 @@ final class AppModel {
     private(set) var terminating = false
     func beginTerminating() { terminating = true }
 
-    /// `tab.close`, or a tab's ×: every pane in it. A tab with the agent in it asks first.
-    func closeTab(_ index: Int? = nil) {
-        guard let task = currentTask, var layout = layouts[task.id] else { return }
-        let index = index ?? layout.activeTab
-        guard layout.tabs.indices.contains(index) else { return }
-        let panes = layout.tabs[index].tree.panes
-        let close: @MainActor () -> Void = { [weak self] in
-            guard let self, var layout = layouts[task.id], layout.tabs.indices.contains(index) else { return }
-            layout.removeTab(at: index)
-            commit(.layoutChanged(task: task.id, layout))
-            for pane in panes {
-                PaneSurfaces.close(paneID: pane.id)
-            }
-            if layout.tabs.isEmpty { taskEmptied(task.id) }
-        }
-        guard panes.contains(where: { $0.role == .agent }) else { return close() }
-        layout.activeTab = index
+    /// `tab.close` (the focused pane's tab), or a tab's ×. The agent's tab asks first.
+    func closeTab(_ tabID: String? = nil) {
+        guard let task = currentTask, let layout = layouts[task.id],
+              let tab = tabID.flatMap({ id in layout.tabs.first { $0.id == id } }) ?? currentGroup?.active
+        else { return }
+        let close: @MainActor () -> Void = { [weak self] in self?.removePane(tab.pane.id, in: task.id) }
+        guard tab.pane.role == .agent else { return close() }
         ask(Confirmation(
-            title: "Close the \(layout.tabs[index].title) tab?",
+            title: "Close the \(tab.title) tab?",
             lines: [
                 "The agent in it stops; the task and its worktree stay",
                 "\(keyText(for: "tab.agent")) brings the agent back, with its conversation",
@@ -2538,24 +2496,19 @@ final class AppModel {
     }
 
     private func cycleTab(by delta: Int) {
-        updateLayout { layout in
-            let count = layout.tabs.count
-            guard count > 0 else { return }
-            layout.activeTab = ((layout.activeTab + delta) % count + count) % count
-        }
+        updateLayout { $0.cycleTab(by: delta) }
         autoInsert()
     }
 
-    private func newTab() {
+    /// A shell tab in pane `groupID` (the `+` of its strip), else in the focused pane.
+    func newTab(in groupID: String? = nil) {
         guard let task = currentTask else { return }
-        if layouts[task.id] == nil { commit(.layoutChanged(task: task.id, TaskLayout(tabs: []))) }
-        let directory = currentTab?.tree.panes.first?.directory ?? task.directory
-        updateLayout { layout in
-            layout.tabs.append(PaneTab(title: "shell", tree: .leaf(PaneSpec(
-                role: .shell, title: "zsh", directory: directory
-            ))))
-            layout.activeTab = layout.tabs.count - 1
-        }
+        let layout = layouts[task.id] ?? TaskLayout()
+        let group = groupID.flatMap { layout.group($0) } ?? layout.focused
+        let directory = group?.active?.pane.directory ?? task.directory
+        var edited = layout
+        edited.add(NewTask.shellTab(in: directory), show: true, in: group?.id)
+        commit(.layoutChanged(task: task.id, edited))
         autoInsert()
     }
 
@@ -2564,13 +2517,12 @@ final class AppModel {
         guard let task = currentTask else { return flash = "no task here" }
         view = .tasks
         let opening = NewTask.openAgent(
-            in: layouts[task.id] ?? TaskLayout(tabs: []), task: task, agent: settings.claude, integration: integration
+            in: layouts[task.id] ?? TaskLayout(), task: task, agent: settings.claude, integration: integration
         ) { id, directory in AgentIntegration.hasSession(agent: "claude", id: id, directory: directory) }
         switch opening {
         case nil:
             flash = "no agent set up ([agents.claude])"
-        case let .existing(tab, pane):
-            updateLayout { $0.activeTab = tab }
+        case let .existing(pane):
             focusPane(pane)
             enterInsert()
         case let .opened(layout, pane, agent, resumed):
@@ -2581,18 +2533,26 @@ final class AppModel {
         }
     }
 
+    /// The focused pane's tab `index`.
     func selectTab(_ index: Int) {
-        updateLayout { $0.activeTab = index }
+        updateLayout { $0.selectTab(index) }
+        autoInsert()
+    }
+
+    /// A tab clicked in a pane's strip: shown there, and the pane focused.
+    func selectTab(_ tabID: String) {
+        guard let pane = currentLayout?.tabs.first(where: { $0.id == tabID })?.pane.id else { return }
+        focusPane(pane)
         autoInsert()
     }
 
     // MARK: Web pages
 
-    /// The focused pane when it is a web page on screen (Tasks, nothing over it): what ⌘L and the page's other keys
-    /// act on.
+    /// The focused pane's tab when it is a web page on screen (Tasks, nothing over it): what ⌘L and the page's other
+    /// keys act on.
     var focusedBrowserPane: String? {
-        guard view == .tasks, overlay == nil, reader == nil, issueReader == nil, let tab = currentTab,
-              let pane = tab.tree.panes.first(where: { $0.id == tab.focused }), pane.role == .browser
+        guard view == .tasks, overlay == nil, reader == nil, issueReader == nil, let pane = currentPane,
+              pane.role == .browser
         else { return nil }
         return pane.id
     }
@@ -2629,7 +2589,7 @@ final class AppModel {
             return
         }
         view = .tasks
-        var layout = layouts[task.id] ?? TaskLayout(tabs: [])
+        var layout = layouts[task.id] ?? TaskLayout()
         let url = BrowserAddress.url(from: text)
         let pane = layout.openPage(url, directory: task.directory, show: true)
         commit(.layoutChanged(task: task.id, layout))
@@ -2646,7 +2606,7 @@ final class AppModel {
         if !show { flash = "opened in a new tab" }
     }
 
-    /// A page went somewhere or got a title: its pane (and its tab, when alone) keeps it for the next launch.
+    /// A page went somewhere or got a title: its tab keeps it for the next launch.
     func pageChanged(_ paneID: String, url: String, title: String) {
         guard let taskID = currentDomain.task(ofPane: paneID), let layout = layouts[taskID] else { return }
         var edited = layout
@@ -2661,7 +2621,7 @@ final class AppModel {
             engine.enter(.normal)
             modeChanged(from: before)
         }
-        if currentTab?.focused != paneID { focusPane(paneID) }
+        if currentPane?.id != paneID { focusPane(paneID) }
         editingAddress = paneID
     }
 
@@ -2696,12 +2656,10 @@ final class AppModel {
         }
     }
 
-    /// Going to a tab whose focused pane is a terminal hands it your keys, so you can type at once.
+    /// Going to a tab that is a terminal hands it your keys, so you can type at once.
     private func autoInsert() {
         guard view == .tasks, overlay == nil, reader == nil, issueReader == nil, confirmation == nil,
-              let tab = currentTab,
-              let pane = tab.tree.panes.first(where: { $0.id == tab.focused }) ?? tab.tree.panes.first,
-              pane.role.isTerminal
+              let pane = currentPane, pane.role.isTerminal
         else { return }
         enterInsert()
     }
@@ -2725,21 +2683,24 @@ final class AppModel {
         if done, !isFixture { UserDefaults.standard.set(inspectorWidth, forKey: "inspectorWidth") }
     }
 
-    /// A split's divider let go at `ratio`, in tab `tabID` of the task on screen.
-    func setSplitRatio(_ ratio: Double, at path: [Int], inTab tabID: String) {
-        updateLayout { layout in
-            guard let index = layout.tabs.firstIndex(where: { $0.id == tabID }) else { return }
-            layout.tabs[index].tree = layout.tabs[index].tree.settingRatio(ratio, at: path)
-        }
+    /// A divider between panes of the task on screen let go at `ratio`.
+    func setSplitRatio(_ ratio: Double, at path: [Int]) {
+        updateLayout { $0.setRatio(ratio, at: path) }
     }
 
-    /// A tab dragged in the tab strip onto position `index`.
-    func moveTab(_ id: String, to index: Int) {
-        updateLayout { $0.moveTab(id, to: index) }
+    /// A tab dragged onto position `index` of pane `groupID`'s strip (its own, or another pane's).
+    func moveTab(_ id: String, to index: Int, in groupID: String) {
+        updateLayout { $0.moveTab(id, to: index, in: groupID) }
     }
 
+    /// Shows the tab with `paneID` in it and gives its pane the keys.
     func focusPane(_ paneID: String) {
-        updateTab { $0.focused = paneID }
+        updateLayout { $0.focus(pane: paneID) }
+    }
+
+    /// A click on a pane's empty tab strip: that pane gets the keys.
+    func focusGroup(_ groupID: String) {
+        updateLayout { $0.focusedGroup = groupID }
     }
 
     /// `:settings.open agents`: the section the Settings window turns to.
@@ -2795,7 +2756,7 @@ final class AppModel {
     /// NORMAL on, and the next letters ran as commands (dd deleted a line of the list).
     func clickedPane(_ paneID: String) {
         guard newTask == nil, resume == nil, firstRun == nil, !filtering else { return }
-        if currentTab?.focused != paneID { focusPane(paneID) }
+        if currentPane?.id != paneID { focusPane(paneID) }
         enterInsert()
     }
 
@@ -2809,8 +2770,7 @@ final class AppModel {
         guard clicksReachLists else { return }
         clickedOutsideTerminal()
         select(taskID: id)
-        guard insert, let (tabIndex, paneID) = layouts[id]?.agentPane else { return }
-        selectTab(tabIndex)
+        guard insert, let paneID = layouts[id]?.agentPane else { return }
         clickedPane(paneID)
     }
 

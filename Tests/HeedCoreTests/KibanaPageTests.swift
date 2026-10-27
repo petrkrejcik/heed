@@ -19,13 +19,13 @@ struct KibanaPageTests {
 
     @Test func noPageYetOpensOne() {
         #expect(KibanaPage.action(url: url, layout: nil) == .open(url: url))
-        var layout = TaskLayout(tabs: [])
+        var layout = TaskLayout()
         layout.openPage("https://github.com/elastic/kibana/pull/1", directory: "/w", show: true)
         #expect(KibanaPage.action(url: url, layout: layout) == .open(url: url))
     }
 
     @Test func aRestartReloadsThePageOnItsHost() {
-        var layout = TaskLayout(tabs: [])
+        var layout = TaskLayout()
         let other = layout.openPage("http://localhost:5602/app/discover", directory: "/w", show: true)
         let first = layout.openPage("http://299433-fix.localhost/app/discover#/view/1", directory: "/w", show: true)
         let second = layout.openPage(url, directory: "/w", show: true)
@@ -35,7 +35,7 @@ struct KibanaPageTests {
     }
 
     @Test func aClosedPageComesBackOnlyOnTheNextStart() {
-        var layout = TaskLayout(tabs: [])
+        var layout = TaskLayout()
         let page = layout.openPage(url, directory: "/w", show: false)
         let removed = layout.removePane(page.id)
         #expect(removed)

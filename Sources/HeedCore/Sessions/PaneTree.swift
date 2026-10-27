@@ -1,6 +1,7 @@
 import Foundation
 
-/// What runs in a pane. The terminal itself lives in the app; this is the record that survives a relaunch.
+/// What a tab shows: a terminal (an agent, a shell, a command) or a web page. The terminal itself lives in the app;
+/// this is the record that survives a relaunch. Its id is the pane id the hooks report (`HEED_PANE_ID`).
 public struct PaneSpec: Hashable, Sendable, Codable, Identifiable {
     public enum Role: String, Sendable, Codable {
         /// The shell the agent runs in; the tab survives the agent exiting.
@@ -11,7 +12,7 @@ public struct PaneSpec: Hashable, Sendable, Codable, Identifiable {
         /// A web page (`url`), not a terminal: `title` is the page's.
         case browser
 
-        /// A pane that shows a terminal and takes keys in INSERT.
+        /// A tab that shows a terminal and takes keys in INSERT.
         public var isTerminal: Bool {
             switch self {
             case .agent, .shell, .command: true
@@ -31,7 +32,7 @@ public struct PaneSpec: Hashable, Sendable, Codable, Identifiable {
     public var directory: String
     /// Typed into the shell once it starts (the agent command, a pinned command). Nil for a plain shell.
     public var command: String?
-    /// The address a page pane shows, as last navigated; nil for terminals and for a page not given one yet.
+    /// The address a page shows, as last navigated; nil for terminals and for a page not given one yet.
     public var url: String?
 
     public init(
@@ -47,7 +48,45 @@ public struct PaneSpec: Hashable, Sendable, Codable, Identifiable {
     }
 }
 
-/// A tab's panes as a binary split tree, vim-style: `<C-w>v` splits the focused pane to the right, `<C-w>s` below.
+/// A tab in a pane: a name and the one thing it shows.
+public struct PaneTab: Hashable, Sendable, Codable, Identifiable {
+    public var id: String
+    public var title: String
+    public var pane: PaneSpec
+
+    public init(id: String = UUID().uuidString, title: String, pane: PaneSpec) {
+        self.id = id
+        self.title = title
+        self.pane = pane
+    }
+}
+
+/// A pane of a task's layout: a region with its own tab strip, showing its active tab. In the UI this is "a pane".
+public struct PaneGroup: Hashable, Sendable, Codable, Identifiable {
+    public var id: String
+    public var tabs: [PaneTab]
+    public var activeTab: Int
+
+    public init(id: String = UUID().uuidString, tabs: [PaneTab], activeTab: Int = 0) {
+        self.id = id
+        self.tabs = tabs
+        self.activeTab = activeTab
+    }
+
+    public var active: PaneTab? { tabs.indices.contains(activeTab) ? tabs[activeTab] : nil }
+    public var hasAgent: Bool { tabs.contains { $0.pane.role == .agent } }
+    public func index(ofPane id: String) -> Int? { tabs.firstIndex { $0.pane.id == id } }
+
+    /// Removes a tab, keeping the active one active (or its neighbour, when it was the one removed).
+    mutating func removeTab(at index: Int) {
+        guard tabs.indices.contains(index) else { return }
+        tabs.remove(at: index)
+        if index < activeTab { activeTab -= 1 }
+        activeTab = max(0, min(activeTab, tabs.count - 1))
+    }
+}
+
+/// A task's panes as a binary split tree, vim-style: `<C-w>v` puts a new pane to the right, `<C-w>s` below.
 public indirect enum PaneTree: Hashable, Sendable, Codable {
     public enum Axis: String, Sendable, Codable {
         /// Side by side.
@@ -56,35 +95,55 @@ public indirect enum PaneTree: Hashable, Sendable, Codable {
         case vertical
     }
 
-    case leaf(PaneSpec)
+    case leaf(PaneGroup)
     case split(Axis, PaneTree, PaneTree, ratio: Double)
 
     /// Panes in reading order (left to right, top to bottom); their 1-based position is the pane number in the UI.
-    public var panes: [PaneSpec] {
+    public var groups: [PaneGroup] {
         switch self {
-        case let .leaf(pane): [pane]
-        case let .split(_, first, second, _): first.panes + second.panes
+        case let .leaf(group): [group]
+        case let .split(_, first, second, _): first.groups + second.groups
         }
     }
 
-    public func contains(_ id: String) -> Bool { panes.contains { $0.id == id } }
+    public func contains(group id: String) -> Bool { groups.contains { $0.id == id } }
+
+    /// The pane in the top right corner: its tab strip also holds the key hints and the inspector button.
+    public var topRight: PaneGroup {
+        switch self {
+        case let .leaf(group): group
+        case let .split(axis, first, second, _): axis == .horizontal ? second.topRight : first.topRight
+        }
+    }
 
     /// The same tree with pane `id` edited.
+    public func updatingGroup(_ id: String, _ edit: (inout PaneGroup) -> Void) -> PaneTree {
+        switch self {
+        case var .leaf(group):
+            guard group.id == id else { return self }
+            edit(&group)
+            return .leaf(group)
+        case let .split(axis, first, second, ratio):
+            return .split(axis, first.updatingGroup(id, edit), second.updatingGroup(id, edit), ratio: ratio)
+        }
+    }
+
+    /// The same tree with what tab `id` shows edited, wherever it is.
     public func updating(_ id: String, _ edit: (inout PaneSpec) -> Void) -> PaneTree {
         switch self {
-        case var .leaf(pane):
-            guard pane.id == id else { return self }
-            edit(&pane)
-            return .leaf(pane)
+        case var .leaf(group):
+            guard let index = group.index(ofPane: id) else { return self }
+            edit(&group.tabs[index].pane)
+            return .leaf(group)
         case let .split(axis, first, second, ratio):
             return .split(axis, first.updating(id, edit), second.updating(id, edit), ratio: ratio)
         }
     }
 
-    /// Splits the pane `id`, putting `new` to its right (horizontal) or below it (vertical).
-    public func splitting(_ id: String, axis: Axis, with new: PaneSpec) -> PaneTree {
+    /// Splits pane `id`, putting `new` to its right (horizontal) or below it (vertical).
+    public func splitting(_ id: String, axis: Axis, with new: PaneGroup) -> PaneTree {
         switch self {
-        case let .leaf(pane) where pane.id == id:
+        case let .leaf(group) where group.id == id:
             .split(axis, self, .leaf(new), ratio: 0.5)
         case .leaf:
             self
@@ -93,6 +152,22 @@ public indirect enum PaneTree: Hashable, Sendable, Codable {
                 splitAxis, first.splitting(id, axis: axis, with: new), second.splitting(id, axis: axis, with: new),
                 ratio: ratio
             )
+        }
+    }
+
+    /// Removes pane `id`; its sibling takes the space. Nil when it was the last pane.
+    public func removing(_ id: String) -> PaneTree? {
+        switch self {
+        case let .leaf(group):
+            return group.id == id ? nil : self
+        case let .split(axis, first, second, ratio):
+            guard contains(group: id) else { return self }
+            switch (first.removing(id), second.removing(id)) {
+            case let (lhs?, rhs?): return .split(axis, lhs, rhs, ratio: ratio)
+            case let (lhs?, nil): return lhs
+            case let (nil, rhs?): return rhs
+            case (nil, nil): return nil
+            }
         }
     }
 
@@ -114,27 +189,9 @@ public indirect enum PaneTree: Hashable, Sendable, Codable {
         }
     }
 
-    /// Removes pane `id`; its sibling takes the space. Nil when it was the last pane.
-    public func removing(_ id: String) -> PaneTree? {
-        switch self {
-        case let .leaf(pane):
-            return pane.id == id ? nil : self
-        case let .split(axis, first, second, ratio):
-            guard contains(id) else { return self }
-            let newFirst = first.removing(id)
-            let newSecond = second.removing(id)
-            switch (newFirst, newSecond) {
-            case let (lhs?, rhs?): return .split(axis, lhs, rhs, ratio: ratio)
-            case let (lhs?, nil): return lhs
-            case let (nil, rhs?): return rhs
-            case (nil, nil): return nil
-            }
-        }
-    }
-
     public enum Direction: Sendable { case left, right, up, down }
 
-    /// The pane focus moves to from `id` in `direction`: the nearest pane on that side of the enclosing split.
+    /// The pane focus moves to from pane `id` in `direction`: the nearest pane on that side of the enclosing split.
     public func neighbor(of id: String, _ direction: Direction) -> String? {
         let axis: Axis = (direction == .left || direction == .right) ? .horizontal : .vertical
         let forward = direction == .right || direction == .down
@@ -143,51 +200,12 @@ public indirect enum PaneTree: Hashable, Sendable, Codable {
 
     private func neighbor(of id: String, axis: Axis, forward: Bool) -> String? {
         guard case let .split(splitAxis, first, second, _) = self else { return nil }
-        let inFirst = first.contains(id)
+        let inFirst = first.contains(group: id)
         let inner = inFirst ? first : second
         if let found = inner.neighbor(of: id, axis: axis, forward: forward) { return found }
         guard splitAxis == axis else { return nil }
-        if inFirst, forward { return second.panes.first?.id }
-        if !inFirst, !forward { return first.panes.last?.id }
+        if inFirst, forward { return second.groups.first?.id }
+        if !inFirst, !forward { return first.groups.last?.id }
         return nil
-    }
-}
-
-/// A tab in a task: a name and its pane tree.
-public struct PaneTab: Hashable, Sendable, Codable, Identifiable {
-    public var id: String
-    public var title: String
-    public var tree: PaneTree
-    public var focused: String
-    public var zoomed: Bool
-
-    public init(id: String = UUID().uuidString, title: String, tree: PaneTree, focused: String? = nil) {
-        self.id = id
-        self.title = title
-        self.tree = tree
-        self.focused = focused ?? tree.panes[0].id
-        zoomed = false
-    }
-
-    public mutating func split(_ axis: PaneTree.Axis, with pane: PaneSpec) {
-        tree = tree.splitting(focused, axis: axis, with: pane)
-        focused = pane.id
-        zoomed = false
-    }
-
-    /// Closes the focused pane. Returns false when it was the tab's last pane (the caller closes the tab).
-    public mutating func closeFocused() -> Bool {
-        let order = tree.panes.map(\.id)
-        guard let remaining = tree.removing(focused) else { return false }
-        let index = order.firstIndex(of: focused) ?? 0
-        tree = remaining
-        let left = remaining.panes
-        focused = left[min(max(index - 1, 0), left.count - 1)].id
-        zoomed = false
-        return true
-    }
-
-    public mutating func focus(_ direction: PaneTree.Direction) {
-        if let next = tree.neighbor(of: focused, direction) { focused = next }
     }
 }

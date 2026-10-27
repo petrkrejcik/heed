@@ -91,29 +91,27 @@ public enum Fixtures {
         tasks[1].record("running jest · 2m", at: ago(2))
 
         let layouts: [String: TaskLayout] = [
-            "t1": TaskLayout(tabs: [
-                agentTab("t1", main, split: true),
-                PaneTab(id: "t1-t2", title: "kibana", tree: .leaf(PaneSpec(
+            "t1": panes("t1", [agentTab("t1", main)], [
+                shellTab("t1", main),
+                PaneTab(id: "t1-t2", title: "kibana", pane: PaneSpec(
                     id: "t1-kibana", role: .shell, title: "yarn start", directory: main, command: "yarn start"
-                ))),
+                )),
             ]),
-            "t2": TaskLayout(tabs: [
-                agentTab("t2", upload, split: true),
-                agentTab("t2", upload, second: true),
-                PaneTab(id: "t2-t3", title: "jest", tree: .leaf(PaneSpec(
+            "t2": panes("t2", [agentTab("t2", upload), agentTab("t2", upload, second: true)], [
+                PaneTab(id: "t2-t3", title: "jest", pane: PaneSpec(
                     id: "t2-jest", role: .command, title: "jest", directory: upload, command: "yarn test:jest"
-                ))),
-                PaneTab(id: "t2-t4", title: "Agent Builder - Elastic", tree: .leaf(PaneSpec(
+                )),
+                shellTab("t2", upload),
+                PaneTab(id: "t2-t4", title: "Agent Builder - Elastic", pane: PaneSpec(
                     id: "t2-page", role: .browser, title: "Agent Builder - Elastic", directory: upload,
                     url: "http://299433-fix-image-upload-403.localhost/app/agent_builder"
-                ))),
+                )),
             ]),
-            "t3": TaskLayout(tabs: [
-                agentTab("t3", review),
-                PaneTab(id: "t3-t2", title: "localhost", tree: .leaf(PaneSpec(
+            "t3": panes("t3", [agentTab("t3", review)], [
+                PaneTab(id: "t3-t2", title: "localhost", pane: PaneSpec(
                     id: "t3-page", role: .browser, title: "", directory: review,
                     url: "http://localhost:5603/app/agent_builder"
-                ))),
+                )),
             ]),
             "t4": TaskLayout(tabs: [agentTab("t4", undo)]),
             "t5": TaskLayout(tabs: [agentTab("t5", main)]),
@@ -378,19 +376,28 @@ public enum Fixtures {
         return GitHubState(viewer: "you", inbox: inbox, issues: issues, pulls: pulls, syncedAt: ago(0.3), status: .ok)
     }()
 
-    /// An agent tab (`<task>-agent`, or `<task>-agent2` when `second`), with a shell split beside it when `split`.
-    private static func agentTab(_ task: String, _ directory: String, split: Bool = false, second: Bool = false)
-        -> PaneTab
-    {
+    /// An agent tab (`<task>-agent`, or `<task>-agent2` when `second`).
+    private static func agentTab(_ task: String, _ directory: String, second: Bool = false) -> PaneTab {
         let id = second ? "\(task)-agent2" : "\(task)-agent"
         let agent = PaneSpec(id: id, role: .agent, title: "claude", directory: directory, command: "claude")
-        var tab = PaneTab(id: second ? "\(task)-t1b" : "\(task)-t1", title: "agent", tree: .leaf(agent))
-        if split {
-            tab.split(.horizontal, with: PaneSpec(
-                id: "\(task)-shell", role: .shell, title: "zsh", directory: directory
-            ))
-            tab.focused = agent.id
-        }
-        return tab
+        return PaneTab(id: second ? "\(task)-t1b" : "\(task)-t1", title: "agent", pane: agent)
+    }
+
+    private static func shellTab(_ task: String, _ directory: String) -> PaneTab {
+        PaneTab(
+            id: "\(task)-t1s", title: "shell",
+            pane: PaneSpec(id: "\(task)-shell", role: .shell, title: "zsh", directory: directory)
+        )
+    }
+
+    /// The agents in a pane on the left, the rest in one on the right; the agent's pane has the keys.
+    private static func panes(_ task: String, _ left: [PaneTab], _ right: [PaneTab]) -> TaskLayout {
+        TaskLayout(
+            root: .split(
+                .horizontal, .leaf(PaneGroup(id: "\(task)-p1", tabs: left)),
+                .leaf(PaneGroup(id: "\(task)-p2", tabs: right)), ratio: 0.5
+            ),
+            focusedGroup: "\(task)-p1"
+        )
     }
 }

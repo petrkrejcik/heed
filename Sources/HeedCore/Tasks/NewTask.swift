@@ -76,14 +76,11 @@ public enum NewTask {
     ) -> [DomainChange] {
         var task = task
         task.lastActivity = now
-        let tab = agentTab(
-            in: task.directory, prompt: context, agent: settings.claude, shellSplit: settings.shellSplit,
-            integration: integration
-        )
+        let tab = agentTab(in: task.directory, prompt: context, agent: settings.claude, integration: integration)
         task.record("started · \(settings.claude?.name ?? "shell") in \(Paths.abbreviate(task.directory))", at: now)
-        var changes: [DomainChange] = [
-            .taskUpserted(task), .layoutChanged(task: task.id, TaskLayout(tabs: [tab.tab])),
-        ]
+        var layout = TaskLayout(tabs: [tab.tab])
+        if settings.shellSplit, tab.agent != nil { layout.add(shellTab(in: task.directory), show: true, focus: false) }
+        var changes: [DomainChange] = [.taskUpserted(task), .layoutChanged(task: task.id, layout)]
         if let agent = tab.agent { changes.append(.agentChanged(pane: agent.pane, agent.tab)) }
         return changes
     }
@@ -110,51 +107,67 @@ public enum NewTask {
     public static func moveCommand(to worktree: String) -> String { "/cd \(worktree)" }
 
     /// The tabs a worktree brings: `bootstrap` (pk's command line) in a terminal so its progress shows, then a tab
-    /// per pinned command. Every pane starts its command at once.
+    /// per pinned command. Every tab starts its command at once.
     public static func setupTabs(worktree: String, bootstrap: String, settings: WorkSettings) -> [PaneTab] {
-        let setup = PaneTab(id: newID(), title: "bootstrap", tree: .leaf(PaneSpec(
+        let setup = PaneTab(id: newID(), title: "bootstrap", pane: PaneSpec(
             id: newID(), role: .shell, title: "bootstrap", directory: worktree, command: bootstrap
-        )))
+        ))
         let pinned = settings.commands.map { pinned in
-            PaneTab(id: newID(), title: pinned.name, tree: .leaf(PaneSpec(
+            PaneTab(id: newID(), title: pinned.name, pane: PaneSpec(
                 id: newID(), role: .command, title: pinned.name, directory: worktree,
                 command: "\(pinned.command); \"${\(HeedEnvironment.binary):-true}\" command-exit $?"
-            )))
+            ))
         }
         return [setup] + pinned
     }
 
-    /// The setup tabs, then a new agent on `prompt` (a review, or a task whose agent is not running). The agent's
-    /// tab comes last; it is the one to show.
+    /// The setup tabs, then a new agent on `prompt` (a review, or a task whose agent is not running), and a shell
+    /// when `shellSplit` asks. The agent is the one to focus.
     public static func worktreeTabs(
         worktree: String, prompt: String, bootstrap: String, settings: WorkSettings, integration: IntegrationFiles?
     ) -> (tabs: [PaneTab], agent: (pane: String, tab: AgentTab)?) {
-        let agent = agentTab(
-            in: worktree, prompt: prompt, agent: settings.claude, shellSplit: settings.shellSplit,
-            integration: integration
+        let agent = agentTab(in: worktree, prompt: prompt, agent: settings.claude, integration: integration)
+        let shell = settings.shellSplit && agent.agent != nil ? [shellTab(in: worktree)] : []
+        return (
+            setupTabs(worktree: worktree, bootstrap: bootstrap, settings: settings) + [agent.tab] + shell,
+            agent.agent
         )
-        return (setupTabs(worktree: worktree, bootstrap: bootstrap, settings: settings) + [agent.tab], agent.agent)
     }
 
-    /// The layout once the agent in `pane` has moved to `worktree`: its pane works there (a relaunch resumes it
-    /// there), `added` follows the task's tabs, and the agent's tab is shown. Nil when no tab has that pane.
+    /// `tabs` added to `layout` where the rules put them: the first to land in a pane is shown there, and the keys go
+    /// to `focus` (a pane id) when given, else stay where they were.
+    public static func adding(_ tabs: [PaneTab], to layout: TaskLayout, focus: String? = nil) -> TaskLayout {
+        var layout = layout
+        let keys = layout.focusedGroup
+        var shown: [String: String] = [:]
+        for tab in tabs {
+            let group = layout.add(tab, show: false)
+            if shown[group] == nil { shown[group] = tab.pane.id }
+        }
+        for pane in shown.values {
+            layout.focus(pane: pane)
+        }
+        layout.focusedGroup = keys.flatMap { layout.group($0)?.id } ?? layout.groups.first?.id
+        if let focus { layout.focus(pane: focus) }
+        return layout
+    }
+
+    /// The layout once the agent in `pane` has moved to `worktree`: its tab works there (a relaunch resumes it
+    /// there), `added` joins the task's tabs, and the agent has the keys. Nil when no tab has that pane.
     public static func movingAgent(
         _ pane: String, to worktree: String, in layout: TaskLayout, adding added: [PaneTab]
     ) -> TaskLayout? {
-        guard let index = layout.tabs.firstIndex(where: { $0.tree.contains(pane) }) else { return nil }
+        guard layout.contains(pane: pane) else { return nil }
         var layout = layout
-        layout.tabs[index].tree = layout.tabs[index].tree.updating(pane) { $0.directory = worktree }
-        layout.tabs[index].focused = pane
-        layout.tabs += added
-        layout.activeTab = index
-        return layout
+        layout.update(pane: pane) { $0.directory = worktree }
+        return adding(added, to: layout, focus: pane)
     }
 
     /// What `tab.agent` does in a task.
     public enum AgentOpening: Equatable, Sendable {
         /// The task has an agent tab: go there.
-        case existing(tab: Int, pane: String)
-        /// A new agent tab, shown at the end: the agent closed last, resumed where it worked, else a fresh one where
+        case existing(pane: String)
+        /// A new agent tab in the agent's pane: the agent closed last, resumed where it worked, else a fresh one where
         /// the task works.
         case opened(TaskLayout, pane: String, AgentTab, resumed: Bool)
     }
@@ -165,11 +178,7 @@ public enum NewTask {
         in layout: TaskLayout, task: WorkTask, agent: AgentProfile?, integration: IntegrationFiles?,
         hasSession: (_ id: String, _ directory: String) -> Bool? = { _, _ in nil }
     ) -> AgentOpening? {
-        for (index, tab) in layout.tabs.enumerated() {
-            if let pane = tab.tree.panes.first(where: { $0.role == .agent }) {
-                return .existing(tab: index, pane: pane.id)
-            }
-        }
+        if let pane = layout.panes.first(where: { $0.role == .agent }) { return .existing(pane: pane.id) }
         guard let agent else { return nil }
         var layout = layout
         let tab: PaneTab
@@ -186,7 +195,7 @@ public enum NewTask {
             let pane = PaneSpec(
                 id: newID(), role: .agent, title: agent.name, directory: closed.directory, command: command
             )
-            tab = PaneTab(id: newID(), title: "agent", tree: .leaf(pane))
+            tab = PaneTab(id: newID(), title: "agent", pane: pane)
             made = (pane.id, AgentTab(activity: "resuming", claudeSessionID: closed.claudeSessionID))
             resumed = true
         } else {
@@ -195,36 +204,34 @@ public enum NewTask {
             (tab, made) = (built.tab, agent)
         }
         layout.closedAgent = nil
-        layout.tabs.append(tab)
-        layout.activeTab = layout.tabs.count - 1
+        layout.add(tab, show: true)
         return .opened(layout, pane: made.pane, made.tab, resumed: resumed)
     }
 
-    /// A tab running `agent` on `prompt` in `directory`, with its own Claude session id, and a shell split beside it
-    /// when asked. Without an agent, a shell.
+    /// A tab running `agent` on `prompt` in `directory`, with its own Claude session id. Without an agent, a shell.
     public static func agentTab(
-        in directory: String, prompt: String, agent: AgentProfile?, shellSplit: Bool = false,
-        integration: IntegrationFiles?
+        in directory: String, prompt: String, agent: AgentProfile?, integration: IntegrationFiles?
     ) -> (tab: PaneTab, agent: (pane: String, tab: AgentTab)?) {
-        guard let agent else {
-            let shell = PaneSpec(id: newID(), role: .shell, title: "zsh", directory: directory)
-            return (PaneTab(id: newID(), title: "shell", tree: .leaf(shell)), nil)
-        }
+        guard let agent else { return (shellTab(in: directory), nil) }
         let claudeSessionID = newID()
         let extra = AgentIntegration.launchArguments(agent: agent, claudeSessionID: claudeSessionID, files: integration)
         let pane = PaneSpec(
             id: newID(), role: .agent, title: agent.name, directory: directory,
             command: agent.launchCommand(prompt: prompt, extraArguments: extra)
         )
-        var tab = PaneTab(id: newID(), title: "agent", tree: .leaf(pane))
-        if shellSplit {
-            tab.split(.horizontal, with: PaneSpec(id: newID(), role: .shell, title: "zsh", directory: directory))
-            tab.focused = pane.id
-        }
         let state = AgentTab(
             state: ObservedState(.idle, source: .guessed), activity: "starting",
             claudeSessionID: agent.sessionIDFlag == nil ? nil : claudeSessionID
         )
-        return (tab, (pane.id, state))
+        return (PaneTab(id: newID(), title: "agent", pane: pane), (pane.id, state))
+    }
+
+    /// A plain shell tab in `directory`.
+    public static func shellTab(in directory: String) -> PaneTab {
+        PaneTab(
+            id: newID(),
+            title: "shell",
+            pane: PaneSpec(id: newID(), role: .shell, title: "zsh", directory: directory)
+        )
     }
 }

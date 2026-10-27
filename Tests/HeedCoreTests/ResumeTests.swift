@@ -8,13 +8,13 @@ private func world(_ tasks: [(id: String, agents: [(AgentState, String?)])]) -> 
     for (id, agents) in tasks {
         domain.tasks.append(WorkTask(id: id, title: id, notePath: "/notes/Projects/\(id).md"))
         let tabs = agents.indices.map { index in
-            PaneTab(title: "agent", tree: .leaf(PaneSpec(
+            PaneTab(title: "agent", pane: PaneSpec(
                 id: "\(id)-\(index)", role: .agent, title: "claude", directory: "/w/\(id)"
-            )))
+            ))
         }
-        let shell = PaneTab(title: "shell", tree: .leaf(PaneSpec(
+        let shell = PaneTab(title: "shell", pane: PaneSpec(
             id: "\(id)-shell", role: .shell, title: "zsh", directory: "/w/\(id)"
-        )))
+        ))
         domain.layouts[id] = TaskLayout(tabs: tabs + [shell])
         for (index, agent) in agents.enumerated() {
             domain.agents["\(id)-\(index)"] = AgentTab(state: ObservedState(agent.0), claudeSessionID: agent.1)

@@ -59,7 +59,7 @@ public enum DefaultKeys {
         "browser": [
             ("<D-[>", "browser.back"), ("<D-]>", "browser.forward"), ("<D-l>", "browser.location"),
             ("<D-r>", "browser.reload"), ("<D-=>", "browser.zoom.in"), ("<D-+>", "browser.zoom.in"),
-            ("<D-->", "browser.zoom.out"), ("<D-w>", "pane.close"),
+            ("<D-->", "browser.zoom.out"), ("<D-w>", "tab.close"),
         ],
         "tasks": [("r", "tasks.refresh")],
         "inbox": [

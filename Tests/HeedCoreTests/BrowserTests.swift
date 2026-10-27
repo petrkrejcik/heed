@@ -30,59 +30,55 @@ struct BrowserPaneTests {
 }
 
 struct PageLayoutTests {
+    /// The agent in a pane on the left, a shell in the work pane on the right; the agent has the keys.
     private func layout() -> TaskLayout {
         let agent = PaneSpec(id: "agent", role: .agent, title: "claude", directory: "/w")
         let shell = PaneSpec(id: "shell", role: .shell, title: "zsh", directory: "/w")
-        return TaskLayout(tabs: [
-            PaneTab(id: "t1", title: "agent", tree: .leaf(agent)),
-            PaneTab(id: "t2", title: "shell", tree: .leaf(shell)),
-        ])
+        return TaskLayout(
+            root: .split(
+                .horizontal, .leaf(PaneGroup(id: "left", tabs: [PaneTab(id: "t1", title: "agent", pane: agent)])),
+                .leaf(PaneGroup(id: "right", tabs: [PaneTab(id: "t2", title: "shell", pane: shell)])), ratio: 0.5
+            ),
+            focusedGroup: "left"
+        )
     }
 
-    @Test func aNewPageOpensAtTheEndAndShows() {
+    private func titles(_ layout: TaskLayout) -> [[String]] { layout.groups.map { $0.tabs.map(\.title) } }
+
+    @Test func aNewPageOpensInTheWorkPaneAndShows() {
         var layout = layout()
         let pane = layout.openPage("https://github.com/pulls", directory: "/w", show: true)
-        #expect(layout.tabs.count == 3)
-        #expect(layout.activeTab == 2)
-        #expect(layout.tabs[2].tree.panes == [pane])
+        #expect(titles(layout) == [["agent"], ["shell", "github.com"]])
+        #expect(layout.focusedPane == pane)
         #expect(pane.role == .browser)
-        #expect(layout.tabs[2].title == "github.com")
     }
 
-    @Test func aPageOpenedBehindLeavesTheActiveTab() {
+    @Test func aPageOpenedBehindLeavesEveryActiveTab() {
         var layout = layout()
-        layout.activeTab = 1
         layout.openPage("http://kibana.localhost/app/agent_builder", directory: "/w", show: false)
-        #expect(layout.tabs.count == 3)
-        #expect(layout.activeTab == 1)
+        #expect(titles(layout) == [["agent"], ["shell", "kibana.localhost"]])
+        #expect(layout.focused?.id == "left")
+        #expect(layout.groups[1].active?.title == "shell")
     }
 
-    @Test func aLinkOpensNextToItsPageAndStaysBehindWhenAsked() throws {
+    @Test func aLinkOpensNextToItsPageAndStaysBehindWhenAsked() {
         var layout = layout()
         let page = layout.openPage("https://a.dev", directory: "/w", show: true)
         layout.openPage("https://b.dev", nextTo: page.id, directory: "/w", show: false)
-        #expect(layout.tabs.map(\.title) == ["agent", "shell", "a.dev", "b.dev"])
-        #expect(layout.activeTab == 2)
-        // A link from the first tab lands right after it, and the tab you are on stays yours.
-        let first = try #require(layout.tabs[0].tree.panes.first)
-        layout.openPage("https://c.dev", nextTo: first.id, directory: "/w", show: false)
-        #expect(layout.tabs.map(\.title) == ["agent", "c.dev", "shell", "a.dev", "b.dev"])
-        #expect(layout.activeTab == 3)
+        layout.focus(pane: "shell")
+        layout.openPage("https://c.dev", nextTo: "shell", directory: "/w", show: false)
+        #expect(titles(layout) == [["agent"], ["shell", "c.dev", "a.dev", "b.dev"]])
+        #expect(layout.focusedPane?.id == "shell")
     }
 
-    @Test func aPageNamesItsTabWhenAlone() {
+    @Test func aPageNamesItsTab() {
         var layout = layout()
         let page = layout.openPage(nil, directory: "/w", show: true)
-        #expect(layout.tabs[2].title == "new page")
+        #expect(layout.groups[1].tabs[1].title == "new page")
         layout.pageChanged(page.id, url: "https://github.com/o/heed", title: "o/heed")
-        #expect(layout.tabs[2].title == "o/heed")
-        #expect(layout.tabs[2].tree.panes[0].url == "https://github.com/o/heed")
+        #expect(layout.groups[1].tabs[1].title == "o/heed")
+        #expect(layout.pane(page.id)?.url == "https://github.com/o/heed")
         #expect(layout.contains(pane: page.id))
-        // Split next to a shell, the tab keeps its own name.
-        layout.tabs[1].split(.horizontal, with: PaneSpec(id: "web", role: .browser, title: "", directory: "/w"))
-        layout.pageChanged("web", url: "http://localhost:3000", title: "Docs")
-        #expect(layout.tabs[1].title == "shell")
-        #expect(layout.tabs[1].tree.panes[1].title == "Docs")
     }
 
     @Test func closingAPageTakesItsTab() {
@@ -90,7 +86,7 @@ struct PageLayoutTests {
         let page = layout.openPage("https://a.dev", directory: "/w", show: true)
         let removed = layout.removePane(page.id)
         #expect(removed)
-        #expect(layout.tabs.map(\.title) == ["agent", "shell"])
+        #expect(titles(layout) == [["agent"], ["shell"]])
         #expect(!layout.contains(pane: page.id))
     }
 }
@@ -148,7 +144,7 @@ struct BrowserKeyTests {
         #expect(press(&engine, "<D-r>") == [.run(CommandInvocation(name: "browser.reload"))])
         #expect(press(&engine, "<D-=>") == [.run(CommandInvocation(name: "browser.zoom.in"))])
         #expect(press(&engine, "<D-->") == [.run(CommandInvocation(name: "browser.zoom.out"))])
-        #expect(press(&engine, "<D-w>") == [.run(CommandInvocation(name: "pane.close"))])
+        #expect(press(&engine, "<D-w>") == [.run(CommandInvocation(name: "tab.close"))])
         #expect(press(&engine, "<D-t>") == [.run(CommandInvocation(name: "browser.new"))])
         #expect(engine.mode == .insert)
         // Everything else is the page's: letters, ⌘← and ⌘C, and ⌘0 (never a ⌘+number key).
@@ -163,7 +159,7 @@ struct BrowserKeyTests {
         var engine = engine()
         engine.paneScope = "browser"
         #expect(press(&engine, "<D-r>") == [.run(CommandInvocation(name: "browser.reload"))])
-        #expect(press(&engine, "<D-w>") == [.run(CommandInvocation(name: "pane.close"))])
+        #expect(press(&engine, "<D-w>") == [.run(CommandInvocation(name: "tab.close"))])
         #expect(press(&engine, "j") == [.run(CommandInvocation(name: "row.next"))])
         #expect(press(&engine, "gt") == [.pending, .run(CommandInvocation(name: "tab.next"))])
     }

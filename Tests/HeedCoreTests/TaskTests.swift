@@ -13,133 +13,16 @@ private func task(
     )
 }
 
-/// A layout with one agent tab per id in `agents` (pane ids `<task>-<agent>`), plus a shell tab.
+/// A layout with one agent tab per id in `agents` (pane ids `<task>-<agent>`), plus a shell tab, in one pane.
 private func layout(_ task: String, agents: [String]) -> TaskLayout {
     let tabs = agents.map { agent in
-        PaneTab(title: agent, tree: .leaf(PaneSpec(
-            id: "\(task)-\(agent)", role: .agent, title: "claude", directory: "/"
-        )))
+        PaneTab(title: agent, pane: PaneSpec(id: "\(task)-\(agent)", role: .agent, title: "claude", directory: "/"))
     }
-    return TaskLayout(tabs: tabs + [PaneTab(title: "shell", tree: .leaf(pane("\(task)-shell")))])
+    return TaskLayout(tabs: tabs + [PaneTab(title: "shell", pane: pane("\(task)-shell"))])
 }
 
 private func agent(_ state: AgentState, _ activity: String = "") -> AgentTab {
     AgentTab(state: ObservedState(state), activity: activity)
-}
-
-struct PaneTreeTests {
-    @Test func splitsAndReadingOrder() {
-        var tab = PaneTab(title: "t", tree: .leaf(pane("a")))
-        tab.split(.horizontal, with: pane("b"))
-        tab.focused = "a"
-        tab.split(.vertical, with: pane("c"))
-        #expect(tab.tree.panes.map(\.id) == ["a", "c", "b"])
-        #expect(tab.focused == "c")
-    }
-
-    @Test func focusMovesAcrossSplits() {
-        var tab = PaneTab(title: "t", tree: .leaf(pane("a")))
-        tab.split(.horizontal, with: pane("b"))
-        tab.focused = "a"
-        tab.split(.vertical, with: pane("c"))
-        tab.focus(.right)
-        #expect(tab.focused == "b")
-        tab.focus(.left)
-        #expect(tab.focused == "c")
-        tab.focus(.up)
-        #expect(tab.focused == "a")
-        tab.focus(.up)
-        #expect(tab.focused == "a")
-    }
-
-    @Test func aDraggedDividerSetsItsOwnSplitWithinBounds() {
-        // a | (b over c)
-        let tree = PaneTree.leaf(pane("a")).splitting("a", axis: .horizontal, with: pane("b"))
-            .splitting("b", axis: .vertical, with: pane("c"))
-        /// Every split's ratio, outer first.
-        func ratios(_ tree: PaneTree) -> [Double] {
-            guard case let .split(_, first, second, ratio) = tree else { return [] }
-            return [ratio] + ratios(first) + ratios(second)
-        }
-        #expect(ratios(tree.settingRatio(0.3, at: [1])) == [0.5, 0.3])
-        #expect(ratios(tree.settingRatio(1.4, at: [])) == [0.9, 0.5])
-        #expect(ratios(tree.settingRatio(-1, at: [])) == [0.1, 0.5])
-        #expect(tree.settingRatio(0.3, at: [1]).panes == tree.panes)
-        #expect(tree.settingRatio(0.3, at: [0]) == tree)
-        #expect(tree.settingRatio(0.3, at: [1, 1]) == tree)
-        #expect(tree.settingRatio(0.3, at: [7]) == tree)
-    }
-
-    @Test func closingCollapsesToTheSibling() {
-        var tab = PaneTab(title: "t", tree: .leaf(pane("a")))
-        tab.split(.horizontal, with: pane("b"))
-        let closed = tab.closeFocused()
-        #expect(closed)
-        #expect(tab.tree == .leaf(pane("a")))
-        #expect(tab.focused == "a")
-        let closedLast = tab.closeFocused()
-        #expect(!closedLast)
-    }
-}
-
-struct TaskLayoutTests {
-    @Test func removingAPaneFromAnyTab() {
-        let agent = PaneSpec(role: .agent, title: "claude", directory: "/w")
-        let shell = PaneSpec(role: .shell, title: "zsh", directory: "/w")
-        let tests = PaneSpec(role: .command, title: "jest", directory: "/w")
-        var first = PaneTab(title: "agent", tree: .leaf(agent))
-        first.split(.horizontal, with: shell)
-        var layout = TaskLayout(tabs: [first, PaneTab(title: "jest", tree: .leaf(tests))], activeTab: 1)
-        // A pane in a tab that is not active, and not focused there: the focus stays where it was.
-        let focused = layout.tabs[0].focused
-        let other = layout.removePane(focused == shell.id ? agent.id : shell.id)
-        #expect(other)
-        #expect(layout.tabs[0].tree.panes.count == 1)
-        #expect(layout.activeTab == 1)
-        // The last pane of a tab takes the tab with it; the active tab stays the one you were on.
-        let last = layout.removePane(layout.tabs[0].tree.panes[0].id)
-        #expect(last)
-        #expect(layout.tabs.map(\.title) == ["jest"])
-        #expect(layout.activeTab == 0)
-        let missing = layout.removePane("nope")
-        #expect(!missing)
-        let final = layout.removePane(tests.id)
-        #expect(final)
-        #expect(layout.tabs.isEmpty)
-    }
-
-    @Test func aDraggedTabMovesAndTheActiveTabStaysTheSameTab() {
-        let tabs = ["a", "b", "c", "d"].map { PaneTab(id: $0, title: $0, tree: .leaf(pane($0))) }
-        var layout = TaskLayout(tabs: tabs, activeTab: 1)
-        layout.moveTab("a", to: 2)
-        #expect(layout.tabs.map(\.id) == ["b", "c", "a", "d"])
-        #expect(layout.activeTab == 0)
-        layout.moveTab("d", to: 0)
-        #expect(layout.tabs.map(\.id) == ["d", "b", "c", "a"])
-        #expect(layout.activeTab == 1)
-        layout.moveTab("c", to: 99)
-        #expect(layout.tabs.map(\.id) == ["d", "b", "a", "c"])
-        layout.moveTab("nope", to: 0)
-        #expect(layout.tabs.map(\.id) == ["d", "b", "a", "c"])
-    }
-
-    @Test func removingATabKeepsTheActiveOne() {
-        let tabs = ["a", "b", "c"].map { PaneTab(title: $0, tree: .leaf(pane($0))) }
-        var layout = TaskLayout(tabs: tabs, activeTab: 2)
-        layout.removeTab(at: 0)
-        #expect(layout.tabs[layout.activeTab].title == "c")
-        layout.removeTab(at: layout.activeTab)
-        #expect(layout.tabs[layout.activeTab].title == "b")
-    }
-
-    @Test func promptsGoToTheFirstAgentPane() {
-        let tabs = [PaneTab(title: "shell", tree: .leaf(pane("s")))] + layout("t", agents: ["a"]).tabs
-        #expect(TaskLayout(tabs: tabs).agentPane?.pane == "t-a")
-        #expect(TaskLayout(tabs: tabs).agentPane?.tab == 1)
-        // No agent: the first pane.
-        #expect(TaskLayout(tabs: [PaneTab(title: "s", tree: .leaf(pane("s")))]).agentPane?.pane == "s")
-        #expect(TaskLayout(tabs: []).agentPane == nil)
-    }
 }
 
 struct TaskListTests {
@@ -337,6 +220,7 @@ struct NewTaskTests {
         #expect(task.lastActivity == now)
         #expect(task.timeline.last?.text.hasPrefix("started · claude in ") == true)
         let layout = try #require(domain.layouts[task.id])
+        #expect(layout.groups.count == 1)
         #expect(layout.tabs.count == 1)
         let agentPane = try #require(layout.panes.first)
         #expect(agentPane.role == .agent)
@@ -347,22 +231,22 @@ struct NewTaskTests {
         #expect(tab.state.state == .idle)
     }
 
-    @Test func aShellSplitSitsBesideTheAgent() {
+    @Test func aShellSplitIsAShellInAPaneBesideTheAgent() throws {
         var settings = WorkSettings.default
         settings.shellSplit = true
         let domain = Domain.empty.applying(NewTask.start(WorkTask(title: "t"), settings: settings, integration: nil))
-        let panes = domain.layouts.values.first?.panes ?? []
-        #expect(panes.map(\.role) == [.agent, .shell])
-        #expect(domain.layouts.values.first?.tabs.first?.focused == panes.first?.id)
+        let layout = try #require(domain.layouts.values.first)
+        #expect(layout.groups.map { $0.tabs.map(\.pane.role) } == [[.agent], [.shell]])
+        #expect(layout.focusedPane?.role == .agent)
     }
 
     @Test func theAgentKeyGoesToTheAgentTabTheTaskHas() {
         var layout = layout("t", agents: ["a"])
-        layout.tabs.insert(PaneTab(title: "shell", tree: .leaf(pane("t-first"))), at: 0)
+        layout.add(PaneTab(title: "shell", pane: pane("t-first")), show: true)
         let opening = NewTask.openAgent(
             in: layout, task: task("t"), agent: WorkSettings.default.claude, integration: nil
         )
-        #expect(opening == .existing(tab: 1, pane: "t-a"))
+        #expect(opening == .existing(pane: "t-a"))
     }
 
     @Test func aClosedAgentComesBackResumedWhereItWorked() throws {
@@ -371,10 +255,10 @@ struct NewTaskTests {
             agents: ["t-a": AgentTab(claudeSessionID: "s-1")]
         )
         var moved = try #require(domain.layouts["t"])
-        moved.tabs[0].tree = moved.tabs[0].tree.updating("t-a") { $0.directory = "/wt/fix" }
+        moved.update(pane: "t-a") { $0.directory = "/wt/fix" }
         domain.apply(.layoutChanged(task: "t", moved))
         var closed = try #require(domain.layouts["t"])
-        closed.removeTab(at: 0)
+        closed.removePane("t-a")
         domain.apply(.layoutChanged(task: "t", closed))
         let kept = try #require(domain.layouts["t"])
         #expect(kept.closedAgent == ClosedAgent(claudeSessionID: "s-1", directory: "/wt/fix"))
@@ -388,8 +272,9 @@ struct NewTaskTests {
         }
         #expect(resumed)
         #expect(layout.closedAgent == nil)
-        #expect(layout.activeTab == layout.tabs.count - 1)
-        let pane = try #require(layout.tabs.last?.tree.panes.first)
+        // The agent's pane had gone with its tab: it comes back as a pane on the left, focused.
+        #expect(layout.groups.map { $0.tabs.map(\.title) } == [["agent"], ["shell"]])
+        let pane = try #require(layout.focusedPane)
         #expect(pane.id == paneID)
         #expect(pane.role == .agent)
         #expect(pane.directory == "/wt/fix")
@@ -398,10 +283,10 @@ struct NewTaskTests {
     }
 
     @Test func withoutAClosedAgentClaudeHasItStartsAFreshOneWhereTheTaskWorks() throws {
-        let gone = TaskLayout(tabs: [], closedAgent: ClosedAgent(claudeSessionID: "s-1", directory: "/wt/old"))
+        let gone = TaskLayout(closedAgent: ClosedAgent(claudeSessionID: "s-1", directory: "/wt/old"))
         var worktree = task("t")
         worktree.worktree = "/wt/fix"
-        for layout in [TaskLayout(tabs: []), gone] {
+        for layout in [TaskLayout(), gone] {
             let opening = NewTask.openAgent(
                 in: layout, task: worktree, agent: WorkSettings.default.claude, integration: nil
             ) { _, _ in false }
@@ -411,7 +296,7 @@ struct NewTaskTests {
             }
             #expect(!resumed)
             #expect(opened.closedAgent == nil)
-            let pane = try #require(opened.tabs.last?.tree.panes.first)
+            let pane = try #require(opened.focusedPane)
             #expect(pane.directory == "/wt/fix")
             let id = try #require(agent.claudeSessionID)
             #expect(pane.command == "claude --session-id \(id)")
@@ -423,6 +308,7 @@ struct NewTaskTests {
         let json = #"{"tabs":[],"activeTab":0}"#
         let layout = try JSONDecoder().decode(TaskLayout.self, from: Data(json.utf8))
         #expect(layout.closedAgent == nil)
+        #expect(layout.isEmpty)
     }
 
     @Test func withoutClaudeItOpensAShell() {

@@ -33,7 +33,7 @@ public struct TaskRollup: Hashable, Sendable {
 
     /// The task's agent tabs are the `.agent` panes of its layout; one with no report yet counts as idle, guessed.
     public static func of(_ task: WorkTask, layout: TaskLayout?, agents: [String: AgentTab]) -> TaskRollup {
-        let panes = (layout?.tabs ?? []).flatMap(\.tree.panes).filter { $0.role == .agent }
+        let panes = (layout?.panes ?? []).filter { $0.role == .agent }
         let tabs = panes.map { agents[$0.id] ?? AgentTab() }
         let top = tabs.enumerated().min {
             (urgency($0.element.state.state), $0.offset) < (urgency($1.element.state.state), $1.offset)

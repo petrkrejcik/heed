@@ -2,26 +2,39 @@ import HeedCore
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// Tabs and the focused tab's split panes.
+/// The current task's panes, each with its tab strip and its active tab.
 struct CenterArea: View {
     @Environment(AppModel.self) private var model
+    /// The tab being dragged, within a strip or onto another pane's.
+    @State private var draggedTab: String?
 
     var body: some View {
-        VStack(spacing: 0) {
-            TabStrip().shotRegion(.tabStrip)
-            if let tab = model.currentTab {
+        Group {
+            if let layout = model.currentLayout, let root = layout.root {
+                let topRight = root.topRight.id
                 Group {
-                    if tab.zoomed, let pane = tab.tree.panes.first(where: { $0.id == tab.focused }) {
-                        PaneView(pane: pane, number: (tab.tree.panes.firstIndex(of: pane) ?? 0) + 1, tab: tab)
+                    if layout.zoomed, let group = layout.focused {
+                        GroupView(group: group, topRight: true, focused: true, draggedTab: $draggedTab)
                     } else {
-                        PaneTreeView(tree: tab.tree, tab: tab)
+                        PaneTreeView(
+                            tree: root, path: [], topRight: topRight, focused: layout.focused?.id,
+                            draggedTab: $draggedTab
+                        )
                     }
                 }
                 .shotRegion(.panes)
-                // A pane's terminal must survive re-layout (splits, zoom); identity is the pane id, not position.
-                .id(tab.id)
             } else {
-                EmptyCenter()
+                VStack(spacing: 0) {
+                    HStack(spacing: 0) {
+                        Spacer()
+                        StripHints(keys: true)
+                    }
+                    .frame(height: 36)
+                    .background(Theme.bg2)
+                    .overlay(alignment: .bottom) { Theme.line.frame(height: 1) }
+                    .shotRegion(.tabStrip)
+                    EmptyCenter()
+                }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -29,15 +42,100 @@ struct CenterArea: View {
     }
 }
 
+/// The panes as the layout splits them, with a draggable divider between the two sides of each split.
+private struct PaneTreeView: View {
+    @Environment(AppModel.self) private var model
+    let tree: PaneTree
+    /// Where this part sits in the tree (0 a split's first side, 1 its second): how a divider names its split.
+    let path: [Int]
+    let topRight: String
+    let focused: String?
+    @Binding var draggedTab: String?
+    /// The ratio while the divider is dragged; the layout gets it when the mouse is let go.
+    @State private var dragging: Double?
+
+    var body: some View {
+        switch tree {
+        case let .leaf(group):
+            GroupView(
+                group: group, topRight: group.id == topRight, focused: group.id == focused, draggedTab: $draggedTab
+            )
+        case let .split(axis, first, second, ratio):
+            GeometryReader { geometry in
+                let sideways = axis == .horizontal
+                let length = max((sideways ? geometry.size.width : geometry.size.height) - 1, 1)
+                let shown = dragging ?? ratio
+                let dragged = { (distance: CGFloat) in
+                    min(max(ratio + distance / length, PaneTree.ratios.lowerBound), PaneTree.ratios.upperBound)
+                }
+                Group {
+                    if sideways {
+                        HStack(spacing: 1) {
+                            side(first, 0).frame(width: length * shown)
+                            side(second, 1)
+                        }
+                    } else {
+                        VStack(spacing: 1) {
+                            side(first, 0).frame(height: length * shown)
+                            side(second, 1)
+                        }
+                    }
+                }
+                .overlay(alignment: .topLeading) {
+                    ResizeHandle(
+                        axis: sideways ? .horizontal : .vertical,
+                        moved: { dragging = dragged($0) },
+                        ended: {
+                            model.setSplitRatio(dragged($0), at: path)
+                            dragging = nil
+                        }
+                    )
+                    .frame(width: sideways ? 7 : nil, height: sideways ? nil : 7)
+                    .offset(x: sideways ? length * shown - 3 : 0, y: sideways ? 0 : length * shown - 3)
+                }
+            }
+            .background(Theme.line)
+        }
+    }
+
+    private func side(_ tree: PaneTree, _ step: Int) -> PaneTreeView {
+        PaneTreeView(tree: tree, path: path + [step], topRight: topRight, focused: focused, draggedTab: $draggedTab)
+    }
+}
+
+/// One pane: its tab strip over its active tab.
+private struct GroupView: View {
+    let group: PaneGroup
+    /// The top right pane's strip also holds the key hints and the inspector button.
+    let topRight: Bool
+    let focused: Bool
+    @Binding var draggedTab: String?
+
+    var body: some View {
+        VStack(spacing: 0) {
+            TabStrip(group: group, topRight: topRight, focused: focused, draggedTab: $draggedTab)
+                .shotRegion(topRight ? ShotRegion.tabStrip : nil)
+            if let tab = group.active {
+                // A terminal must survive re-layout (splits, zoom, a tab moved); identity is the pane id.
+                PaneView(pane: tab.pane, active: focused).id(tab.pane.id)
+            } else {
+                Theme.pane
+            }
+        }
+    }
+}
+
 private struct TabStrip: View {
     @Environment(AppModel.self) private var model
-    /// The tab being dragged to a new place.
-    @State private var draggedTab: String?
+    let group: PaneGroup
+    let topRight: Bool
+    let focused: Bool
+    @Binding var draggedTab: String?
+    @State private var width: CGFloat = 0
 
     var body: some View {
         HStack(spacing: 0) {
-            // More tabs than fit scroll sideways rather than push the inspector off the window; the active one stays in
-            // view.
+            // More tabs than fit scroll sideways rather than push the hints off; the active one stays in view.
             if ShotMode.active {
                 // Docs shots render offscreen, where a scroll view's content isn't drawn.
                 tabs.frame(minWidth: 0, maxWidth: .infinity, alignment: .leading).clipped()
@@ -45,95 +143,127 @@ private struct TabStrip: View {
                 ScrollViewReader { proxy in
                     ScrollView(.horizontal, showsIndicators: false) { tabs }
                         .onAppear { reveal(proxy) }
-                        .onChange(of: model.currentTab?.id) { reveal(proxy) }
+                        .onChange(of: group.active?.id) { reveal(proxy) }
                 }
             }
-            HStack(spacing: 10) {
-                // What the keys do here, as you have them bound: into the terminal in NORMAL, back out in INSERT.
-                if model.mode == .insert {
-                    HStack(spacing: 5) {
-                        KeyCap(text: "⇧ esc")
-                        let chord = KeyCapText.of(model.config.insertEscape)
-                        if chord != "⇧⎋" {
-                            Text("or").foregroundStyle(Theme.fg3)
-                            KeyCap(text: chord)
-                        }
-                        Text("normal").foregroundStyle(Theme.fg3)
-                    }
-                    .fixedSize()
-                } else {
-                    hint(model.keyLabel(for: "mode.insert"), "insert")
-                    hint(model.keyLabel(for: "pane.split.right"), "split right")
-                    hint(model.keyLabel(for: "pane.split.below"), "below")
-                    hint(model.keyLabel(for: "tab.next"), "tab")
-                }
-                if !model.inspectorVisible {
-                    CollapseButton(systemImage: "sidebar.right", key: "zi") { model.toggleInspector() }
-                }
-            }
-            .font(Theme.ui(11.5))
-            .padding(.horizontal, 14)
+            // A narrow pane keeps its strip for tabs; the status bar has the keys too.
+            if topRight { StripHints(keys: width >= 560) }
         }
         .frame(height: 36)
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
         .background(Theme.bg2)
         .overlay(alignment: .bottom) { Theme.line.frame(height: 1) }
+        .contentShape(Rectangle())
+        .onTapGesture { model.focusGroup(group.id) }
+        // A tab dropped past the last one goes to the end of this pane.
+        .onDrop(
+            of: [.text],
+            delegate: TabDrop(group: group.id, index: group.tabs.count, target: nil, dragged: $draggedTab, model: model)
+        )
     }
 
     private func reveal(_ proxy: ScrollViewProxy) {
-        if let id = model.currentTab?.id { proxy.scrollTo(id) }
+        if let id = group.active?.id { proxy.scrollTo(id) }
     }
 
     private var tabs: some View {
         HStack(spacing: 0) {
-            ForEach(Array(model.currentTabs.enumerated()), id: \.element.id) { index, tab in
-                let on = index == model.currentTabIndex
+            ForEach(Array(group.tabs.enumerated()), id: \.element.id) { index, tab in
+                let on = index == group.activeTab
                 HStack(spacing: 8) {
-                    if let agent = tab.tree.panes.first(where: { $0.role == .agent }) {
-                        let state = (model.agents[agent.id] ?? AgentTab()).state
-                        StateGlyph(state: state.state, guessed: state.source == .guessed, size: 11)
-                    } else if let command = tab.tree.panes.first(where: { $0.role == .command }),
-                              let code = model.commandResults[command.id]
-                    {
-                        // A pinned command's last run: done when it passed, a red square when it failed.
-                        if code == 0 {
-                            StateGlyph(state: .done, size: 11)
-                        } else {
-                            RoundedRectangle(cornerRadius: 2).fill(Theme.err).frame(width: 9, height: 9)
-                        }
-                    } else if tab.tree.panes.allSatisfy({ $0.role == .browser }) {
-                        Image(systemName: "globe").font(.system(size: 10))
-                    }
+                    glyph(tab.pane)
                     Text(tab.title).lineLimit(1).fixedSize()
-                    TabCloseButton { model.closeTab(index) }
+                    TabCloseButton { model.closeTab(tab.id) }
                 }
                 .font(Theme.mono(12))
-                .foregroundStyle(on ? Theme.fg : Theme.fg3)
+                .foregroundStyle(on && focused ? Theme.fg : on ? Theme.fg2 : Theme.fg3)
                 .padding(.horizontal, 14)
                 .frame(height: 36)
                 .background(on ? Theme.pane : .clear)
-                .overlay(alignment: .bottom) { if on { Theme.inverse.frame(height: 2) } }
+                .overlay(alignment: .bottom) {
+                    if on { (focused ? Theme.inverse : Theme.line).frame(height: 2) }
+                }
                 .contentShape(Rectangle())
-                .onTapGesture { model.selectTab(index) }
-                // Dragged along the strip, a tab takes the place of the one it passes over.
+                .onTapGesture { model.selectTab(tab.id) }
+                // Dragged along a strip, a tab takes the place of the one it passes over, in this pane or another.
                 .onDrag {
                     draggedTab = tab.id
                     return NSItemProvider(object: tab.id as NSString)
                 }
-                .onDrop(of: [.text], delegate: TabDrop(target: tab.id, dragged: $draggedTab, model: model))
+                .onDrop(
+                    of: [.text],
+                    delegate: TabDrop(group: group.id, index: index, target: tab.id, dragged: $draggedTab, model: model)
+                )
                 .id(tab.id)
             }
             Text("+").font(Theme.mono(13)).foregroundStyle(Theme.fg3).padding(.horizontal, 14)
                 .frame(height: 36)
                 .contentShape(Rectangle())
-                .onTapGesture { model.perform(CommandInvocation(name: "tab.new")) }
-                .help("New tab (:tab.new)")
+                .onTapGesture { model.newTab(in: group.id) }
+                .help("New tab with a shell, in this pane (:tab.new)")
+        }
+    }
+
+    /// The agent's state, a pinned command's last run, or a globe for a page.
+    @ViewBuilder private func glyph(_ pane: PaneSpec) -> some View {
+        switch pane.role {
+        case .agent:
+            let state = (model.agents[pane.id] ?? AgentTab()).state
+            StateGlyph(state: state.state, guessed: state.source == .guessed, size: 11)
+        case .command:
+            if let code = model.commandResults[pane.id] {
+                // Done when it passed, a red square when it failed.
+                if code == 0 {
+                    StateGlyph(state: .done, size: 11)
+                } else {
+                    RoundedRectangle(cornerRadius: 2).fill(Theme.err).frame(width: 9, height: 9)
+                }
+            }
+        case .browser:
+            Image(systemName: "globe").font(.system(size: 10))
+        case .shell:
+            EmptyView()
         }
     }
 }
 
-extension TabStrip {
+/// What the keys do here, as you have them bound (unless `keys` is false), and the inspector button when it is
+/// hidden.
+private struct StripHints: View {
+    @Environment(AppModel.self) private var model
+    let keys: Bool
+
+    var body: some View {
+        HStack(spacing: 10) {
+            // Into the terminal in NORMAL, back out in INSERT.
+            if !keys {
+                EmptyView()
+            } else if model.mode == .insert {
+                HStack(spacing: 5) {
+                    KeyCap(text: "⇧ esc")
+                    let chord = KeyCapText.of(model.config.insertEscape)
+                    if chord != "⇧⎋" {
+                        Text("or").foregroundStyle(Theme.fg3)
+                        KeyCap(text: chord)
+                    }
+                    Text("normal").foregroundStyle(Theme.fg3)
+                }
+                .fixedSize()
+            } else {
+                hint(model.keyLabel(for: "mode.insert"), "insert")
+                hint(model.keyLabel(for: "pane.split.right"), "split right")
+                hint(model.keyLabel(for: "tab.next"), "tab")
+            }
+            if !model.inspectorVisible {
+                CollapseButton(systemImage: "sidebar.right", key: "zi") { model.toggleInspector() }
+            }
+        }
+        .font(Theme.ui(11.5))
+        .padding(.horizontal, 14)
+    }
+
     /// A key and what it does; nothing when the command has no key.
-    @ViewBuilder func hint(_ key: String?, _ label: String) -> some View {
+    @ViewBuilder private func hint(_ key: String?, _ label: String) -> some View {
         if let key {
             HStack(spacing: 5) {
                 KeyCap(text: key)
@@ -144,17 +274,22 @@ extension TabStrip {
     }
 }
 
-/// A tab dragged over another one moves into its place, so the strip shows the new order while you drag.
+/// A tab dragged over another one moves into its place (or, over a strip's empty end, to the end of that pane), so
+/// the strips show the new order while you drag.
 private struct TabDrop: DropDelegate {
-    let target: String
+    let group: String
+    let index: Int
+    /// The tab under the pointer; nil for the strip itself.
+    let target: String?
     @Binding var dragged: String?
     let model: AppModel
 
     func dropEntered(info _: DropInfo) {
-        guard let dragged, dragged != target,
-              let index = model.currentTabs.firstIndex(where: { $0.id == target })
-        else { return }
-        model.moveTab(dragged, to: index)
+        guard let dragged, dragged != target else { return }
+        let source = model.currentLayout?.groups.first { $0.tabs.contains { $0.id == dragged } }
+        // The strip's end only takes a tab from another pane; within its own, the tabs it passes over place it.
+        if target == nil, source?.id == group { return }
+        model.moveTab(dragged, to: index, in: group)
     }
 
     func dropUpdated(info _: DropInfo) -> DropProposal? { DropProposal(operation: .move) }
@@ -183,90 +318,23 @@ private struct TabCloseButton: View {
     }
 }
 
-private struct PaneTreeView: View {
-    @Environment(AppModel.self) private var model
-    let tree: PaneTree
-    let tab: PaneTab
-    /// Where this part sits in the tab's tree (0 a split's first side, 1 its second): how a divider names its split.
-    var path: [Int] = []
-    /// The ratio while the divider is dragged; the layout gets it when the mouse is let go.
-    @State private var dragging: Double?
-
-    var body: some View {
-        switch tree {
-        case let .leaf(pane):
-            PaneView(pane: pane, number: (tab.tree.panes.firstIndex(of: pane) ?? 0) + 1, tab: tab)
-        case let .split(axis, first, second, ratio):
-            GeometryReader { geometry in
-                let sideways = axis == .horizontal
-                let length = max((sideways ? geometry.size.width : geometry.size.height) - 1, 1)
-                let shown = dragging ?? ratio
-                let dragged = { (distance: CGFloat) in
-                    min(max(ratio + distance / length, PaneTree.ratios.lowerBound), PaneTree.ratios.upperBound)
-                }
-                Group {
-                    if sideways {
-                        HStack(spacing: 1) {
-                            PaneTreeView(tree: first, tab: tab, path: path + [0]).frame(width: length * shown)
-                            PaneTreeView(tree: second, tab: tab, path: path + [1])
-                        }
-                    } else {
-                        VStack(spacing: 1) {
-                            PaneTreeView(tree: first, tab: tab, path: path + [0]).frame(height: length * shown)
-                            PaneTreeView(tree: second, tab: tab, path: path + [1])
-                        }
-                    }
-                }
-                .overlay(alignment: .topLeading) {
-                    ResizeHandle(
-                        axis: sideways ? .horizontal : .vertical,
-                        moved: { dragging = dragged($0) },
-                        ended: {
-                            model.setSplitRatio(dragged($0), at: path, inTab: tab.id)
-                            dragging = nil
-                        }
-                    )
-                    .frame(width: sideways ? 7 : nil, height: sideways ? nil : 7)
-                    .offset(x: sideways ? length * shown - 3 : 0, y: sideways ? 0 : length * shown - 3)
-                }
-            }
-            .background(Theme.line)
-        }
-    }
-}
-
+/// What a pane's active tab shows: a terminal, or a page under its address bar.
 private struct PaneView: View {
     @Environment(AppModel.self) private var model
     let pane: PaneSpec
-    let number: Int
-    let tab: PaneTab
+    /// Its pane is the focused one.
+    let active: Bool
 
     var body: some View {
-        let active = pane.id == tab.focused
         VStack(spacing: 0) {
-            HStack(spacing: 8) {
-                Text("\(number)")
-                    .font(Theme.mono(10.5, weight: active ? .bold : .regular))
-                    .foregroundStyle(active ? Theme.ink : Theme.fg)
-                    .padding(.horizontal, 5)
-                    .background(RoundedRectangle(cornerRadius: 3).fill(active ? Theme.inverse : Theme.selected))
-                if pane.role == .browser {
-                    BrowserToolbar(pane: pane)
-                } else {
-                    Text(pane.title)
-                    Spacer()
-                }
-                if pane.role == .agent {
-                    let state = (model.agents[pane.id] ?? AgentTab()).state.state
-                    Text(state.rawValue).foregroundStyle(stateColor(state))
-                }
+            if pane.role == .browser {
+                HStack(spacing: 8) { BrowserToolbar(pane: pane) }
+                    .font(Theme.mono(11))
+                    .foregroundStyle(active ? Theme.fg : Theme.fg3)
+                    .padding(.horizontal, 10)
+                    .frame(height: 30)
+                    .background(Theme.paneHeader)
             }
-            .font(Theme.mono(11))
-            .foregroundStyle(active ? Theme.fg : Theme.fg3)
-            .padding(.horizontal, 10)
-            .frame(height: pane.role == .browser ? 30 : 26)
-            .background(Theme.paneHeader)
-
             if ShotMode.active {
                 if pane.role == .browser { FakeBrowser(pane: pane) } else { FakeTerminal(pane: pane) }
             } else if pane.role == .browser, model.isFixture {
@@ -305,18 +373,8 @@ private struct PaneView: View {
         }
         .contentShape(Rectangle())
         .onTapGesture {
-            // A page reports clicks into it itself; its header holds the address field, which must keep the click.
+            // A page reports clicks into it itself; its address bar holds the address field, which must keep the click.
             if pane.role == .browser { model.focusPane(pane.id) } else { model.clickedPane(pane.id) }
-        }
-    }
-
-    private func stateColor(_ state: AgentState) -> Color {
-        switch state {
-        case .working: Theme.busy
-        case .blocked, .limited: Theme.block
-        case .asking: Theme.ask
-        case .done: Theme.done
-        case .idle, .exited: Theme.fg3
         }
     }
 }

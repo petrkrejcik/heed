@@ -255,17 +255,19 @@ struct PkConfigTests {
 
 struct MovingAgentTests {
     @Test func theAgentMovesAndTheSetupTabsFollow() throws {
-        let agent = PaneSpec(id: "agent", role: .agent, title: "claude", directory: "/k")
-        let shell = PaneSpec(id: "shell", role: .shell, title: "zsh", directory: "/k")
-        var agentTab = PaneTab(title: "agent", tree: .leaf(agent))
-        agentTab.split(.horizontal, with: shell)
-        let layout = TaskLayout(tabs: [agentTab, PaneTab(title: "kibana", tree: .leaf(pane("kibana")))], activeTab: 1)
+        let agent = PaneTab(id: "agent-tab", title: "agent", pane: PaneSpec(
+            id: "agent", role: .agent, title: "claude", directory: "/k"
+        ))
+        var layout = TaskLayout(tabs: [agent])
+        layout.add(PaneTab(title: "kibana", pane: pane("kibana")), show: true)
         let added = NewTask.setupTabs(worktree: "/w/a", bootstrap: "pk kbn bootstrap", settings: .default)
         let moved = try #require(NewTask.movingAgent("agent", to: "/w/a", in: layout, adding: added))
-        #expect(moved.tabs.map(\.title) == ["agent", "kibana", "bootstrap"])
-        #expect(moved.activeTab == 0)
-        #expect(moved.tabs[0].focused == "agent")
-        #expect(moved.tabs[0].tree.panes.map(\.directory) == ["/w/a", "/k"])
+        #expect(moved.groups.map { $0.tabs.map(\.title) } == [["agent"], ["kibana", "bootstrap"]])
+        #expect(moved.focusedPane?.id == "agent")
+        #expect(moved.pane("agent")?.directory == "/w/a")
+        #expect(moved.pane("kibana")?.directory == "/k")
+        // The bootstrap's progress shows in the work pane.
+        #expect(moved.groups[1].active?.title == "bootstrap")
         #expect(NewTask.movingAgent("gone", to: "/w/a", in: layout, adding: added) == nil)
         #expect(NewTask.moveCommand(to: "/w/a") == "/cd /w/a")
     }
@@ -295,7 +297,7 @@ struct WorktreeTabsTests {
             worktree: "/w/a", prompt: prompt, bootstrap: "pk kbn bootstrap", settings: settings, integration: nil
         )
         #expect(made.tabs.map(\.title) == ["bootstrap", "jest", "agent"])
-        let panes = made.tabs.flatMap(\.tree.panes)
+        let panes = made.tabs.map(\.pane)
         #expect(panes.allSatisfy { $0.directory == "/w/a" && $0.command != nil })
         #expect(panes[0].command == "pk kbn bootstrap")
         #expect(panes[1].role == .command)

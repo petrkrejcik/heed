@@ -45,16 +45,16 @@ This page is generated from the code (`mise run shots`).
 | `pane.right` | `l`, `<C-w>l` | focus pane right |
 | `pane.up` | `<C-w>k` | focus pane above |
 | `pane.down` | `<C-w>j` | focus pane below |
-| `pane.split.right` | `<C-w>v` | split right |
-| `pane.split.below` | `<C-w>s` | split below |
-| `pane.zoom` | `<C-w>z` | zoom pane |
-| `pane.close` | `<C-w>q`, `<D-w>` (browser) | close pane |
-| `tab.close` |  | close the tab, every pane in it |
-| `tab.next` | `gt`, `<D-}>`, `<D-}>` (INSERT) | next tab |
-| `tab.prev` | `gT`, `<D-{>`, `<D-{>` (INSERT) | previous tab |
-| `tab.new` | `gn` | new tab with shell |
+| `pane.split.right` | `<C-w>v` | new pane on the right, with a shell |
+| `pane.split.below` | `<C-w>s` | new pane below, with a shell |
+| `pane.zoom` | `<C-w>z` | zoom pane: it fills the task's area |
+| `pane.close` | `<C-w>q` | close the pane: its tabs join the pane beside it |
+| `tab.close` | `<D-w>` (browser) | close the tab |
+| `tab.next` | `gt`, `<D-}>`, `<D-}>` (INSERT) | next tab in this pane |
+| `tab.prev` | `gT`, `<D-{>`, `<D-{>` (INSERT) | previous tab in this pane |
+| `tab.new` | `gn` | new tab with a shell, in this pane |
 | `tab.agent` | `gc` | the task's agent: its tab, else the agent closed last (resumed), else a new one |
-| `tab.go` `<n>` |  | go to tab n |
+| `tab.go` `<n>` |  | go to tab n of this pane |
 | `browser.new` `[url]` | `<D-t>`, `<D-t>` (INSERT) | new tab with a web page (no address: type one) |
 | `browser.back` | `<D-[>` (browser) | web page: back |
 | `browser.forward` | `<D-]>` (browser) | web page: forward |

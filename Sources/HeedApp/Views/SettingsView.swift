@@ -180,7 +180,10 @@ private struct GeneralSettings: View {
             ) {
                 ConfigTextField(path: ["sessions", "continue_prompt"], value: work.continuePrompt)
             }
-            Field(label: "Shell split", detail: "New agent tabs open a shell beside the agent; off is one pane.") {
+            Field(
+                label: "Shell split",
+                detail: "New tasks open a shell in a pane beside the agent; off is the agent alone."
+            ) {
                 Toggle("", isOn: Binding(
                     get: { work.shellSplit }, set: { model.setConfig(["sessions", "shell_split"], .bool($0)) }
                 ))
