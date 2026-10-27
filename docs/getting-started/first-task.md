@@ -20,7 +20,7 @@ More in [New task](../tasks/new-task.md).
 The task's agent runs in a real terminal. Its state, here **working**, comes from the agent itself through hooks,
 and sorts the task in the sidebar. A task can have more than one agent tab; the row shows the most urgent one.
 
-![A working task: the agent's output in the left pane, a shell beside it](../images/shots/getting-started/first-task-2-working.png)
+![A working task: the agent's output in the left pane, its tests in the pane beside it](../images/shots/getting-started/first-task-2-working.png)
 
 ## 3. It needs you
 

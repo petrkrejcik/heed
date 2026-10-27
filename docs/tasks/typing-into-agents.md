@@ -30,4 +30,4 @@ NORMAL. A double click selects a word in the terminal, as it does in any termina
 ## Starting in INSERT
 
 A new task starts with its agent pane focused and in INSERT, so you can type to the agent straight away. Going to a
-tab (`gt`, `gT`, `gn`, `:tab.go`, or a click on it) does the same: the tab's focused terminal takes your keys.
+tab (`gt`, `gT`, `gn`, `:tab.go`, or a click on it) does the same when the tab is a terminal: it takes your keys.

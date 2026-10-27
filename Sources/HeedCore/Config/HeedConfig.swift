@@ -237,7 +237,7 @@ public enum ConfigLoader {
     resume_on_launch = "ask"           # ask | always | never
     # Typed into a resumed agent that was mid-turn, once it is idle. "" turns it off.
     continue_prompt = "Continue where you left off."
-    # Open a shell split beside the agent in new tasks.
+    # Open a shell in a pane beside the agent in new tasks.
     shell_split = false
     # Keep every pane's terminal alive in a zmx session, so agents keep running when heed quits, restarts or updates,
     # and come back as they were: auto (zmx when it is installed and works; Settings > General shows its check),

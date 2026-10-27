@@ -4,8 +4,8 @@ description: Web pages inside a task, the links that open them, and the Kibana p
 
 # Web pages
 
-A task can hold web pages as well as terminals. A page is a tab or a split like any pane: it is saved with the task's
-layout and closes with it. There is no separate browser window. Pages that aren't about one task go in the pinned
+A task can hold web pages as well as terminals. A page is a tab like any other, in the work pane beside the agent: it is
+saved with the task's layout and closes with it. There is no separate browser window. Pages that aren't about one task go in the pinned
 Kibana main task.
 
 ![A task's Kibana page in its own tab, with the toolbar above it](../images/shots/tasks/web-page.png)
@@ -17,7 +17,7 @@ and is named after the page's title, else its host.
 
 | Key | |
 |---|---|
-| `⌘T` | A new page in a new tab, the address field ready. Works from a terminal in INSERT too. |
+| `⌘T` | A new page in a new tab of the work pane, the address field ready. Works from a terminal in INSERT too. |
 | `:browser.new <address>` | A new page at that address |
 
 ![⌘T: an empty page with the address field taking the keys](../images/shots/tasks/web-page-new.png)
@@ -51,7 +51,7 @@ A browser's `⌘` chords work in both modes, also while you type in the page:
 | `⌘R` | Reload (stop while loading) |
 | `⌘[` / `⌘]` | Back / forward (`⌘←` / `⌘→` too, outside a text field) |
 | `⌘=` / `⌘-` | Zoom in / out (`:browser.zoom.reset` for actual size) |
-| `⌘W` | Close the page, not the window |
+| `⌘W` | Close the page's tab, not the window |
 | `:browser.external` | Open the page in your default browser |
 
 Change them under `[keys.browser]` in config: single `⌘` or `⌃` chords only, since every other key is typed into the
@@ -77,7 +77,7 @@ from the page on its own.
 ## Kibana opens by itself
 
 Run `pk kbn` in a task's terminal and you don't get a Chrome tab. About 5 seconds after Kibana starts listening, Heed
-opens a page on it as a new tab at the end of the task's tabs, in the background: the tab you are on doesn't change.
+opens a page on it as a new tab at the end of the work pane's tabs, in the background: no tab you see changes.
 If the task already has a page on that Kibana (Kibana restarted), Heed reloads it instead of opening another.
 
 The address is the one pk would have opened: `http://localhost` for the main checkout, `http://<worktree>.localhost`

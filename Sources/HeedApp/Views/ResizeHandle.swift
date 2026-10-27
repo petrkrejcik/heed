@@ -3,7 +3,18 @@ import SwiftUI
 
 /// A strip on a divider or a column's edge that resizes by dragging. It reports how far the mouse has moved since the
 /// press (right and down are positive), then `ended` with the last distance once the button is let go.
-struct ResizeHandle: NSViewRepresentable {
+struct ResizeHandle: View {
+    let axis: Axis
+    let moved: (CGFloat) -> Void
+    let ended: (CGFloat) -> Void
+
+    var body: some View {
+        // Docs shots render offscreen, where an AppKit view draws as a placeholder.
+        if ShotMode.active { Color.clear } else { ResizeStrip(axis: axis, moved: moved, ended: ended) }
+    }
+}
+
+private struct ResizeStrip: NSViewRepresentable {
     /// `.horizontal`: dragged sideways (a column's edge, a side-by-side split); `.vertical`: up and down.
     let axis: Axis
     let moved: (CGFloat) -> Void

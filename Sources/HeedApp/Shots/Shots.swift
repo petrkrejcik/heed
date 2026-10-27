@@ -86,9 +86,10 @@ enum Shots {
         Shot(id: "tasks/attention", size: CGSize(width: 1440, height: 640), keys: "ga", crop: .sidebar),
         Shot(id: "tasks/insert-before", keys: "2j", crop: .panes),
         Shot(id: "tasks/insert-after", keys: "2ji", crop: .panes),
-        Shot(id: "tasks/split", keys: "2j<C-w>v", highlight: [.panes]),
+        Shot(id: "tasks/panes", keys: "2j", highlight: [.panes]),
+        Shot(id: "tasks/split", keys: "2jl<C-w>v", highlight: [.panes]),
         Shot(id: "tasks/tab-strip", keys: "2j", crop: .tabStrip, cropPadding: 6),
-        Shot(id: "tasks/tab-strip-insert", keys: "2ji", crop: .tabStrip, cropPadding: 6),
+        Shot(id: "tasks/tab-strip-insert", keys: "4ji", crop: .tabStrip, cropPadding: 6),
         Shot(id: "tasks/zoom", keys: "2j<C-w>z", highlight: [.panes]),
         Shot(id: "tasks/inspector", keys: "2j", crop: .inspector, cropPadding: 0),
         Shot(id: "tasks/links-picker", keys: "2jgB", crop: .picker),
@@ -98,9 +99,9 @@ enum Shots {
         Shot(id: "tasks/new-task", keys: "o" + typed("Fix image upload 403"), crop: .dialog),
         Shot(id: "tasks/new-task-picked", keys: "gi<Space>j<Space>", highlight: [.list, .pickedPanel]),
         Shot(id: "tasks/new-task-from-github", keys: "gis", crop: .dialog),
-        Shot(id: "tasks/web-page", keys: "2j:tab.go<Space>4<CR>", highlight: [.tabStrip, .panes]),
+        Shot(id: "tasks/web-page", keys: "2jl:tab.go<Space>3<CR>", highlight: [.tabStrip, .panes]),
         Shot(id: "tasks/web-page-new", keys: "<D-t>", crop: .panes),
-        Shot(id: "tasks/web-page-failed", keys: "3j:tab.go<Space>2<CR>", crop: .panes),
+        Shot(id: "tasks/web-page-failed", keys: "3jl", crop: .panes),
     ]
 
     static let short = CGSize(width: 1440, height: 640)

@@ -156,10 +156,14 @@ private struct TabStrip: View {
         .contentShape(Rectangle())
         .onTapGesture { model.focusGroup(group.id) }
         // A tab dropped past the last one goes to the end of this pane.
-        .onDrop(
-            of: [.text],
-            delegate: TabDrop(group: group.id, index: group.tabs.count, target: nil, dragged: $draggedTab, model: model)
-        )
+        .unlessShot {
+            $0.onDrop(
+                of: [.text],
+                delegate: TabDrop(
+                    group: group.id, index: group.tabs.count, target: nil, dragged: $draggedTab, model: model
+                )
+            )
+        }
     }
 
     private func reveal(_ proxy: ScrollViewProxy) {
@@ -186,14 +190,18 @@ private struct TabStrip: View {
                 .contentShape(Rectangle())
                 .onTapGesture { model.selectTab(tab.id) }
                 // Dragged along a strip, a tab takes the place of the one it passes over, in this pane or another.
-                .onDrag {
-                    draggedTab = tab.id
-                    return NSItemProvider(object: tab.id as NSString)
+                .unlessShot {
+                    $0.onDrag {
+                        draggedTab = tab.id
+                        return NSItemProvider(object: tab.id as NSString)
+                    }
+                    .onDrop(
+                        of: [.text],
+                        delegate: TabDrop(
+                            group: group.id, index: index, target: tab.id, dragged: $draggedTab, model: model
+                        )
+                    )
                 }
-                .onDrop(
-                    of: [.text],
-                    delegate: TabDrop(group: group.id, index: index, target: tab.id, dragged: $draggedTab, model: model)
-                )
                 .id(tab.id)
             }
             Text("+").font(Theme.mono(13)).foregroundStyle(Theme.fg3).padding(.horizontal, 14)
@@ -271,6 +279,13 @@ private struct StripHints: View {
             }
             .fixedSize()
         }
+    }
+}
+
+extension View {
+    /// Drag and drop, left out of docs shots: they render offscreen, where it draws as a placeholder.
+    @ViewBuilder func unlessShot(_ apply: (Self) -> some View) -> some View {
+        if ShotMode.active { self } else { apply(self) }
     }
 }
 
