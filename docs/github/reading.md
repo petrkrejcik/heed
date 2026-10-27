@@ -21,7 +21,7 @@ The issue reader shows the title, labels, author and body. From it:
 | Key | |
 |---|---|
 | `s` | [New task](../tasks/new-task.md#from-github) from it |
-| `gB` | Open it on GitHub |
+| `gB` | Open it on GitHub, as a [web page](../tasks/web-pages.md) in a new tab |
 
 ![The issue reader](../images/shots/github/reader-issue.png)
 

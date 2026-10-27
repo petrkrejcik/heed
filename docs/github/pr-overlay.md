@@ -16,7 +16,7 @@ it in its pane, or make a new task with `S`, whose first prompt lists the open t
 |---|---|
 | `S` | New task from this PR |
 | `gS` | Jump to the task working on it |
-| `gB` | Open it on GitHub |
+| `gB` | Open it on GitHub, as a [web page](../tasks/web-pages.md) in a new tab |
 | `r` | Sync now |
 
 ## Green

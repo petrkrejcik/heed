@@ -17,12 +17,8 @@ struct BrowserToolbar: View {
             button("chevron.left", "browser.back", enabled: page.canGoBack)
             button("chevron.right", "browser.forward", enabled: page.canGoForward)
             button(page.loading ? "xmark" : "arrow.clockwise", "browser.reload", enabled: true)
-            TextField("Search or enter address", text: $address)
-                .textFieldStyle(.plain)
+            field(page)
                 .font(Theme.mono(11.5))
-                .foregroundStyle(Theme.fg)
-                .focused($editing)
-                .onSubmit { model.openAddress(address, in: pane.id) }
                 .padding(.horizontal, 8)
                 .frame(height: 22)
                 .background(RoundedRectangle(cornerRadius: 5).fill(typing ? Theme.bg3 : Theme.bg2))
@@ -61,6 +57,23 @@ struct BrowserToolbar: View {
                 model.endAddressEdit()
                 address = page.url
             }
+        }
+    }
+
+    /// Docs shots render offscreen, where a text field can't be drawn: they get the address as text.
+    @ViewBuilder
+    private func field(_ page: BrowserPage) -> some View {
+        if ShotMode.active {
+            Text(page.url.isEmpty ? "Search or enter address" : page.url)
+                .foregroundStyle(page.url.isEmpty ? Theme.fg3 : Theme.fg)
+                .lineLimit(1)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        } else {
+            TextField("Search or enter address", text: $address)
+                .textFieldStyle(.plain)
+                .foregroundStyle(Theme.fg)
+                .focused($editing)
+                .onSubmit { model.openAddress(address, in: pane.id) }
         }
     }
 

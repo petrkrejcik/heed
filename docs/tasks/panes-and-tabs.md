@@ -4,7 +4,8 @@ description: Splitting, moving between, zooming and closing panes, and tabs.
 
 # Panes and tabs
 
-A task's terminals are panes, arranged in tabs. Pane keys start with `⌃w`, as in vim.
+A task's terminals are panes, arranged in tabs. So are its [web pages](web-pages.md). Pane keys start with `⌃w`, as in
+vim.
 
 | Key | |
 |---|---|
@@ -19,7 +20,7 @@ A task's terminals are panes, arranged in tabs. Pane keys start with `⌃w`, as 
 
 ![After ⌃w v: the agent pane split, a new shell on the right](../images/shots/tasks/split.png)
 
-![The tab strip: two agent tabs and a jest tab](../images/shots/tasks/tab-strip.png)
+![The tab strip: two agent tabs, a jest tab and a Kibana page](../images/shots/tasks/tab-strip.png)
 
 A task can have several agent tabs. Each has its own glyph in the tab strip, its own state and its own Claude session.
 

@@ -8,7 +8,8 @@ The standard Mac shortcuts work in every mode, even with a terminal taking your 
 
 | Key | |
 |---|---|
-| `⌘W` | Close the window. With the [menu bar item](../outside-the-window/menu-bar.md) on, Heed and its agents keep running. |
+| `⌘W` | Close the window. With the [menu bar item](../outside-the-window/menu-bar.md) on, Heed and its agents keep running. On a [web page](../tasks/web-pages.md), it closes the page instead. |
+| `⌘T` | A new [web page](../tasks/web-pages.md) in a new tab |
 | `⌘Q` | Quit. With agents running, Heed asks first and lists them. |
 | `⌘H` | Hide Heed |
 | `⌘M` | Minimise |

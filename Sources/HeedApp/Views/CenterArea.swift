@@ -35,10 +35,15 @@ private struct TabStrip: View {
         HStack(spacing: 0) {
             // More tabs than fit scroll sideways rather than push the inspector off the window; the active one stays in
             // view.
-            ScrollViewReader { proxy in
-                ScrollView(.horizontal, showsIndicators: false) { tabs }
-                    .onAppear { reveal(proxy) }
-                    .onChange(of: model.currentTab?.id) { reveal(proxy) }
+            if ShotMode.active {
+                // Docs shots render offscreen, where a scroll view's content isn't drawn.
+                tabs.frame(minWidth: 0, maxWidth: .infinity, alignment: .leading).clipped()
+            } else {
+                ScrollViewReader { proxy in
+                    ScrollView(.horizontal, showsIndicators: false) { tabs }
+                        .onAppear { reveal(proxy) }
+                        .onChange(of: model.currentTab?.id) { reveal(proxy) }
+                }
             }
             HStack(spacing: 10) {
                 // What the keys do here, as you have them bound: into the terminal in NORMAL, back out in INSERT.

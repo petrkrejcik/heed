@@ -19,15 +19,18 @@ The inspector, on the right of the Tasks view, shows the selected task's surroun
 ## Links
 
 **Click a link** to open it here: the PR in the [PR overlay](../github/pr-overlay.md), the issue in the
-[reader](../github/reading.md). **⌘-click** opens it on GitHub. `go` opens the PR overlay from the keyboard.
+[reader](../github/reading.md). **⌘-click** opens its GitHub page as a [web page](web-pages.md) in a new tab. `go`
+opens the PR overlay from the keyboard.
 
 A task's PR and issue are set by the agent: its `gh pr create` sets the PR, and `heed pr add <url>` or
 `heed issue add <url>` set either by hand. See [A task's PR](../github/task-prs.md).
 
 With no PR and no issue yet, the inspector says what comes next. A pushed branch offers **Open a PR on GitHub**, the
-compare page for the branch.
+compare page for the branch, as a page in a new tab.
 
-### Opening them in the browser
+### Opening them as web pages
+
+Each opens as a [web page](web-pages.md) in a new tab of the task.
 
 | Key | |
 |---|---|
@@ -36,6 +39,6 @@ compare page for the branch.
 
 ![gB on a task with a PR and an issue](../images/shots/tasks/links-picker.png)
 
-In the other views `gB` opens the item under the cursor and `gR` its repo.
+In the other views `gB` opens the item under the cursor and `gR` its repo, in Kibana main.
 
 `zi` collapses and expands the inspector. It also gives way first when the window is narrow.

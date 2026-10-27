@@ -12,6 +12,7 @@ description: The environment variables Heed sets in its panes, and the ones it r
 | `HEED_SOCKET` | The socket to report to |
 | `HEED_PANE_ID` | The pane |
 | `HEED_BIN` | The bundled `heed` helper |
+| `PK_BROWSER` | `heed`: `pk kbn` opens no browser, Heed opens the [Kibana page](../tasks/web-pages.md#kibana-opens-by-itself) |
 | `PATH` | The PATH Heed found (see [Finding git and gh](../configuration/tools.md)), with the helper first |
 
 ## Read by Heed
