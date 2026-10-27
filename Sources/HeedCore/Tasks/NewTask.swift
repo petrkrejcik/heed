@@ -150,6 +150,56 @@ public enum NewTask {
         return layout
     }
 
+    /// What `tab.agent` does in a task.
+    public enum AgentOpening: Equatable, Sendable {
+        /// The task has an agent tab: go there.
+        case existing(tab: Int, pane: String)
+        /// A new agent tab, shown at the end: the agent closed last, resumed where it worked, else a fresh one where
+        /// the task works.
+        case opened(TaskLayout, pane: String, AgentTab, resumed: Bool)
+    }
+
+    /// The task's agent, brought back when its tab was closed. `hasSession` says whether Claude still has a session
+    /// for a folder (nil when it cannot tell). Nil without Claude.
+    public static func openAgent(
+        in layout: TaskLayout, task: WorkTask, agent: AgentProfile?, integration: IntegrationFiles?,
+        hasSession: (_ id: String, _ directory: String) -> Bool? = { _, _ in nil }
+    ) -> AgentOpening? {
+        for (index, tab) in layout.tabs.enumerated() {
+            if let pane = tab.tree.panes.first(where: { $0.role == .agent }) {
+                return .existing(tab: index, pane: pane.id)
+            }
+        }
+        guard let agent else { return nil }
+        var layout = layout
+        let tab: PaneTab
+        let made: (pane: String, tab: AgentTab)
+        var resumed = false
+        if let closed = layout.closedAgent, hasSession(closed.claudeSessionID, closed.directory) != false,
+           let command = agent.resumeCommand(
+               id: closed.claudeSessionID,
+               extraArguments: AgentIntegration.launchArguments(
+                   agent: agent, claudeSessionID: closed.claudeSessionID, files: integration, resuming: true
+               )
+           )
+        {
+            let pane = PaneSpec(
+                id: newID(), role: .agent, title: agent.name, directory: closed.directory, command: command
+            )
+            tab = PaneTab(id: newID(), title: "agent", tree: .leaf(pane))
+            made = (pane.id, AgentTab(activity: "resuming", claudeSessionID: closed.claudeSessionID))
+            resumed = true
+        } else {
+            let built = agentTab(in: task.directory, prompt: "", agent: agent, integration: integration)
+            guard let agent = built.agent else { return nil }
+            (tab, made) = (built.tab, agent)
+        }
+        layout.closedAgent = nil
+        layout.tabs.append(tab)
+        layout.activeTab = layout.tabs.count - 1
+        return .opened(layout, pane: made.pane, made.tab, resumed: resumed)
+    }
+
     /// A tab running `agent` on `prompt` in `directory`, with its own Claude session id, and a shell split beside it
     /// when asked. Without an agent, a shell.
     public static func agentTab(

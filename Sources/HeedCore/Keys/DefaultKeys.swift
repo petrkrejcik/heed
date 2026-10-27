@@ -17,7 +17,7 @@ public enum DefaultKeys {
         ("<C-w>v", "pane.split.right"), ("<C-w>s", "pane.split.below"), ("<C-w>z", "pane.zoom"),
         ("<C-w>q", "pane.close"), ("<C-w>h", "pane.left"), ("<C-w>l", "pane.right"), ("<C-w>j", "pane.down"),
         ("<C-w>k", "pane.up"),
-        ("gt", "tab.next"), ("gT", "tab.prev"), ("gn", "tab.new"), ("<D-t>", "browser.new"),
+        ("gt", "tab.next"), ("gT", "tab.prev"), ("gn", "tab.new"), ("gc", "tab.agent"), ("<D-t>", "browser.new"),
         ("gs", "view.tasks"), ("gm", "view.inbox"), ("gi", "view.issues"), ("gp", "view.prs"),
         ("go", "overlay.item"), ("gd", "overlay.diff"), ("gS", "pr.task"),
         ("<C-o>", "jump.back"), ("gB", "open.browser"), ("gR", "open.repo"),

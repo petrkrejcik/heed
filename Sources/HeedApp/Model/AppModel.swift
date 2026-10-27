@@ -1051,6 +1051,7 @@ final class AppModel {
         case "tab.next": cycleTab(by: count)
         case "tab.prev": cycleTab(by: -count)
         case "tab.new": newTab()
+        case "tab.agent": openAgentTab()
         case "browser.new": newPageTab(command.arguments.joined(separator: " "))
         case "browser.location":
             if let pane = focusedBrowserPane { beginAddressEdit(pane) } else { flash = "not on a web page" }
@@ -1586,7 +1587,10 @@ final class AppModel {
         }
         ask(Confirmation(
             title: "Close the \(pane.title) pane?",
-            lines: ["The agent in it stops; the task and its worktree stay"],
+            lines: [
+                "The agent in it stops; the task and its worktree stay",
+                "\(keyText(for: "tab.agent")) brings the agent back, with its conversation",
+            ],
             accept: "Close"
         ) { [weak self] in self?.closePane() })
     }
@@ -2510,7 +2514,10 @@ final class AppModel {
         layout.activeTab = index
         ask(Confirmation(
             title: "Close the \(layout.tabs[index].title) tab?",
-            lines: ["The agent in it stops; the task and its worktree stay"],
+            lines: [
+                "The agent in it stops; the task and its worktree stay",
+                "\(keyText(for: "tab.agent")) brings the agent back, with its conversation",
+            ],
             accept: "Close"
         ) { close() })
     }
@@ -2542,6 +2549,28 @@ final class AppModel {
             layout.activeTab = layout.tabs.count - 1
         }
         autoInsert()
+    }
+
+    /// `gc`: to the task's agent, in INSERT; one closed by mistake comes back with its conversation.
+    private func openAgentTab() {
+        guard let task = currentTask else { return flash = "no task here" }
+        view = .tasks
+        let opening = NewTask.openAgent(
+            in: layouts[task.id] ?? TaskLayout(tabs: []), task: task, agent: settings.claude, integration: integration
+        ) { id, directory in AgentIntegration.hasSession(agent: "claude", id: id, directory: directory) }
+        switch opening {
+        case nil:
+            flash = "no agent set up ([agents.claude])"
+        case let .existing(tab, pane):
+            updateLayout { $0.activeTab = tab }
+            focusPane(pane)
+            enterInsert()
+        case let .opened(layout, pane, agent, resumed):
+            autostart(layout.panes.filter { $0.id == pane })
+            commit([.layoutChanged(task: task.id, layout), .agentChanged(pane: pane, agent)])
+            flash = resumed ? "resumed the agent closed last" : "new agent in \(Paths.abbreviate(task.directory))"
+            enterInsert()
+        }
     }
 
     func selectTab(_ index: Int) {

@@ -71,6 +71,9 @@ public enum Commands {
         .init("tab.next", "next tab", .panes),
         .init("tab.prev", "previous tab", .panes),
         .init("tab.new", "new tab with shell", .panes),
+        .init(
+            "tab.agent", "the task's agent: its tab, else the agent closed last (resumed), else a new one", .panes
+        ),
         .init("tab.go", "go to tab n", .panes, arguments: "<n>"),
         .init("browser.new", "new tab with a web page (no address: type one)", .panes, arguments: "[url]"),
         .init("browser.back", "web page: back", .panes),

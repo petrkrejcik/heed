@@ -323,6 +323,75 @@ struct NewTaskTests {
         #expect(domain.layouts.values.first?.tabs.first?.focused == panes.first?.id)
     }
 
+    @Test func theAgentKeyGoesToTheAgentTabTheTaskHas() {
+        var layout = layout("t", agents: ["a"])
+        layout.tabs.insert(PaneTab(title: "shell", tree: .leaf(pane("t-first"))), at: 0)
+        let opening = NewTask.openAgent(
+            in: layout, task: task("t"), agent: WorkSettings.default.claude, integration: nil
+        )
+        #expect(opening == .existing(tab: 1, pane: "t-a"))
+    }
+
+    @Test func aClosedAgentComesBackResumedWhereItWorked() throws {
+        var domain = Domain(
+            tasks: [task("t")], layouts: ["t": layout("t", agents: ["a"])],
+            agents: ["t-a": AgentTab(claudeSessionID: "s-1")]
+        )
+        var moved = try #require(domain.layouts["t"])
+        moved.tabs[0].tree = moved.tabs[0].tree.updating("t-a") { $0.directory = "/wt/fix" }
+        domain.apply(.layoutChanged(task: "t", moved))
+        var closed = try #require(domain.layouts["t"])
+        closed.removeTab(at: 0)
+        domain.apply(.layoutChanged(task: "t", closed))
+        let kept = try #require(domain.layouts["t"])
+        #expect(kept.closedAgent == ClosedAgent(claudeSessionID: "s-1", directory: "/wt/fix"))
+
+        let opening = NewTask.openAgent(
+            in: kept, task: task("t"), agent: WorkSettings.default.claude, integration: nil
+        ) { id, directory in id == "s-1" && directory == "/wt/fix" }
+        guard case let .opened(layout, paneID, agent, resumed) = opening else {
+            Issue.record("expected a new agent tab, got \(String(describing: opening))")
+            return
+        }
+        #expect(resumed)
+        #expect(layout.closedAgent == nil)
+        #expect(layout.activeTab == layout.tabs.count - 1)
+        let pane = try #require(layout.tabs.last?.tree.panes.first)
+        #expect(pane.id == paneID)
+        #expect(pane.role == .agent)
+        #expect(pane.directory == "/wt/fix")
+        #expect(pane.command == "claude --resume s-1")
+        #expect(agent.claudeSessionID == "s-1")
+    }
+
+    @Test func withoutAClosedAgentClaudeHasItStartsAFreshOneWhereTheTaskWorks() throws {
+        let gone = TaskLayout(tabs: [], closedAgent: ClosedAgent(claudeSessionID: "s-1", directory: "/wt/old"))
+        var worktree = task("t")
+        worktree.worktree = "/wt/fix"
+        for layout in [TaskLayout(tabs: []), gone] {
+            let opening = NewTask.openAgent(
+                in: layout, task: worktree, agent: WorkSettings.default.claude, integration: nil
+            ) { _, _ in false }
+            guard case let .opened(opened, _, agent, resumed) = opening else {
+                Issue.record("expected a new agent tab, got \(String(describing: opening))")
+                return
+            }
+            #expect(!resumed)
+            #expect(opened.closedAgent == nil)
+            let pane = try #require(opened.tabs.last?.tree.panes.first)
+            #expect(pane.directory == "/wt/fix")
+            let id = try #require(agent.claudeSessionID)
+            #expect(pane.command == "claude --session-id \(id)")
+        }
+        #expect(NewTask.openAgent(in: gone, task: worktree, agent: nil, integration: nil) == nil)
+    }
+
+    @Test func aLayoutCachedBeforeClosedAgentsStillLoads() throws {
+        let json = #"{"tabs":[],"activeTab":0}"#
+        let layout = try JSONDecoder().decode(TaskLayout.self, from: Data(json.utf8))
+        #expect(layout.closedAgent == nil)
+    }
+
     @Test func withoutClaudeItOpensAShell() {
         let settings = WorkSettings(agents: [])
         let domain = Domain.empty.applying(NewTask.start(WorkTask(title: "t"), settings: settings, integration: nil))

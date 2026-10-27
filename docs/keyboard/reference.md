@@ -53,6 +53,7 @@ This page is generated from the code (`mise run shots`).
 | `tab.next` | `gt` | next tab |
 | `tab.prev` | `gT` | previous tab |
 | `tab.new` | `gn` | new tab with shell |
+| `tab.agent` | `gc` | the task's agent: its tab, else the agent closed last (resumed), else a new one |
 | `tab.go` `<n>` |  | go to tab n |
 | `browser.new` `[url]` | `<D-t>`, `<D-t>` (INSERT) | new tab with a web page (no address: type one) |
 | `browser.back` | `<D-[>` (browser) | web page: back |

@@ -16,6 +16,7 @@ vim.
 | `⌃w q` | Close the focused pane; an agent's pane asks first |
 | `gt` / `gT` | Next / previous tab |
 | `gn` | New tab with a shell (or click `+`) |
+| `gc` | The task's agent: to its tab; when it was closed, it comes back with its conversation; else a new agent |
 | `:tab.close` | Close the tab and every pane in it (or click its `×`); a tab with an agent asks first |
 
 ![After ⌃w v: the agent pane split, a new shell on the right](../images/shots/tasks/split.png)
@@ -35,7 +36,8 @@ A pane closes when its terminal ends: `exit` or `⌃D` in a shell, or a command 
 takes the tab with it.
 
 When a task has no terminal left, whether by `exit`, `×` or `⌃w q`, the task stays where it is, and `gn` opens a
-shell in its checkout. A task ends through its status, not by closing its terminals.
+shell in its checkout. A task ends through its status, not by closing its terminals. `gc` brings back the agent
+closed last: Claude resumes its conversation in the folder it worked in.
 
 Terminals that end together across several tasks were lost, not closed (heed quitting, or being replaced while it
 runs), and no task is touched: they reopen on the next launch. The same goes for every terminal while heed quits.

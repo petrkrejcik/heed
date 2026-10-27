@@ -4,10 +4,13 @@ import Foundation
 public struct TaskLayout: Hashable, Sendable, Codable {
     public var tabs: [PaneTab]
     public var activeTab: Int
+    /// The agent whose pane closed last, so `tab.agent` can resume it. An old cache without it still loads.
+    public var closedAgent: ClosedAgent?
 
-    public init(tabs: [PaneTab], activeTab: Int = 0) {
+    public init(tabs: [PaneTab], activeTab: Int = 0, closedAgent: ClosedAgent? = nil) {
         self.tabs = tabs
         self.activeTab = activeTab
+        self.closedAgent = closedAgent
     }
 
     public var panes: [PaneSpec] { tabs.flatMap(\.tree.panes) }
@@ -76,6 +79,17 @@ public struct TaskLayout: Hashable, Sendable, Codable {
     }
 }
 
+/// An agent tab that was closed: its Claude session and the folder it last worked in.
+public struct ClosedAgent: Hashable, Sendable, Codable {
+    public var claudeSessionID: String
+    public var directory: String
+
+    public init(claudeSessionID: String, directory: String) {
+        self.claudeSessionID = claudeSessionID
+        self.directory = directory
+    }
+}
+
 /// Everything Heed knows, as one value. The window is drawn from this (plus input state), it is what the cache
 /// stores, and fixtures are just instances of it, so the UI can start in any state without IO. A cache with fields this
 /// build no longer has still loads: decoding skips unknown keys.
@@ -118,7 +132,7 @@ public enum DomainChange: Hashable, Sendable, Codable {
     case taskUpserted(WorkTask)
     /// The task goes with its layout and its agent tabs.
     case taskRemoved(String)
-    /// Agent tabs of panes the new layout no longer has go too.
+    /// Agent tabs of panes the new layout no longer has go too; the layout keeps a closed agent's Claude session.
     case layoutChanged(task: String, TaskLayout)
     case agentChanged(pane: String, AgentTab)
     /// A GitHub sync finished (or failed: the status says so and the data is the previous data).
@@ -145,8 +159,12 @@ public extension Domain {
             }
             layouts[id] = nil
         case let .layoutChanged(task, layout):
+            var layout = layout
             let kept = Set(layout.panes.map(\.id))
             for pane in layouts[task]?.panes ?? [] where !kept.contains(pane.id) {
+                if pane.role == .agent, let id = agents[pane.id]?.claudeSessionID {
+                    layout.closedAgent = ClosedAgent(claudeSessionID: id, directory: pane.directory)
+                }
                 agents[pane.id] = nil
             }
             layouts[task] = layout
