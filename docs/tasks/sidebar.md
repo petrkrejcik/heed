@@ -37,14 +37,21 @@ relaunches.
 Going to a task in a collapsed section (`'1`, `ga`, `''`, `:task`, a PR's task, the menu bar) opens that section.
 Collapsing the section the cursor is in moves the cursor to the next row below it, or the nearest one above.
 
+## A row
+
 Each row shows:
 
 - The state glyph of the task's most urgent agent.
 - The title, and the pin number if pinned.
-- A Kibana icon with the port, when Kibana runs for the task.
-- The PR's state and number (see [the state of a PR](../github/pr-overlay.md#the-state-of-a-pr)).
 - The worktree's name, or "main checkout".
-- What the agent is doing. With more than one agent tab, how many ("2 agents · running jest").
+- Its tags, when it has any (a task with none has no third line):
+  - A Kibana icon with the port, when Kibana runs for the task.
+  - The PR's number, in the PR's color: grey for a draft, green open, violet merged, red closed. Before it, the
+    PR's mark when there is something to act on: ✕ a check failed, ⇄ a conflict (or behind), ● open threads or
+    changes requested (see [the state of a PR](../github/pr-overlay.md#the-state-of-a-pr)).
+  - An hourglass with the minutes left on the agent's prompt cache, amber in the last five.
+
+Hover a row for what its agent is doing; with more than one agent tab, how many ("2 agents · running jest").
 
 The numbers on the left are relative to the cursor, as in vim: the number on a row is how many `j` or `k` presses
 away it is.
@@ -56,6 +63,13 @@ The cursor stays on its task. When the task changes section, the rows move but t
 are looking at, and typing into, never switches under you. When it moves into a collapsed section (an agent marks it
 Done, say) and still has tabs, that section opens so its agent stays in front of you. A task with no tabs leaves the
 section collapsed, and the cursor goes to the next row.
+
+### The prompt cache countdown
+
+Claude keeps a prompt cache for an hour after the agent's last response: a prompt sent within that hour is cheaper
+and faster. The countdown starts when the agent's turn ends, so 15 minutes after it the tag says `45m`. It is not
+shown while the agent is working (it is refreshing its cache), while it waits on you mid-turn (asking, blocked), or
+once the hour is up. With several agent tabs, it shows the cache that runs out first.
 
 ## The rail
 

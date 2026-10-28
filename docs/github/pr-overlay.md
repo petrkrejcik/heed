@@ -36,8 +36,9 @@ left to object to in the code. Each rule shows what it found:
 
 ## The state of a PR
 
-The same state shows wherever a PR does: by the PR number on a task's sidebar row, on the inspector's PR card (with
-the first rule holding it back), and in the PRs view's **State** column.
+The same state shows on the inspector's PR card (with the first rule holding it back) and in the PRs view's **State**
+column. A task's sidebar row keeps it short: the PR number in the PR's color (draft, open, merged, closed), and only
+the ✕, ⇄ and ● marks before it ([the sidebar](../tasks/sidebar.md)).
 
 | Mark | |
 |---|---|
