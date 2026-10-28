@@ -63,6 +63,8 @@ final class AppModel {
         }
     }
 
+    /// The sidebar sections shown closed.
+    private(set) var collapsed = TaskGroup.collapsedByDefault { didSet { rebuildList() } }
     private(set) var github = GitHubState()
     private(set) var pullDetails: [String: PullDetail] = [:]
     private(set) var list = TaskList([])
@@ -321,7 +323,7 @@ final class AppModel {
         kibanaProbe = Task { [weak self] in
             while !Task.isCancelled {
                 guard let self else { return }
-                let ports = Set(list.ordered.compactMap(\.port))
+                let ports = Set(list.live.compactMap(\.port))
                 let listening = await PortProbe.listening(ports)
                 let changes = TaskSync.running(listening: listening, probed: ports, in: tasks)
                 if !changes.isEmpty { commit(changes) }
@@ -748,10 +750,12 @@ final class AppModel {
     func flush() async { await store?.flush() }
 
     private func rebuildList() {
-        // The selection is a task, not a row. A task moving between groups (idle to working, say) reorders the list;
-        // the cursor follows the task it was on, so what you look at and type into never changes under you. Read
-        // before the rebuild: `currentTask` still indexes the old list here.
+        // The selection is a task, not a row. A task moving between sections (In Progress to Blocked, say) reorders
+        // the list; the cursor follows the task it was on, so what you look at and type into never changes under you.
+        // When its row went (its section collapsed), the cursor takes the next row (`TaskList.row`). Read before the
+        // rebuild: `currentTask` still indexes the old list here.
         let selected = currentTask?.id
+        let before = list.ordered
         let filter = taskFilter
         list = TaskList(filter.isEmpty ? tasks : tasks.filter { task in
             FilterQuery.matches(
@@ -759,15 +763,12 @@ final class AppModel {
                 [task.title, task.worktreeName ?? "", task.branch ?? "", task.epic ?? ""]
                     + [task.pull.map { "#\($0.number)" } ?? ""]
             )
-        }, layouts: layouts, agents: agents)
-        if let selected, let index = list.ordered.firstIndex(where: { $0.id == selected }) {
-            cursor = index
-        } else {
-            cursor = min(cursor, max(list.ordered.count - 1, 0))
-        }
+        }, layouts: layouts, agents: agents, collapsed: collapsed)
+        cursor = list.row(for: selected, before: before, cursor: cursor)
     }
 
     private func replace(with domain: Domain) {
+        collapsed = domain.collapsed
         tasks = domain.tasks
         layouts = domain.layouts
         agents = domain.agents
@@ -780,7 +781,14 @@ final class AppModel {
     func commit(_ changes: [DomainChange]) {
         guard !changes.isEmpty else { return }
         let before = currentDomain
-        let after = before.applying(changes)
+        var changes = changes
+        var after = before.applying(changes)
+        if let opening = after.opening(sectionOf: currentTask?.id, movedFrom: before) {
+            changes.append(opening)
+            after.apply(opening)
+        }
+        // Sections first: the task you are on moving into one that opens must find its row open.
+        if after.collapsed != before.collapsed { collapsed = after.collapsed }
         if after.github != before.github { github = after.github }
         if after.github.pulls != before.github.pulls { loadAvatars() }
         if after.pullDetails != before.pullDetails { pullDetails = after.pullDetails }
@@ -794,13 +802,18 @@ final class AppModel {
     func commit(_ change: DomainChange) { commit([change]) }
 
     var currentDomain: Domain {
-        Domain(tasks: tasks, layouts: layouts, agents: agents, github: github, pullDetails: pullDetails)
+        Domain(
+            tasks: tasks, layouts: layouts, agents: agents, github: github, pullDetails: pullDetails,
+            collapsed: collapsed
+        )
     }
 
     func task(_ id: String) -> WorkTask? { tasks.first { $0.id == id } }
 
-    /// The listed task whose PR this is.
-    func task(for pull: PullRef) -> WorkTask? { list.ordered.first { $0.pull == pull } }
+    /// The listed task whose PR this is: a row first, else one in a collapsed section.
+    func task(for pull: PullRef) -> WorkTask? {
+        list.ordered.first { $0.pull == pull } ?? list.all.first { $0.pull == pull }
+    }
 
     /// A task's most urgent agent state, for glyphs outside the sidebar.
     func agentState(of task: WorkTask) -> ObservedState? { list.rollup(of: task.id).agent }
@@ -1022,7 +1035,11 @@ final class AppModel {
         case "group.prev": moveGroup(forward: false)
         case "task.attention":
             view = .tasks
-            if let next = list.nextNeedingYou(after: cursor) { setCursor(next) } else { flash = "nobody needs you" }
+            if let next = list.nextNeedingYou(after: currentTask?.id) {
+                select(taskID: next.id)
+            } else {
+                flash = "nobody needs you"
+            }
         case "task.pin": togglePin()
         case "task.back": goBack()
         case "pin.jump": jumpToPin(Int(command.arguments.first ?? "") ?? 1)
@@ -1088,6 +1105,7 @@ final class AppModel {
         case "overlay.close": closeTopmost()
         case "inspector.toggle": inspectorVisible.toggle()
         case "sidebar.toggle": sidebarCollapsed.toggle()
+        case "section.toggle": toggleSection(named: command.arguments.joined(separator: " "))
         case "mode.normal", "mode.insert", "mode.visual", "mode.command", "mode.hint":
             if command.name == "mode.insert", view != .tasks || currentPane == nil { engine.enter(.normal) }
             hintThenInsert = false
@@ -1222,8 +1240,42 @@ final class AppModel {
         cursor = clamped
     }
 
+    /// Going to a task (`'1`, `ga`, `''`, `:task`, a PR's task, the menu bar) opens its section when it is collapsed.
     private func select(taskID: String) {
-        if let index = list.ordered.firstIndex(where: { $0.id == taskID }) { setCursor(index) }
+        if list.isHidden(taskID), let group = list.group(of: taskID) {
+            commit(.collapsedChanged(collapsed.subtracting([group])))
+        }
+        if let index = list.index(of: taskID) { setCursor(index) }
+    }
+
+    // MARK: Sidebar sections
+
+    /// `za`: the cursor's section; `:section done`: that one. Collapsing the cursor's section moves it to the next row.
+    private func toggleSection(named name: String) {
+        let group: TaskGroup
+        if name.isEmpty {
+            guard let task = currentTask, let current = list.group(of: task.id) else { return flash = "no task here" }
+            group = current
+        } else {
+            guard let named = TaskGroup.named(name) else {
+                return flash = "no section \(name): pinned, todo, in progress, blocked, review, done, dropped"
+            }
+            group = named
+        }
+        view = .tasks
+        toggleSection(group)
+        if !list.sections.contains(where: { $0.group == group }) { flash = "no tasks in \(group.rawValue)" }
+    }
+
+    private func toggleSection(_ group: TaskGroup) {
+        commit(.collapsedChanged(collapsed.symmetricDifference([group])))
+    }
+
+    /// A click on a section's header collapses or expands it.
+    func clickSection(_ group: TaskGroup) {
+        guard clicksReachLists else { return }
+        clickedOutsideTerminal()
+        toggleSection(group)
     }
 
     private func goBack() {
@@ -1272,7 +1324,7 @@ final class AppModel {
         let terminals = layouts[task.id]?.panes.count ?? 0
         ask(Confirmation(
             title: "Mark \(task.title) \(status)?",
-            lines: ["It leaves the sidebar; the note stays"]
+            lines: ["It moves under \(status) in the sidebar"]
                 + (terminals == 0 ? [] : [
                     agents > 0 ? "Its terminals close and \(agents == 1 ? "its agent stops" : "its \(agents) agents stop")"
                         : "Its terminals close",
@@ -1291,9 +1343,10 @@ final class AppModel {
             } catch {
                 return flash = "could not set \(task.title) to \(status): \(error)"
             }
-            let onScreen = currentTask?.id == task.id
+            // Terminals first: a task with no tabs left goes into its collapsed section without opening it, and the
+            // cursor moves on to the next row.
+            if status.endsTask { closeTerminals(of: task.id, onScreen: currentTask?.id == task.id) }
             _ = upsert(result.task, record: "status \(status)")
-            if status.endsTask { closeTerminals(of: task.id, onScreen: onScreen) }
             if !result.blockers.isEmpty {
                 flash = "\(task.title) is \(status); its worktree stays: \(result.blockers.joined(separator: ", "))"
             } else if let removed = result.removedWorktree {
@@ -1560,7 +1613,7 @@ final class AppModel {
     func confirmQuitIfAgentsRun() -> Bool {
         // With zmx, quitting leaves the agents running: heed reattaches to them on its next launch.
         if TerminalSurfaces.shared.persist == .zmx { return false }
-        let running = list.ordered.compactMap { task -> (WorkTask, AgentState)? in
+        let running = list.all.compactMap { task -> (WorkTask, AgentState)? in
             guard let state = list.rollup(of: task.id).agent?.state, [.working, .blocked, .asking].contains(state)
             else { return nil }
             return (task, state)
@@ -1678,23 +1731,26 @@ final class AppModel {
         let matches = { (task: WorkTask) in
             FilterQuery.matches(words, [task.title, task.worktreeName ?? "", task.branch ?? ""])
         }
-        if let task = list.ordered.first(where: matches) {
-            view = .tasks
-            return select(taskID: task.id)
-        }
-        guard let todo = tasks.first(where: { $0.status == .toDo && matches($0) }) else {
+        guard let task = list.ordered.first(where: matches) ?? list.all.first(where: matches) else {
             return flash = "no task matches \(words)"
         }
-        flash = "starting \(todo.title)…"
+        view = .tasks
+        guard task.status == .toDo else { return select(taskID: task.id) }
+        flash = "starting \(task.title)…"
+        startToDo(task, select: true)
+    }
+
+    /// Opening a To Do task (`:task`, or its first agent with `gc`) starts it: In Progress, through pk. Moving the
+    /// cursor onto it does not. `select` goes to it once it is In Progress, so To Do stays as it was.
+    private func startToDo(_ task: WorkTask, select: Bool = false) {
         Task {
             do {
-                let result = try await pk.setStatus(todo.id, .inProgress)
+                let result = try await pk.setStatus(task.id, .inProgress)
                 _ = upsert(result.task, record: "status In Progress")
-                view = .tasks
-                select(taskID: todo.id)
-                flash = "\(todo.title) is In Progress"
+                if select { self.select(taskID: task.id) }
+                flash = "\(task.title) is In Progress"
             } catch {
-                flash = "could not start \(todo.title): \(error)"
+                flash = "could not start \(task.title): \(error)"
             }
         }
     }
@@ -1913,9 +1969,7 @@ final class AppModel {
         }
         switch link {
         case let .pull(ref):
-            if let index = list.ordered.firstIndex(where: { $0.pull == ref }), view == .tasks {
-                setCursor(index)
-            }
+            if let task = task(for: ref), view == .tasks { select(taskID: task.id) }
             overlayPull = ref
             overlay = .pr
             fetchDetail(ref)
@@ -2039,7 +2093,7 @@ final class AppModel {
         }
         reader = nil
         overlay = nil
-        if let task = list.ordered.first(where: { $0.pull == ref }) {
+        if let task = task(for: ref) {
             view = .tasks
             select(taskID: task.id)
         } else {
@@ -2175,7 +2229,7 @@ final class AppModel {
     private func refreshTrackedDetails() {
         let open = [overlay == .pr ? overlayPull : nil, reader].compactMap(\.self)
         let now = Date()
-        let refs = Set(list.ordered.compactMap(\.pull)).filter { ref in
+        let refs = Set(list.live.compactMap(\.pull)).filter { ref in
             open.contains(ref) || syncSchedule.needsDetail(
                 pull: github.pull(ref), detail: pullDetails[ref.description], now: now
             )
@@ -2578,6 +2632,7 @@ final class AppModel {
             commit([.layoutChanged(task: task.id, layout), .agentChanged(pane: pane, agent)])
             flash = resumed ? "resumed the agent closed last" : "new agent in \(Paths.abbreviate(task.directory))"
             enterInsert()
+            if task.status == .toDo { startToDo(task) }
         }
     }
 

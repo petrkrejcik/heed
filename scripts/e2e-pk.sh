@@ -57,7 +57,8 @@ wait_for() {
   fail "$what (sidebar: $(sidebar); stderr: $(cat "$tmp/watch.err"))"
 }
 wait_for "the first sidebar shows Seeded task" has "Seeded task"
-lacks "Later task" || fail "a To Do task is in the sidebar: $(sidebar)"
+lacks "Later task" || fail "a To Do task is not collapsed: $(sidebar)"
+has "To Do (1)" || fail "no collapsed To Do section: $(sidebar)"
 # FSEvents starts reporting a moment after the stream is created.
 sleep 1
 
@@ -81,9 +82,10 @@ grep -q '^issue: https://github.com/elastic/kibana/issues/299999$' "$outside_not
 grep -q '^worktree:' "$outside_note" && fail "the task got a worktree"
 wait_for "the sidebar shows the task made outside" has "Made in the desktop app"
 
-step "a status changed outside Heed takes the task off the sidebar"
+step "a status changed outside Heed moves the task to the collapsed Done section"
 sed -i '' 's/^status: In Progress$/status: Done/' "$created"
-wait_for "the Done task leaves the sidebar" lacks "Heed made this"
+wait_for "the Done task moves to Done" has "Done (1)"
+lacks "Heed made this" || fail "the Done task is still a row: $(sidebar)"
 has "Seeded task" || fail "Seeded task went too: $(sidebar)"
 
 step "a port written into the ports file is picked up"

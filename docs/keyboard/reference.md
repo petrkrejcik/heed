@@ -20,8 +20,9 @@ This page is generated from the code (`mise run shots`).
 | `row.last` | `G`, `G` (VISUAL) | last task / row |
 | `row.halfpage.down` | `<C-d>` | half a page down (ten rows) |
 | `row.halfpage.up` | `<C-u>` | half a page up (ten rows) |
-| `group.next` | `}` | first row of the next group (sidebar group, repo) |
+| `group.next` | `}` | first row of the next group (open sidebar section, repo) |
 | `group.prev` | `{` | first row of this group, or of the one before |
+| `section.toggle` `[pinned|todo|in progress|blocked|review|done|dropped]` | `za` | collapse / expand a sidebar section: the cursor's, or one by name |
 | `task.filter` | `/` | filter the current view (typed in the status bar) |
 | `filter.clear` |  | clear the current view's filter |
 | `task.attention` | `ga` | next task needing you |

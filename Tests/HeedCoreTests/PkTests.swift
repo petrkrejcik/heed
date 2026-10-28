@@ -342,7 +342,7 @@ struct FakePkTests {
             WorkTask(id: "b", title: "B", status: .toDo),
             WorkTask(id: "c", title: "C", lastActivity: Date(timeIntervalSince1970: 0)),
         ]
-        #expect(PkCommandLine.sidebar(tasks) == "sidebar: A [5602] | C")
+        #expect(PkCommandLine.sidebar(tasks) == "sidebar: A [5602] | C | To Do (1)")
     }
 }
 

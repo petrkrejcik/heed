@@ -36,7 +36,9 @@ public enum Fixtures {
         }
     }
 
-    /// design/screens/Main.png: the plan's task list. Six tasks show; the Done and To Do ones do not.
+    /// design/screens/Main.png: the plan's task list. Pinned, In Progress, Blocked and Ready for Review are open; To
+    /// Do,
+    /// Done and Dropped collapsed. The rows keep the order the docs' shots count on (`2j` is the upload fix).
     public static let tasks: Domain = {
         let now = Clock.now
         func ago(_ minutes: Double) -> Date { now.addingTimeInterval(-minutes * 60) }
@@ -44,6 +46,7 @@ public enum Fixtures {
         let upload = "\(worktrees)/299433-fix-image-upload-403"
         let review = "\(worktrees)/review-299044-timeline-freeze"
         let undo = "\(worktrees)/298812-chat-input-cmd-z"
+        let scroll = "\(worktrees)/298760-keep-scroll"
         let list = [
             WorkTask(
                 id: "t1", title: "Kibana main", status: .inProgress, pinned: true, branch: "main",
@@ -70,7 +73,7 @@ public enum Fixtures {
             ),
             WorkTask(
                 id: "t5", title: "Investigate SSE batching", status: .inProgress,
-                notePath: "\(notes)/Investigate SSE batching.md", lastActivity: ago(6)
+                notePath: "\(notes)/Investigate SSE batching.md", lastActivity: ago(1)
             ),
             WorkTask(
                 id: "t6", title: "Upgrade the chat to EUI 101", status: .done, pr: pullURL(298_140),
@@ -79,6 +82,20 @@ public enum Fixtures {
             WorkTask(
                 id: "t7", title: "Document the chat API", status: .toDo,
                 notePath: "\(notes)/Document the chat API.md", lastActivity: ago(60 * 70)
+            ),
+            WorkTask(
+                id: "t8", title: "Keep scroll position on new messages", status: .readyForReview,
+                pr: pullURL(298_901), worktree: scroll, branch: "298760-keep-scroll",
+                notePath: "\(notes)/Keep scroll position on new messages.md", port: 5605, running: false,
+                lastActivity: ago(60 * 5)
+            ),
+            WorkTask(
+                id: "t9", title: "Conversation list flickers when renaming", status: .toDo, issue: issueURL(299_120),
+                notePath: "\(notes)/Conversation list flickers when renaming.md", lastActivity: ago(60 * 20)
+            ),
+            WorkTask(
+                id: "t10", title: "Try a streaming markdown renderer", status: .dropped,
+                notePath: "\(notes)/Try a streaming markdown renderer.md", lastActivity: ago(60 * 30)
             ),
         ].map { task in
             var task = task
@@ -115,6 +132,7 @@ public enum Fixtures {
             ]),
             "t4": TaskLayout(tabs: [agentTab("t4", undo)]),
             "t5": TaskLayout(tabs: [agentTab("t5", main)]),
+            "t8": TaskLayout(tabs: [agentTab("t8", scroll)]),
         ]
         func agent(_ state: AgentState, _ activity: String, reason: String? = nil, id: String) -> AgentTab {
             AgentTab(state: ObservedState(state, reason: reason), activity: activity, claudeSessionID: id)
@@ -125,6 +143,7 @@ public enum Fixtures {
             "t2-agent2": agent(.idle, "idle 18m", id: "2c81d6aa-9e17-4b3f-8d05-6a4e7b9c0d12"),
             "t3-agent": agent(.idle, "idle 1h", id: "91be40d2-7a35-4c68-b2f9-13e5a8d07c46"),
             "t4-agent": agent(.idle, "idle 1d", id: "e0457f3b-18c2-4d9a-a6b1-5f2d9c8e3a04"),
+            "t8-agent": agent(.done, "done 5h", id: "5a9e2f60-3c71-4b8d-9e24-81f0d6c3a7b5"),
             "t5-agent": agent(
                 .asking,
                 "2 questions waiting",

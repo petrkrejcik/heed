@@ -23,7 +23,7 @@ public enum DefaultKeys {
         ("gs", "view.tasks"), ("gm", "view.inbox"), ("gi", "view.issues"), ("gp", "view.prs"),
         ("go", "overlay.item"), ("gd", "overlay.diff"), ("gS", "pr.task"),
         ("<C-o>", "jump.back"), ("gB", "open.browser"), ("gR", "open.repo"),
-        ("zi", "inspector.toggle"), ("zs", "sidebar.toggle"), ("<CR>", "open.reader"),
+        ("zi", "inspector.toggle"), ("zs", "sidebar.toggle"), ("za", "section.toggle"), ("<CR>", "open.reader"),
         ("i", "mode.insert"), ("v", "mode.visual"), ("V", "mode.visual"), (":", "mode.command"),
         ("f", "mode.hint"), ("F", "hint.insert"),
         ("?", "overlay.help"), ("<D-/>", "overlay.help"), ("<Esc>", "overlay.close"),

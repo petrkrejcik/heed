@@ -140,7 +140,7 @@ final class MenuBarItem: NSObject, NSMenuDelegate {
     static func entries(for model: AppModel) -> [Entry?] {
         var entries: [Entry?] = []
         let list = model.list
-        let waiting = list.ordered.compactMap { task -> (WorkTask, AgentState)? in
+        let waiting = list.all.compactMap { task -> (WorkTask, AgentState)? in
             guard let state = list.rollup(of: task.id).agent?.state, [.blocked, .asking].contains(state) else {
                 return nil
             }
@@ -157,7 +157,7 @@ final class MenuBarItem: NSObject, NSMenuDelegate {
                 ))
             }
         }
-        let working = list.ordered.count { list.rollup(of: $0.id).agent?.state == .working }
+        let working = list.all.count { list.rollup(of: $0.id).agent?.state == .working }
         if working > 0 { entries.append(Entry(title: "\(working) working")) }
         entries.append(nil)
         entries.append(Entry(title: "Open Heed", action: .openHeed, shortcut: model.config.globalActivate))

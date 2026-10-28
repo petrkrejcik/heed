@@ -1,5 +1,5 @@
-/// `{` and `}`: lists move by group as vim moves by paragraph. A group is a run of rows with the same key (a sidebar
-/// group, a repo, a day).
+/// `{` and `}`: lists move by group as vim moves by paragraph. A group is a run of rows with the same key (an open
+/// sidebar section, a repo, a day).
 public enum RowGroups {
     /// The first row of the next group, nil on the last group.
     public static func next(_ keys: [String], from index: Int) -> Int? {

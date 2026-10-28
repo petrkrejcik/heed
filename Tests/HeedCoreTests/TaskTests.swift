@@ -41,27 +41,39 @@ struct TaskListTests {
         #expect(TaskRollup.of(task("t"), layout: nil, agents: [:]).agent == nil)
     }
 
-    @Test func groupsInOrder() {
+    @Test func sectionsInKanbanOrder() {
         let tasks = [
             task("idle"), task("busy"), task("pin", pinned: true), task("ask"), task("stuck", status: .blocked),
             task("done", status: .done), task("todo", status: .toDo), task("old pin", status: .done, pinned: true),
+            task("review", status: .readyForReview), task("dropped", status: .dropped),
+            task("odd", status: TaskStatus(rawValue: "Someday")),
         ]
         let layouts = Dictionary(uniqueKeysWithValues: ["busy", "ask", "stuck"].map { ($0, layout($0, agents: ["a"])) })
         let agents = ["busy-a": agent(.working), "ask-a": agent(.asking), "stuck-a": agent(.working)]
         let list = TaskList(tasks, layouts: layouts, agents: agents)
-        #expect(list.sections.map(\.group) == [.pinned, .needsYou, .working, .idle, .blocked])
-        // Pinned ones by title; Done and To Do are not listed unless pinned.
-        #expect(list.ordered.map(\.id) == ["old pin", "pin", "ask", "busy", "idle", "stuck"])
-        #expect(list.group(of: "stuck") == .blocked)
-        #expect(list.group(of: "done") == nil)
+        #expect(list.sections.map(\.group) == [
+            .pinned, .toDo, .inProgress, .blocked, .readyForReview, .done, .dropped, .other,
+        ])
+        #expect(list.sections.filter(\.collapsed).map(\.group) == [.toDo, .done, .dropped])
+        // Every task is listed; a pinned one only under Pinned, by title.
+        #expect(list.all.map(\.id) == [
+            "old pin", "pin", "todo", "ask", "busy", "idle", "stuck", "review", "done", "dropped", "odd",
+        ])
+        // Rows are the open sections' only.
+        #expect(list.ordered.map(\.id) == ["old pin", "pin", "ask", "busy", "idle", "stuck", "review", "odd"])
+        #expect(list.group(of: "done") == .done)
+        #expect(list.isHidden("done") && list.index(of: "done") == nil)
+        #expect(list.group(of: "old pin") == .pinned)
         #expect(list.pins.map(\.id) == ["old pin", "pin"])
+        #expect(list.live.map(\.id) == ["old pin", "pin", "todo", "ask", "busy", "idle", "stuck", "review", "odd"])
     }
 
-    @Test func anAgentWaitingOnYouBeatsTheNotesBlocked() {
+    @Test func theAgentsStateNoLongerMovesATask() {
         let list = TaskList(
             [task("t", status: .blocked)], layouts: ["t": layout("t", agents: ["a"])], agents: ["t-a": agent(.asking)]
         )
-        #expect(list.group(of: "t") == .needsYou)
+        #expect(list.group(of: "t") == .blocked)
+        #expect(list.rollup(of: "t").needsYou)
     }
 
     @Test func mostRecentlyActiveFirstInAGroup() {
@@ -79,11 +91,18 @@ struct TaskListTests {
         let layouts = Dictionary(uniqueKeysWithValues: ids.map { ($0, layout($0, agents: ["x"])) })
         let agents = ["a-x": agent(.working), "b-x": agent(.blocked), "c-x": agent(.working), "d-x": agent(.asking)]
         let list = TaskList(ids.enumerated().map { task($1, ago: Double($0)) }, layouts: layouts, agents: agents)
-        // Ordered: needs-you first (b, d), then working (a, c).
-        #expect(list.ordered.map(\.id) == ["b", "d", "a", "c"])
-        #expect(list.nextNeedingYou(after: 0) == 1)
-        #expect(list.nextNeedingYou(after: 1) == 0)
-        #expect(TaskList([task("a")]).nextNeedingYou(after: 0) == nil)
+        #expect(list.ordered.map(\.id) == ["a", "b", "c", "d"])
+        #expect(list.nextNeedingYou(after: "a")?.id == "b")
+        #expect(list.nextNeedingYou(after: "b")?.id == "d")
+        #expect(list.nextNeedingYou(after: "d")?.id == "b")
+        #expect(list.nextNeedingYou(after: nil)?.id == "b")
+        #expect(TaskList([task("a")]).nextNeedingYou(after: "a") == nil)
+        // A collapsed section's task is reached too.
+        let done = TaskList(
+            [task("a"), task("z", status: .done)], layouts: ["z": layout("z", agents: ["x"])],
+            agents: ["z-x": agent(.blocked)]
+        )
+        #expect(done.nextNeedingYou(after: "a")?.id == "z")
     }
 
     @Test func aTaskWithoutAWorktreeRunsInTheMainCheckout() {
@@ -103,12 +122,20 @@ struct TaskListTests {
         let list = TaskList(domain.tasks, layouts: domain.layouts, agents: domain.agents)
         #expect(list.ordered.first?.title == "Kibana main")
         #expect(list.group(of: "t1") == .pinned)
-        #expect(list.group(of: "t2") == .working)
+        #expect(list.group(of: "t2") == .inProgress)
         #expect(list.rollup(of: "t2").agentCount == 2)
         #expect(list.rollup(of: "t2").kibanaRunning)
         #expect(list.group(of: "t4") == .blocked)
-        #expect(list.group(of: "t6") == nil)
-        #expect(list.group(of: "t7") == nil)
+        #expect(list.group(of: "t8") == .readyForReview)
+        #expect(list.group(of: "t6") == .done)
+        #expect(list.group(of: "t7") == .toDo)
+        #expect(list.group(of: "t10") == .dropped)
+        // The docs' shots count rows: `j` is the asking agent, `2j` the upload fix, `3j` the review, `4j` the blocked
+        // one.
+        #expect(list.ordered.map(\.id) == ["t1", "t5", "t2", "t3", "t4", "t8"])
+        #expect(list.sections.filter(\.collapsed).map { "\($0.group.rawValue) \($0.tasks.count)" } == [
+            "To Do 2", "Done 1", "Dropped 1",
+        ])
     }
 
     @Test func hintLabelsNeverPrefixEachOther() {

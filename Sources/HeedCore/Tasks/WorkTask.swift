@@ -51,9 +51,6 @@ public struct TaskStatus: RawRepresentable, Hashable, Sendable, Codable, CustomS
 
     public static let all: [TaskStatus] = [.toDo, .inProgress, .readyForReview, .blocked, .done, .dropped]
 
-    /// Whether the sidebar lists a task with this status. Pinned tasks show whatever their status.
-    public var isActive: Bool { self == .inProgress || self == .blocked }
-
     /// Done and Dropped end a task: setting one from Heed asks first and closes its terminals.
     public var endsTask: Bool { self == .done || self == .dropped }
 

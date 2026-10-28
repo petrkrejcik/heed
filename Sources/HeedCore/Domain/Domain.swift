@@ -14,19 +14,50 @@ public struct Domain: Hashable, Sendable, Codable {
     public var github: GitHubState
     /// PR details by `org/name#n`, for the reader (cached, so it opens offline).
     public var pullDetails: [String: PullDetail]
+    /// The sidebar sections shown closed. UI state, so it lives here and never in the notes.
+    public var collapsed: Set<TaskGroup>
 
     public init(
         tasks: [WorkTask] = [], layouts: [String: TaskLayout] = [:], agents: [String: AgentTab] = [:],
-        github: GitHubState = GitHubState(), pullDetails: [String: PullDetail] = [:]
+        github: GitHubState = GitHubState(), pullDetails: [String: PullDetail] = [:],
+        collapsed: Set<TaskGroup> = TaskGroup.collapsedByDefault
     ) {
         self.tasks = tasks
         self.layouts = layouts
         self.agents = agents
         self.github = github
         self.pullDetails = pullDetails
+        self.collapsed = collapsed
     }
 
     public static let empty = Domain()
+
+    enum CodingKeys: String, CodingKey {
+        case tasks, layouts, agents, github, pullDetails, collapsed
+    }
+
+    /// A cache from before sections collapsed loads with the defaults; a section name this build does not know is
+    /// skipped, so neither throws the cache away.
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        tasks = try container.decode([WorkTask].self, forKey: .tasks)
+        layouts = try container.decode([String: TaskLayout].self, forKey: .layouts)
+        agents = try container.decode([String: AgentTab].self, forKey: .agents)
+        github = try container.decode(GitHubState.self, forKey: .github)
+        pullDetails = try container.decode([String: PullDetail].self, forKey: .pullDetails)
+        collapsed = try container.decodeIfPresent([String].self, forKey: .collapsed)
+            .map { Set($0.compactMap(TaskGroup.init(rawValue:))) } ?? TaskGroup.collapsedByDefault
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(tasks, forKey: .tasks)
+        try container.encode(layouts, forKey: .layouts)
+        try container.encode(agents, forKey: .agents)
+        try container.encode(github, forKey: .github)
+        try container.encode(pullDetails, forKey: .pullDetails)
+        try container.encode(collapsed.map(\.rawValue).sorted(), forKey: .collapsed)
+    }
 
     public func task(_ id: String) -> WorkTask? { tasks.first { $0.id == id } }
 
@@ -51,6 +82,8 @@ public enum DomainChange: Hashable, Sendable, Codable {
     case inboxRead([String])
     /// A PR's detail arrived.
     case pullDetailFetched(PullDetail)
+    /// The sidebar sections shown closed, all of them.
+    case collapsedChanged(Set<TaskGroup>)
 }
 
 public extension Domain {
@@ -88,6 +121,8 @@ public extension Domain {
             for index in github.inbox.indices where ids.contains(github.inbox[index].id) {
                 github.inbox[index].unread = false
             }
+        case let .collapsedChanged(groups):
+            collapsed = groups
         }
     }
 

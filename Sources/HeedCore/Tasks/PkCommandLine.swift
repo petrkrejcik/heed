@@ -57,11 +57,13 @@ public enum PkCommandLine {
         return 0
     }
 
-    /// The sidebar as one line, for scripts: listed tasks in order, each with its Kibana port.
+    /// The sidebar as one line, for scripts, with the default sections open: the rows in order, each with its Kibana
+    /// port, then each collapsed section as its name and count.
     public static func sidebar(_ tasks: [WorkTask]) -> String {
-        "sidebar: " + TaskList(tasks).ordered.map { task in
-            task.port.map { "\(task.title) [\($0)]" } ?? task.title
-        }.joined(separator: " | ")
+        let list = TaskList(tasks)
+        let rows = list.ordered.map { task in task.port.map { "\(task.title) [\($0)]" } ?? task.title }
+        let collapsed = list.sections.filter(\.collapsed).map { "\($0.group.rawValue) (\($0.tasks.count))" }
+        return "sidebar: " + (rows + collapsed).joined(separator: " | ")
     }
 
     /// Runs `PkSync` as the app does, on a domain of its own, and prints the sidebar after the first list and each

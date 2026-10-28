@@ -74,7 +74,7 @@ public enum Resume {
     ) -> [ResumeCandidate] {
         let list = TaskList(domain.tasks, layouts: domain.layouts, agents: domain.agents)
         guard let agent = settings.claude else { return [] }
-        return list.ordered.compactMap { task -> ResumeCandidate? in
+        return list.all.compactMap { task -> ResumeCandidate? in
             guard let layout = domain.layouts[task.id] else { return nil }
             let agentPanes = layout.panes.filter { $0.role == .agent }
             guard !agentPanes.isEmpty else { return nil }

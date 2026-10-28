@@ -23,8 +23,8 @@ struct Sidebar: View {
                         ForEach(list.sections, id: \.group) { section in
                             VStack(alignment: .leading, spacing: 0) {
                                 groupHeader(section, pins: list.pins.count)
-                                ForEach(section.tasks) { task in
-                                    let index = list.ordered.firstIndex(of: task) ?? 0
+                                ForEach(section.collapsed ? [] : section.tasks) { task in
+                                    let index = list.index(of: task.id) ?? 0
                                     TaskRow(
                                         task: task,
                                         rollup: list.rollup(of: task.id),
@@ -50,7 +50,7 @@ struct Sidebar: View {
                 }
             }
 
-            if list.ordered.isEmpty {
+            if list.all.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("No tasks yet.").foregroundStyle(Theme.fg2)
                     HStack(spacing: 6) {
@@ -68,27 +68,27 @@ struct Sidebar: View {
         .overlay(alignment: .trailing) { Theme.line.frame(width: 1) }
     }
 
-    /// Needs you in amber; the rest quiet.
-    static func tint(_ group: TaskGroup) -> Color {
-        group == .needsYou ? Theme.block : Theme.fg3
-    }
-
+    /// A section's name and count, with a chevron; a click collapses or expands it.
     private func groupHeader(_ section: TaskList.Section, pins: Int) -> some View {
         HStack(spacing: 6) {
+            Image(systemName: section.collapsed ? "chevron.right" : "chevron.down")
+                .font(.system(size: 8, weight: .semibold))
+                .foregroundStyle(Theme.fg3)
+                .frame(width: 10)
             if section.group == .pinned {
                 Image(systemName: "pin.fill").font(.system(size: 9)).foregroundStyle(Theme.fg3)
             }
             let count = section.group == .pinned ? "\(pins)/\(TaskGroup.maxPins)" : "\(section.tasks.count)"
-            SectionHeader(
-                title: "\(section.group.rawValue) · \(count)",
-                tint: Self.tint(section.group)
-            )
+            SectionHeader(title: "\(section.group.rawValue) · \(count)")
             Spacer()
             if section.group == .pinned { KeyCap(text: "'") }
         }
         .padding(.horizontal, 16)
         .padding(.top, 14)
         .padding(.bottom, 6)
+        .contentShape(Rectangle())
+        .onTapGesture { model.clickSection(section.group) }
+        .help("collapse / expand (\(model.keyCap(for: "section.toggle") ?? "za"))")
     }
 }
 
@@ -192,7 +192,8 @@ struct HintBadge: View {
     }
 }
 
-/// The collapsed sidebar: one row per task with its number, agent glyph and pin, so moving and jumping still work.
+/// The collapsed sidebar: one row per task of the open sections (the rows the cursor walks) with its number, agent
+/// glyph and pin, so moving and jumping still work; a short line where a section starts.
 struct TaskRail: View {
     @Environment(AppModel.self) private var model
 
@@ -206,6 +207,9 @@ struct TaskRail: View {
                     ForEach(Array(list.ordered.enumerated()), id: \.element.id) { index, task in
                         let isCursor = index == model.cursor
                         let agent = list.rollup(of: task.id).agent
+                        if index > 0, list.group(of: task.id) != list.group(of: list.ordered[index - 1].id) {
+                            Theme.line.frame(width: 24, height: 1).padding(.vertical, 4)
+                        }
                         VStack(spacing: 4) {
                             Text("\(list.lineNumber(of: index, cursor: model.cursor))")
                                 .font(Theme.mono(10, weight: isCursor ? .bold : .regular))

@@ -32,8 +32,12 @@ public enum Commands {
         .init("row.last", "last task / row", .move),
         .init("row.halfpage.down", "half a page down (ten rows)", .move),
         .init("row.halfpage.up", "half a page up (ten rows)", .move),
-        .init("group.next", "first row of the next group (sidebar group, repo)", .move),
+        .init("group.next", "first row of the next group (open sidebar section, repo)", .move),
         .init("group.prev", "first row of this group, or of the one before", .move),
+        .init(
+            "section.toggle", "collapse / expand a sidebar section: the cursor's, or one by name", .move,
+            arguments: "[pinned|todo|in progress|blocked|review|done|dropped]"
+        ),
         .init("task.filter", "filter the current view (typed in the status bar)", .move),
         .init("filter.clear", "clear the current view's filter", .move),
         .init("task.attention", "next task needing you", .move),

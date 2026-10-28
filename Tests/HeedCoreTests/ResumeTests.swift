@@ -68,11 +68,12 @@ struct ResumeTests {
         #expect(gone.mode == .startFresh)
     }
 
-    @Test func tasksWithoutAgentTabsAndUnlistedTasksAreNotOffered() {
+    /// A task set Done outside Heed keeps its agent tabs, so it is offered too, though its section is collapsed.
+    @Test func tasksWithoutAgentTabsAreNotOffered() {
         var domain = world([("t", [(.working, "s")]), ("done", [(.working, "s2")])])
         domain.tasks[1].status = .done
         domain.tasks.append(WorkTask(id: "bare", title: "bare"))
-        #expect(Resume.candidates(domain: domain, settings: .default, integration: nil).map(\.id) == ["t"])
+        #expect(Resume.candidates(domain: domain, settings: .default, integration: nil).map(\.id) == ["t", "done"])
     }
 
     @Test func resumeKeepsHooksButNotTheSessionIDFlag() {
@@ -85,7 +86,10 @@ struct ResumeTests {
     }
 
     @Test func formTicksActiveTasksAndToggles() {
-        let domain = world([("w", [(.working, "a")]), ("d", [(.done, "b")])])
+        var domain = world([("w", [(.working, "a")]), ("d", [(.done, "b")])])
+        // Listed as the sidebar lists them: the most recently active first.
+        domain.tasks[0].lastActivity = Date(timeIntervalSince1970: 2)
+        domain.tasks[1].lastActivity = Date(timeIntervalSince1970: 1)
         var form = ResumeForm(candidates: Resume.candidates(domain: domain, settings: .default, integration: nil))
         #expect(form.chosen.map(\.id) == ["w"])
         _ = form.handle(KeyStroke("j"))
