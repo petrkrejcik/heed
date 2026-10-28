@@ -24,7 +24,7 @@ Single keys are kept for what you do many times an hour; anything rarer is two k
 | Keys | |
 |---|---|
 | `j` `k` `h` `l` `G` `/` `f` | Move, filter, jump |
-| `⌃d` `⌃u`, `{` `}` | Half a page; the previous or next group (a sidebar group, a repo) |
+| `⌃d` `⌃u`, `{` `}` | Half a page; the previous or next group (an open sidebar section, a repo) |
 | `↩` `o` `i` `v` `m` | Open, new task, type into the agent, select, pin |
 | `r` | Refresh the view you are in |
 | `g…` | Go somewhere: views (`gm` Inbox), overlays (`go`, `gd`), tabs (`gt`), a link as a web page (`gB`), the repo on GitHub (`gR`) |

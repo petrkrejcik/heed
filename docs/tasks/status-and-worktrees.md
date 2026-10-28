@@ -28,15 +28,17 @@ too: Heed asks pk for its paths rather than keeping a copy.
 | `dr` | Ready for Review |
 | `:status <name>` | Any status: `:status to do`, `:status dropped` (short names work: `wip`, `review`, `drop`) |
 
-Done and Dropped ask first. The task leaves the sidebar and its terminals close, stopping its agents. A review task's
-worktree is removed too, unless it holds uncommitted or unpushed work; Heed says what kept it. Ready for Review and
-Blocked keep the terminals running.
+Done and Dropped ask first. Its terminals close, stopping its agents, and the task moves under Done (or Dropped) in
+the sidebar. A review task's worktree is removed too, unless it holds uncommitted or unpushed work; Heed says what kept
+it. Ready for Review and Blocked keep the terminals running.
 
-A status set in Obsidian is followed the same way, except that Heed leaves the terminals of a task marked Done there
-alone: they close when you close them.
+A status set in Obsidian (or by an agent, or cron) is followed the same way, except that Heed leaves the terminals of a
+task marked Done there alone: the task moves to its section with its agents still running, and they close when you
+close them.
 
-`:task <words>` goes to the first task matching the words. When none in the sidebar matches, a To Do task that does
-is set In Progress and opened.
+`:task <words>` goes to the first task matching the words, opening its section if it is collapsed. A To Do task is set
+In Progress as it opens; so is one whose first agent you start with `gc`. Moving the cursor onto a To Do task does not
+change it.
 
 ## A worktree for the task
 

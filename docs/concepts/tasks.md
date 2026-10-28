@@ -14,8 +14,8 @@ Each task is a note in your Obsidian vault, read and written through pk (see
 
 A task has:
 
-- **A title and a status.** In Progress or Blocked tasks are listed in the sidebar. To Do tasks stay on the Kanban;
-  Done ones are not listed.
+- **A title and a status.** The sidebar has a section per status; To Do, Done and Dropped start collapsed. See
+  [The sidebar](../tasks/sidebar.md).
 - **A checkout.** Its worktree, or the main Kibana checkout (`~/www/kibana`) when it has none.
 - **Agent tabs.** Each runs claude with its own Claude session, so each one resumes on its own. The row shows the most
   urgent of them.

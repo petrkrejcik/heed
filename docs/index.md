@@ -11,7 +11,7 @@ Heed is a native macOS app for working on Kibana with coding agents. Each task g
 terminals, and keeps the GitHub issue and pull request around it in view. Heed tells you which agent needs you, and it
 gets you there in a keystroke.
 
-![The Tasks view: tasks grouped by what they need, an agent and a shell side by side, the inspector on the right](images/shots/home/tasks.png)
+![The Tasks view: tasks in sections by status, an agent and a shell side by side, the inspector on the right](images/shots/home/tasks.png)
 
 ## Where to go next
 

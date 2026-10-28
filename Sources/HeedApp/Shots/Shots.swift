@@ -80,7 +80,11 @@ enum Shots {
 
     static let tasks: [Shot] = [
         Shot(id: "tasks/anatomy", keys: "2j", highlight: [.sidebar, .center, .inspector]),
-        Shot(id: "tasks/sidebar", size: CGSize(width: 1440, height: 640), crop: .sidebar),
+        Shot(id: "tasks/sidebar", size: CGSize(width: 1440, height: 900), crop: .sidebar),
+        Shot(
+            id: "tasks/sections", size: CGSize(width: 1440, height: 1000), keys: typed(":section done") + "<CR>",
+            crop: .sidebar
+        ),
         Shot(id: "tasks/rail", size: CGSize(width: 1440, height: 640), keys: "zs", crop: .rail),
         Shot(id: "tasks/moving", size: CGSize(width: 1440, height: 640), keys: "2j", crop: .sidebar),
         Shot(id: "tasks/attention", size: CGSize(width: 1440, height: 640), keys: "ga", crop: .sidebar),

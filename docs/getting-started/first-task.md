@@ -18,14 +18,14 @@ More in [New task](../tasks/new-task.md).
 ## 2. The agent works
 
 The task's agent runs in a real terminal. Its state, here **working**, comes from the agent itself through hooks,
-and sorts the task in the sidebar. A task can have more than one agent tab; the row shows the most urgent one.
+and shows on the task's row in the sidebar. A task can have more than one agent tab; the row shows the most urgent one.
 
 ![A working task: the agent's output in the left pane, its tests in the pane beside it](../images/shots/getting-started/first-task-2-working.png)
 
 ## 3. It needs you
 
-When an agent wants permission or asks a question, its task moves up under **Needs you**, and the Dock and the
-menu bar show how many are waiting. `ga` jumps to the next one.
+When an agent wants permission or asks a question, its row's glyph says so, and the Dock and the menu bar show how
+many are waiting. `ga` jumps to the next one.
 
 ![A task whose agent is asking two questions](../images/shots/getting-started/first-task-3-asking.png)
 
