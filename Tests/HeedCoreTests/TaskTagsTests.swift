@@ -69,11 +69,9 @@ struct PromptCacheTests {
         #expect(PromptCache.countdown(turns: [], now: now) == nil)
     }
 
-    @Test func onlyAgentsWhoseTurnIsOverCount() {
-        #expect(PromptCache.turnEnded(agent(.idle, turn: 5)) == ago(5))
-        #expect(PromptCache.turnEnded(agent(.done, turn: 5)) == ago(5))
-        for state in [AgentState.working, .asking, .blocked, .limited, .exited] {
-            #expect(PromptCache.turnEnded(agent(state, turn: 5)) == nil)
+    @Test func theCountdownStaysWhileTheAgentWorks() {
+        for state in [AgentState.idle, .done, .working, .asking, .blocked, .limited, .exited] {
+            #expect(PromptCache.turnEnded(agent(state, turn: 5)) == ago(5))
         }
         #expect(PromptCache.turnEnded(agent(.idle, turn: nil)) == nil)
     }
@@ -103,8 +101,8 @@ struct PromptCacheTests {
         }
         let agents = ["t-a": agent(.working, turn: 3), "t-b": agent(.idle, turn: 20), "t-c": agent(.done, turn: 50)]
         let rollup = TaskRollup.of(task, layout: TaskLayout(tabs: tabs), agents: agents)
-        #expect(rollup.cacheTurns == [ago(20), ago(50)])
-        // The working agent refreshes its own cache; of the others, the one about to go.
+        #expect(rollup.cacheTurns == [ago(3), ago(20), ago(50)])
+        // The one about to go, the working agent's included.
         #expect(PromptCache.countdown(turns: rollup.cacheTurns, now: now)?.minutesLeft == 10)
     }
 }

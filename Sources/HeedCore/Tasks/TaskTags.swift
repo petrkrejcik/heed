@@ -110,12 +110,8 @@ public enum PromptCache {
         }
     }
 
-    /// When the agent's cache started counting: its last turn's end, while its turn is over (idle or done). Working, it
-    /// is refreshing the cache; asking, blocked or limited, it is mid-turn, so `lastTurnAt` is an older turn's.
-    public static func turnEnded(_ agent: AgentTab) -> Date? {
-        switch agent.state.state {
-        case .idle, .done: agent.lastTurnAt
-        case .working, .asking, .blocked, .limited, .exited: nil
-        }
-    }
+    /// When the agent's cache started counting: its last turn's end, in any state. While it works the countdown stays
+    /// (a background agent's tools report working too, though the conversation's cache is not refreshed), and it
+    /// starts again when the turn ends.
+    public static func turnEnded(_ agent: AgentTab) -> Date? { agent.lastTurnAt }
 }
