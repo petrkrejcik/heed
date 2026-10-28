@@ -78,6 +78,24 @@ struct PromptCacheTests {
         #expect(PromptCache.turnEnded(agent(.idle, turn: nil)) == nil)
     }
 
+    @Test func onlyAFinishedTurnRestartsTheCountdown() {
+        let at = now
+        let previous = ago(51)
+        #expect(PromptCache.lastTurn(after: .done, reason: nil, at: at, previous: previous) == at)
+        // A failed turn (StopFailure) got no response.
+        #expect(PromptCache.lastTurn(after: .done, reason: "server_error", at: at, previous: previous) == previous)
+        // Resuming at launch, or the idle notice a minute after a turn, is no response either.
+        #expect(PromptCache.lastTurn(after: .idle, reason: "resume", at: at, previous: previous) == previous)
+        #expect(PromptCache.lastTurn(after: .idle, reason: nil, at: at, previous: previous) == previous)
+        for state in [AgentState.working, .asking, .blocked, .limited, .exited] {
+            #expect(PromptCache.lastTurn(after: state, reason: nil, at: at, previous: previous) == previous)
+        }
+        // A new, cleared or compacted conversation has no cache yet.
+        for source in ["startup", "clear", "compact"] {
+            #expect(PromptCache.lastTurn(after: .idle, reason: source, at: at, previous: previous) == nil)
+        }
+    }
+
     @Test func theRollupKeepsTheEndedTurnsOfItsAgentTabs() {
         let task = WorkTask(id: "t", title: "t")
         let tabs = ["a", "b", "c"].map { id in

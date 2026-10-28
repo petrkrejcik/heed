@@ -675,7 +675,9 @@ final class AppModel {
             var agent = agents[pane] ?? AgentTab()
             agent.state = ObservedState(state, source: .reported, reason: reason)
             agent.activity = reason.map { "\(state.rawValue) · \($0)" } ?? state.rawValue
-            if state == .idle || state == .done { agent.lastTurnAt = message.sentAt }
+            agent.lastTurnAt = PromptCache.lastTurn(
+                after: state, reason: reason, at: message.sentAt, previous: agent.lastTurnAt
+            )
             task.lastActivity = message.sentAt
             events[task.id] = AgentEvent.log(
                 events[task.id] ?? [], adding: AgentEvent(at: message.sentAt, state: state, reason: reason)

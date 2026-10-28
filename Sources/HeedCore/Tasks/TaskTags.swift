@@ -70,7 +70,7 @@ public extension PullStatus {
 }
 
 /// Claude's prompt cache: it lasts an hour from the agent's last response, so a turn sent within that hour is cheap and
-/// fast. Heed counts down from the end of the agent's last turn (`AgentTab.lastTurnAt`, from the idle or done hook).
+/// fast. Heed counts down from the end of the agent's last turn (`AgentTab.lastTurnAt`, from the Stop hook).
 public enum PromptCache {
     public static let ttl: TimeInterval = 60 * 60
     /// At this many minutes left or fewer the countdown turns amber.
@@ -96,6 +96,18 @@ public enum PromptCache {
     /// Of several agents' turns, the cache that expires soonest and has not yet: the one to use before it is gone.
     public static func countdown(turns: [Date], now: Date) -> Countdown? {
         turns.compactMap { countdown(from: $0, now: now) }.min { $0.turnEndedAt < $1.turnEndedAt }
+    }
+
+    /// `lastTurnAt` after a state report. Only a turn that ended (Stop: done, no error) got a response from Claude.
+    /// Idle
+    /// is not a response: a resumed session (SessionStart `resume`) or the idle notice keep the last turn's time, and a
+    /// new, cleared or compacted conversation (SessionStart `startup`, `clear`, `compact`) starts with no cache.
+    public static func lastTurn(after state: AgentState, reason: String?, at: Date, previous: Date?) -> Date? {
+        switch (state, reason) {
+        case (.done, nil): at
+        case (.idle, "startup"), (.idle, "clear"), (.idle, "compact"): nil
+        default: previous
+        }
     }
 
     /// When the agent's cache started counting: its last turn's end, while its turn is over (idle or done). Working, it

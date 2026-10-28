@@ -69,7 +69,9 @@ section collapsed, and the cursor goes to the next row.
 Claude keeps a prompt cache for an hour after the agent's last response: a prompt sent within that hour is cheaper
 and faster. The countdown starts when the agent's turn ends, so 15 minutes after it the tag says `45m`. It is not
 shown while the agent is working (it is refreshing its cache), while it waits on you mid-turn (asking, blocked), or
-once the hour is up. With several agent tabs, it shows the cache that runs out first.
+once the hour is up. With several agent tabs, it shows the cache that runs out first. Resuming an agent (after a
+relaunch) keeps the countdown of its last turn; a new, cleared or compacted conversation has none until its first
+turn ends.
 
 ## The rail
 
