@@ -98,5 +98,15 @@ heed list >"$tmp/list"
 grep -q "^In Progress	Seeded task	5602	http://localhost:5602/app/agent_builder$" "$tmp/list" \
   || fail "no Kibana URL for Seeded task: $(cat "$tmp/list")"
 
+step "a task whose PR is open for review moves to Ready for Review, once (pk's gh stub has PR 43 open)"
+pk task new "Opened for review" >/dev/null
+pk task link "Opened for review" 43 --pr >/dev/null
+heed ready "Opened for review" >"$tmp/ready"
+[[ "$(cat "$tmp/ready")" == $'moved\tReady for Review\tPR #43 is open' ]] || fail "ready: $(cat "$tmp/ready")"
+grep -q '^status: Ready for Review$' "$tmp/vault/Projects/Opened for review.md" || fail "the note did not move"
+heed ready "Opened for review" >"$tmp/ready"
+[[ "$(cat "$tmp/ready")" == $'stays\tReady for Review\t'* ]] || fail "ready again: $(cat "$tmp/ready")"
+wait_for "the sidebar shows the moved task" has "Opened for review"
+
 [[ ! -s "$tmp/watch.err" ]] || fail "watch reported: $(cat "$tmp/watch.err")"
 echo "e2e: OK"

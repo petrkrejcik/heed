@@ -73,6 +73,40 @@ public struct PkStatusResult: Hashable, Sendable, Codable {
     public var blockers: [String]
 }
 
+/// What `task.pr.sync` did: the tasks that got a PR, as written, and the ids of those that also moved to Ready for
+/// Review (their PR was already open for review).
+public struct PkPullSync: Hashable, Sendable, Codable {
+    public var linked: [PkTask]
+    public var ready: [String]
+
+    public init(linked: [PkTask], ready: [String] = []) {
+        self.linked = linked
+        self.ready = ready
+    }
+
+    // An older pk sends no `ready`.
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        linked = try container.decode([PkTask].self, forKey: .linked)
+        ready = try container.decodeIfPresent([String].self, forKey: .ready) ?? []
+    }
+
+    private enum CodingKeys: String, CodingKey { case linked, ready }
+}
+
+/// What `task.pr.ready` did: the task as it is now, whether it moved, and why (`PR #12 is open`, `PR #12 is a draft`).
+public struct PkReadyResult: Hashable, Sendable, Codable {
+    public var task: PkTask
+    public var moved: Bool
+    public var detail: String
+
+    public init(task: PkTask, moved: Bool, detail: String) {
+        self.task = task
+        self.moved = moved
+        self.detail = detail
+    }
+}
+
 /// pk refused (its `error` record), or could not be run at all.
 public struct PkError: Error, Equatable, Sendable, CustomStringConvertible {
     public var code: String
@@ -196,12 +230,16 @@ public struct PkBridge: Sendable {
         try await call("task.review.new", ["number": number], timeout: .seconds(900), as: TaskResult.self).task
     }
 
-    /// Links the PR opened from the task's branch, if there is one; returns the tasks that got one.
-    public func syncPRs(_ id: String) async throws -> [PkTask] {
-        struct Result: Decodable {
-            var linked: [PkTask]
-        }
-        return try await call("task.pr.sync", ["id": id], as: Result.self).linked
+    /// Links the PR opened from the task's branch, if there is one. One already open for review also moves the task
+    /// from In Progress to Ready for Review.
+    public func syncPRs(_ id: String) async throws -> PkPullSync {
+        try await call("task.pr.sync", ["id": id])
+    }
+
+    /// In Progress to Ready for Review when pk finds the task's PR open and not a draft. Call it when the PR changed
+    /// (newly linked, out of draft): pk acts on the PR as it is now.
+    public func markReady(_ id: String) async throws -> PkReadyResult {
+        try await call("task.pr.ready", ["id": id])
     }
 
     // MARK: Protocol

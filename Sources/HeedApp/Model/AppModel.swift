@@ -408,6 +408,9 @@ final class AppModel {
             let state = try await GitHub.sync(parts: parts, tracked: tracked, previous: previous)
             syncSchedule.fetched(parts, at: Date())
             commit(.githubSynced(state))
+            for task in ReviewReadiness.opened(before: previous.pulls, after: state.pulls, tasks: tasks) {
+                if let pull = task.pull { markReady(task, pull: pull) }
+            }
             refreshTrackedDetails()
             await refreshIssueInfo()
         } catch {
@@ -694,7 +697,11 @@ final class AppModel {
         case let .prAdd(url):
             // Sent by the agent's hooks when it opened a PR (or by `heed pr add`). A task has one PR; pk writes it.
             guard task.pr == nil, let pull = PullRef(url: url) else { return }
-            link(task, url, record: "opened PR #\(pull.number)") { [weak self] in self?.fetchDetail(pull) }
+            link(task, url, record: "opened PR #\(pull.number)") { [weak self] in
+                self?.fetchDetail(pull)
+                // A new link is a change of the PR: one already open for review moves the task.
+                self?.markReady(task, pull: pull)
+            }
             return
         case let .issueAdd(url):
             guard task.issue == nil, let issue = IssueRef(url: url) else { return }
@@ -738,13 +745,34 @@ final class AppModel {
         guard now.timeIntervalSince(prSyncedAt[task.id] ?? .distantPast) > 120 else { return }
         prSyncedAt[task.id] = now
         Task {
-            guard let linked = try? await pk.syncPRs(task.id) else { return }
-            for fresh in linked {
+            guard let synced = try? await pk.syncPRs(task.id) else { return }
+            for fresh in synced.linked {
                 guard let pull = fresh.pr.flatMap(PullRef.init(url:)) else { continue }
                 _ = upsert(fresh, record: "PR #\(pull.number) found for \(branch)")
                 fetchDetail(pull)
+                if let id = fresh.id, synced.ready.contains(id) { readyForReview(fresh, pull: pull) }
             }
         }
+    }
+
+    /// The task's PR just became open for review (newly linked, or out of draft): pk moves it from In Progress to
+    /// Ready for Review if it still is In Progress and pk finds the PR open and not a draft.
+    private func markReady(_ task: WorkTask, pull: PullRef) {
+        Task {
+            do {
+                let result = try await pk.markReady(task.id)
+                if result.moved { readyForReview(result.task, pull: pull) }
+            } catch let error as PkError where error.code == "method_not_found" {
+                // A pk older than this Heed has no task.pr.ready: the task stays where it is.
+            } catch {
+                flash = "could not move \(task.title) to Ready for Review: \(error)"
+            }
+        }
+    }
+
+    private func readyForReview(_ fresh: PkTask, pull: PullRef) {
+        _ = upsert(fresh, record: "Ready for Review: PR #\(pull.number) is open")
+        flash = "\(fresh.title) is Ready for Review: PR #\(pull.number) is open"
     }
 
     func flush() async { await store?.flush() }

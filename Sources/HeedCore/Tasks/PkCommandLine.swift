@@ -7,6 +7,7 @@ public enum PkCommandLine {
     usage: heed pk [--python <path>] paths
            heed pk [--python <path>] list
            heed pk [--python <path>] new <title>
+           heed pk [--python <path>] ready <task>  (In Progress to Ready for Review when its PR is open for review)
            heed pk [--python <path>] watch      (prints the sidebar whenever pk's tasks change; runs until killed)
     Without --python, [pk] python from config.toml.
     """
@@ -45,6 +46,11 @@ public enum PkCommandLine {
                 let title = args.joined(separator: " ")
                 guard !title.isEmpty else { return usageError() }
                 try await write(bridge.new(title: title).notePath ?? "")
+            case "ready":
+                let reference = args.joined(separator: " ")
+                guard !reference.isEmpty else { return usageError() }
+                let result = try await bridge.markReady(reference)
+                write("\(result.moved ? "moved" : "stays")\t\(result.task.status)\t\(result.detail)")
             case "watch":
                 try await watch(bridge, write: write)
             default:

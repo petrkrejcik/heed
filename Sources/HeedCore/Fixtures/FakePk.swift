@@ -106,7 +106,19 @@ public actor FakePk {
             tasks.append(task)
             return try encoder.encode(["task": task])
         case "task.pr.sync":
-            return try encoder.encode(["linked": [PkTask]()])
+            return try encoder.encode(PkPullSync(linked: []))
+        case "task.pr.ready":
+            // The fake has no GitHub: every linked PR counts as open for review.
+            let at = try index(params["id"])
+            guard let number = tasks[at].pr.flatMap(PullRef.init(url:))?.number else {
+                return try encoder.encode(PkReadyResult(task: tasks[at], moved: false, detail: "no PR linked"))
+            }
+            guard tasks[at].status == TaskStatus.inProgress.rawValue else {
+                let detail = "status is \(tasks[at].status); only In Progress moves"
+                return try encoder.encode(PkReadyResult(task: tasks[at], moved: false, detail: detail))
+            }
+            tasks[at].status = TaskStatus.readyForReview.rawValue
+            return try encoder.encode(PkReadyResult(task: tasks[at], moved: true, detail: "PR #\(number) is open"))
         default:
             throw PkError(code: "method_not_found", message: "Unknown bridge method: \(method)")
         }
