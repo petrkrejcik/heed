@@ -85,7 +85,7 @@ public enum NewTask {
         return changes
     }
 
-    /// What an agent in a new worktree is told: the note is the handover, since a running Claude cannot change folder.
+    /// What a new agent for a task is offered (typed into its input, not sent): the note is the handover.
     public static func handoverPrompt(note: String) -> String { "Read the task note at \(note) and continue." }
 
     /// The Kibana PR `:review` means: `300162`, `#300162`, or the PR's URL (any tab of it). Nil for anything else,
@@ -121,12 +121,13 @@ public enum NewTask {
         return [setup] + pinned
     }
 
-    /// The setup tabs, then a new agent on `prompt` (a review, or a task whose agent is not running), and a shell
-    /// when `shellSplit` asks. The agent is the one to focus.
+    /// The setup tabs, then a new agent with no prompt (a review, or a task whose agent is not running: what it is
+    /// told is typed in as a draft once it is ready), and a shell when `shellSplit` asks. The agent is the one to
+    /// focus.
     public static func worktreeTabs(
-        worktree: String, prompt: String, bootstrap: String, settings: WorkSettings, integration: IntegrationFiles?
+        worktree: String, bootstrap: String, settings: WorkSettings, integration: IntegrationFiles?
     ) -> (tabs: [PaneTab], agent: (pane: String, tab: AgentTab)?) {
-        let agent = agentTab(in: worktree, prompt: prompt, agent: settings.claude, integration: integration)
+        let agent = agentTab(in: worktree, prompt: "", agent: settings.claude, integration: integration)
         let shell = settings.shellSplit && agent.agent != nil ? [shellTab(in: worktree)] : []
         return (
             setupTabs(worktree: worktree, bootstrap: bootstrap, settings: settings) + [agent.tab] + shell,

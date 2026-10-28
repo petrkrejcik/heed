@@ -52,13 +52,15 @@ A new task works in the main Kibana checkout. When it is ready for a branch of i
 4. New tabs open in the worktree: `bootstrap` (`pk kbn bootstrap`, with the Node version Kibana asks for) and one per
    [pinned command](panes-and-tabs.md#pinned-commands).
 
-When the task has no running agent (after a relaunch, before resuming), a new agent starts in the worktree instead and
-is told to read the note and continue.
+When the task has no running agent (after a relaunch, before resuming), a new agent starts in the worktree instead,
+with "Read the task note at … and continue." typed into its input once it is ready. Heed does not send it: the agent
+waits until you press Return (or edit or delete the line).
 
 ## Reviewing a PR
 
 `:review <number>` (or the PR's URL; `⌘V` pastes into the command line) makes the task "Review PR <number> -
-<title>" with the PR checked out in a worktree, then opens the `bootstrap` tab and an agent asked to review it.
+<title>" with the PR checked out in a worktree, then opens the `bootstrap` tab and an agent with "Review <PR>. The task
+note is at …" typed into its input, waiting for your Return.
 Marking the review Done removes its worktree.
 
 ## Running Kibana

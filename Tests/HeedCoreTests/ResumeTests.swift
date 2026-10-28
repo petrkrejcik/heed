@@ -35,12 +35,24 @@ struct ResumeTests {
             "w": .resumeThenContinue, "b": .resumeOnly, "a": .resumeOnly, "d": .leftClosed, "n": .startFresh,
         ])
         #expect(candidates.first { $0.id == "w" }?.command == "claude --resume w-s0")
-        // No session to resume: a fresh agent with its own new id, pointed at the task note.
+        // No session to resume: a fresh agent with its own new id, the task note waiting in its input.
         let fresh = candidates.first { $0.id == "n" }?.panes.first
-        #expect(fresh?.command
-            == "claude --session-id new 'Read the task note at /notes/Projects/n.md and continue.'")
+        #expect(fresh?.command == "claude --session-id new")
+        #expect(fresh?.draft == "Read the task note at /notes/Projects/n.md and continue.")
         #expect(fresh?.claudeSessionID == "new")
         #expect(fresh?.fresh == true)
+    }
+
+    /// Heed never sends a prompt: a mid-turn agent gets the continue prompt typed in, the others nothing.
+    @Test func onlyAMidTurnAgentGetsTheContinuePromptAsADraft() {
+        let domain = world([("w", [(.working, "w-s0")]), ("b", [(.blocked, "b-s0")]), ("d", [(.done, "d-s0")])])
+        let candidates = Resume.candidates(domain: domain, settings: .default, integration: nil)
+        let drafts = Dictionary(uniqueKeysWithValues: candidates.map { ($0.id, $0.panes.first?.draft ?? "") })
+        #expect(drafts == ["w": "Continue where you left off.", "b": "", "d": ""])
+        var off = WorkSettings.default
+        off.continuePrompt = ""
+        let none = Resume.candidates(domain: domain, settings: off, integration: nil).flatMap(\.panes)
+        #expect(none.allSatisfy { $0.draft == nil })
     }
 
     @Test func eachAgentTabResumesItsOwnSession() throws {

@@ -18,9 +18,12 @@ under `[sessions]`:
 
 Each agent tab has its own Claude session id, given at launch (`claude --session-id <id>`). Resuming uses it
 (`claude --resume <id>`), tab by tab, so a task with two agents gets both back. If Claude no longer has a tab's
-session, Heed says so and starts that agent fresh, pointed at the task note.
+session, Heed says so and starts that agent fresh, with "Read the task note at … and continue." typed into its input.
+
+Heed never sends a prompt to an agent by itself. What it would say is typed into the agent's input once the agent is
+ready, and the agent waits until you press Return. Edit the line first, or delete it.
 
 ## The continue prompt
 
-An agent that was mid-turn when Heed quit gets a nudge once its agent is idle again: `continue_prompt`, by default
-"Continue where you left off.". Set it to `""` to turn it off.
+An agent that was mid-turn when Heed quit gets a nudge typed in (not sent) once it is idle again: `continue_prompt`,
+by default "Continue where you left off.". Set it to `""` to turn it off.

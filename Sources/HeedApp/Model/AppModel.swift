@@ -143,8 +143,9 @@ final class AppModel {
 
     // Resume on launch
     private(set) var resume: ResumeForm?
-    /// Resumed agent tabs (pane ids) that were mid-turn: they get the continue prompt once they report idle.
-    private var pendingContinue: Set<String> = []
+    /// What Heed would tell a new or resumed agent (by pane id): typed into its input once it reports idle, never sent.
+    /// Agents only start working when you press Return.
+    private var pendingDrafts: [String: String] = [:]
 
     // Cursors
     private(set) var cursor = 0
@@ -508,9 +509,7 @@ final class AppModel {
                 agent.claudeSessionID = pane.claudeSessionID
                 changes.append(.agentChanged(pane: pane.pane, agent))
                 if let spec = layout.pane(pane.pane) { started.append(spec) }
-                if candidate.mode == .resumeThenContinue, !pane.fresh, !settings.continuePrompt.isEmpty {
-                    pendingContinue.insert(pane.pane)
-                }
+                if let draft = pane.draft { pendingDrafts[pane.pane] = draft }
             }
             task.record(candidate.mode == .startFresh ? "relaunched · started fresh" : "resumed after restart")
             commit([.layoutChanged(task: task.id, layout), .taskUpserted(task)] + changes)
@@ -687,9 +686,9 @@ final class AppModel {
             events[task.id] = AgentEvent.log(
                 events[task.id] ?? [], adding: AgentEvent(at: message.sentAt, state: state, reason: reason)
             )
-            if state == .idle, pendingContinue.remove(pane) != nil {
-                TerminalSurfaces.shared.typeLine(settings.continuePrompt, paneID: pane)
-                task.record("sent “\(settings.continuePrompt)”")
+            if state == .idle, let draft = pendingDrafts.removeValue(forKey: pane) {
+                TerminalSurfaces.shared.typeText(draft, paneID: pane)
+                task.record("typed “\(draft)”, not sent")
             }
             changes.append(.agentChanged(pane: pane, agent))
             if worktreeWaits[task.id]?.pane == pane {
@@ -1454,7 +1453,7 @@ final class AppModel {
                 } else {
                     addWorkTabs(
                         to: fresh, worktree: worktree,
-                        prompt: NewTask.handoverPrompt(note: fresh.notePath ?? task.notePath ?? ""), record: record
+                        draft: NewTask.handoverPrompt(note: fresh.notePath ?? task.notePath ?? ""), record: record
                     )
                 }
             } catch {
@@ -1498,7 +1497,7 @@ final class AppModel {
                 let pr = task.pr ?? PullRef(repo: Kibana.repo, number: number).url
                 addWorkTabs(
                     to: fresh, worktree: worktree,
-                    prompt: "Review \(pr). The task note is at \(task.notePath ?? "?").",
+                    draft: "Review \(pr). The task note is at \(task.notePath ?? "?").",
                     record: "review of PR \(number) in \((worktree as NSString).lastPathComponent)"
                 )
             } catch {
@@ -1508,13 +1507,15 @@ final class AppModel {
     }
 
     /// After the task's tabs: `pk kbn bootstrap`, the pinned commands and a new agent, all in `worktree`, every one
-    /// starting at once. The agent's tab is shown, and typed into when the task is still the one on screen.
-    private func addWorkTabs(to fresh: PkTask, worktree: String, prompt: String, record: String) {
+    /// starting at once. `draft` waits in the agent's input, not sent. The agent's tab is shown, and typed into when
+    /// the task is still the one on screen.
+    private func addWorkTabs(to fresh: PkTask, worktree: String, draft: String, record: String) {
         guard let task = upsert(fresh, record: record) else { return }
         let built = NewTask.worktreeTabs(
-            worktree: worktree, prompt: prompt, bootstrap: pk.commandLine(["kbn", "bootstrap"]), settings: settings,
+            worktree: worktree, bootstrap: pk.commandLine(["kbn", "bootstrap"]), settings: settings,
             integration: integration
         )
+        if let agent = built.agent, !draft.isEmpty { pendingDrafts[agent.pane] = draft }
         let layout = NewTask.adding(built.tabs, to: layouts[task.id] ?? TaskLayout(), focus: built.agent?.pane)
         autostart(built.tabs.map(\.pane))
         var changes: [DomainChange] = [.layoutChanged(task: task.id, layout)]

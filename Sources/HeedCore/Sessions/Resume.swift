@@ -7,7 +7,7 @@ public enum ResumePolicy: String, Hashable, Sendable, Codable, CaseIterable {
 /// What happens to one task's agents on launch. design/screens/Resume.png.
 public struct ResumeCandidate: Identifiable, Hashable, Sendable {
     public enum Mode: String, Hashable, Sendable {
-        /// Was mid-turn: resume, then send the continue prompt once idle.
+        /// Was mid-turn: resume, then type the continue prompt once idle (not sent).
         case resumeThenContinue = "resume, then continue"
         /// Was waiting on you (blocked, asking): resume only; the agent asks again.
         case resumeOnly = "resume only"
@@ -26,6 +26,8 @@ public struct ResumeCandidate: Identifiable, Hashable, Sendable {
         public let claudeSessionID: String?
         /// Started fresh, because Claude no longer has the tab's session.
         public let fresh: Bool
+        /// Typed into the agent's input once it is ready, never sent: the agent only works when you press Return.
+        public var draft: String?
     }
 
     public var id: String { task.id }
@@ -93,15 +95,15 @@ public enum Resume {
                     )
                 }
                 let id = newID()
-                let prompt = task.notePath.map { "Read the task note at \($0) and continue." } ?? ""
                 let line = { (files: IntegrationFiles?) in
-                    agent.launchCommand(prompt: prompt, extraArguments: AgentIntegration.launchArguments(
+                    agent.launchCommand(prompt: "", extraArguments: AgentIntegration.launchArguments(
                         agent: agent, claudeSessionID: id, files: files
                     ))
                 }
                 return ResumeCandidate.Pane(
                     pane: pane.id, command: line(integration), display: line(nil),
-                    claudeSessionID: agent.sessionIDFlag == nil ? nil : id, fresh: true
+                    claudeSessionID: agent.sessionIDFlag == nil ? nil : id, fresh: true,
+                    draft: task.notePath.map(NewTask.handoverPrompt)
                 )
             }
             let state = list.rollup(of: task.id).agent ?? ObservedState(.idle, source: .guessed)
@@ -115,8 +117,14 @@ public enum Resume {
                 case .idle, .done, .exited: .leftClosed
                 }
             }
+            let nudge = settings.continuePrompt.isEmpty ? nil : settings.continuePrompt
+            let drafted = panes.map { pane in
+                var pane = pane
+                if !pane.fresh, mode == .resumeThenContinue { pane.draft = nudge }
+                return pane
+            }
             return ResumeCandidate(
-                task: task, state: state, mode: mode, panes: panes, paneCount: layout.panes.count
+                task: task, state: state, mode: mode, panes: drafted, paneCount: layout.panes.count
             )
         }
     }

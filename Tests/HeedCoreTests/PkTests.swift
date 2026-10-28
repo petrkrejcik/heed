@@ -292,9 +292,8 @@ struct WorktreeTabsTests {
     @Test func bootstrapThenPinnedCommandsThenTheAgent() throws {
         var settings = WorkSettings.default
         settings.commands = [PinnedCommand(name: "jest", command: "yarn test:jest")]
-        let prompt = NewTask.handoverPrompt(note: "/v/Projects/A.md")
         let made = NewTask.worktreeTabs(
-            worktree: "/w/a", prompt: prompt, bootstrap: "pk kbn bootstrap", settings: settings, integration: nil
+            worktree: "/w/a", bootstrap: "pk kbn bootstrap", settings: settings, integration: nil
         )
         #expect(made.tabs.map(\.title) == ["bootstrap", "jest", "agent"])
         let panes = made.tabs.map(\.pane)
@@ -303,7 +302,8 @@ struct WorktreeTabsTests {
         #expect(panes[1].role == .command)
         #expect(panes[1].command?.hasPrefix("yarn test:jest; ") == true)
         #expect(panes[2].role == .agent)
-        #expect(panes[2].command?.contains("Read the task note at /v/Projects/A.md and continue.") == true)
+        // No prompt on the command line: what the agent is told waits in its input until you send it.
+        #expect(panes[2].command?.hasSuffix("--session-id \(made.agent?.tab.claudeSessionID ?? "")") == true)
         #expect(made.agent?.pane == panes[2].id)
     }
 }
