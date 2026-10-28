@@ -38,8 +38,10 @@ public struct DiffLine: Hashable, Sendable {
     public var changed: Range<Int>?
 }
 
-/// What the overlay compares.
+/// What the Diff tab compares.
 public enum DiffScope: Hashable, Sendable {
+    /// What is not committed yet, staged or not (new files too), vs HEAD: what the next commit could hold.
+    case uncommitted
     /// Everything since the merge-base with the base branch: commits plus uncommitted work.
     case all
     /// Commits on the branch, vs the merge-base.
@@ -48,15 +50,76 @@ public enum DiffScope: Hashable, Sendable {
     case unstaged
     case commit(String)
 
-    public static let cycle: [DiffScope] = [.all, .committed, .staged, .unstaged]
+    /// What a Diff tab opens on.
+    public static let `default`: DiffScope = .uncommitted
+    public static let cycle: [DiffScope] = [.uncommitted, .all, .committed, .staged, .unstaged]
 
     public var title: String {
         switch self {
+        case .uncommitted: "Uncommitted"
         case .all: "All"
         case .committed: "Committed"
         case .staged: "Staged"
         case .unstaged: "Unstaged"
         case let .commit(sha): sha
+        }
+    }
+
+    /// The scope `delta` steps along `cycle` (a commit counts as the start of it).
+    public func cycled(by delta: Int) -> DiffScope {
+        let cycle = Self.cycle
+        let index = cycle.firstIndex(of: self) ?? 0
+        return cycle[((index + delta) % cycle.count + cycle.count) % cycle.count]
+    }
+
+    /// Whether files git does not track yet belong to it: they are changes in the working tree, not in the index.
+    public var includesUntracked: Bool {
+        switch self {
+        case .uncommitted, .all, .unstaged: true
+        case .committed, .staged, .commit: false
+        }
+    }
+
+    /// The `git` arguments that print this scope as a unified diff; `mergeBase` is the branch's merge-base with main.
+    public func gitArguments(mergeBase: String) -> [String] {
+        switch self {
+        case .uncommitted: ["diff", "--no-color", "-M", "HEAD"]
+        case .all: ["diff", "--no-color", "-M", mergeBase]
+        case .committed: ["diff", "--no-color", "-M", "\(mergeBase)..HEAD"]
+        case .staged: ["diff", "--no-color", "-M", "--cached"]
+        case .unstaged: ["diff", "--no-color", "-M"]
+        case let .commit(sha): ["show", "--no-color", "-M", "--format=", sha]
+        }
+    }
+
+    /// Where the two sides of a file come from: the merge view shows both whole files.
+    public func sources(mergeBase: String) -> (old: DiffSource, new: DiffSource) {
+        switch self {
+        case .uncommitted: (.revision("HEAD"), .workingTree)
+        case .all: (.revision(mergeBase), .workingTree)
+        case .committed: (.revision(mergeBase), .revision("HEAD"))
+        case .staged: (.revision("HEAD"), .index)
+        case .unstaged: (.index, .workingTree)
+        case let .commit(sha): (.revision("\(sha)^"), .revision(sha))
+        }
+    }
+}
+
+/// One side of a file in a scope.
+public enum DiffSource: Hashable, Sendable {
+    /// A commit (or anything `git show <rev>:<path>` takes).
+    case revision(String)
+    /// What is staged (`git show :<path>`).
+    case index
+    /// The file on disk.
+    case workingTree
+
+    /// The object `git show` / `git cat-file` read for `path`; nil for the working tree.
+    public func object(_ path: String) -> String? {
+        switch self {
+        case let .revision(rev): "\(rev):\(path)"
+        case .index: ":\(path)"
+        case .workingTree: nil
         }
     }
 }
@@ -226,24 +289,92 @@ public enum DiffParser {
     }
 }
 
+/// A scope's diff as one read of a checkout: the files, the branch's commits, and the merge-base both were read
+/// against, so a file's contents are read against the same base.
+public struct DiffSnapshot: Hashable, Sendable {
+    public var scope: DiffScope
+    public var files: [FileDiff]
+    public var commits: [CommitSummary]
+    public var mergeBase: String
+
+    public init(scope: DiffScope, files: [FileDiff], commits: [CommitSummary], mergeBase: String) {
+        self.scope = scope
+        self.files = files
+        self.commits = commits
+        self.mergeBase = mergeBase
+    }
+}
+
 public extension Git {
     /// The diff of a worktree for `scope`, against the merge-base with `origin/<base>` (or `<base>`).
     static func diff(at path: String, scope: DiffScope, base: String, repo: Repo?) async throws -> [FileDiff] {
-        let args: [String] = switch scope {
-        case .all: try await ["diff", "--no-color", "-M", mergeBase(at: path, base: base)]
-        case .committed: try await ["diff", "--no-color", "-M", "\(mergeBase(at: path, base: base))..HEAD"]
-        case .staged: ["diff", "--no-color", "-M", "--cached"]
-        case .unstaged: ["diff", "--no-color", "-M"]
-        case let .commit(sha): ["show", "--no-color", "-M", "--format=", sha]
-        }
-        async let text = ProcessRunner.output("git", ["-C", path] + args, timeout: .seconds(30))
+        try await snapshot(at: path, scope: scope, base: base, repo: repo).files
+    }
+
+    /// What the Diff tab shows for `scope`: the diff, files git does not track yet as additions (in the scopes that
+    /// cover the working tree), and the branch's commits.
+    @concurrent static func snapshot(
+        at path: String,
+        scope: DiffScope,
+        base: String,
+        repo: Repo?
+    ) async throws -> DiffSnapshot {
+        let mergeBase = try await mergeBase(at: path, base: base)
+        async let text = ProcessRunner.output(
+            "git", ["-C", path] + scope.gitArguments(mergeBase: mergeBase), timeout: .seconds(30)
+        )
         async let stagedNames = ProcessRunner.output(
             "git",
             ["-C", path, "diff", "--cached", "--name-only"],
             timeout: .seconds(10)
         )
+        async let untrackedNames = scope.includesUntracked
+            ? ProcessRunner.output(
+                "git", ["-C", path, "ls-files", "--others", "--exclude-standard", "-z"], timeout: .seconds(15)
+            )
+            : ""
+        async let commits = (try? Git.commits(at: path, base: base)) ?? []
         let staged = await Set(((try? stagedNames) ?? "").split(separator: "\n").map(String.init))
-        return try await DiffParser.parse(text, repo: repo, staged: staged)
+        var files = try await DiffParser.parse(text, repo: repo, staged: staged)
+        let untracked = await ((try? untrackedNames) ?? "").split(separator: "\0").map(String.init)
+        let known = Set(files.map(\.path))
+        for name in untracked where !known.contains(name) {
+            files.append(untrackedFile(name, in: path, repo: repo))
+        }
+        files.sort { $0.path < $1.path }
+        return await DiffSnapshot(scope: scope, files: files, commits: commits, mergeBase: mergeBase)
+    }
+
+    /// A file git does not track, as an addition of all its lines (git prints no diff for it).
+    internal static func untrackedFile(_ name: String, in root: String, repo: Repo?) -> FileDiff {
+        var file = FileDiff(
+            repo: repo,
+            path: name,
+            oldPath: nil,
+            status: .added,
+            hunks: [],
+            binary: false,
+            staged: false
+        )
+        let url = URL(fileURLWithPath: root).appendingPathComponent(name)
+        let size = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
+        guard size <= FileContents.maxBytes, let data = try? Data(contentsOf: url) else { return file }
+        if data.contains(0) {
+            file.binary = true
+            return file
+        }
+        var lines = String(decoding: data, as: UTF8.self).split(separator: "\n", omittingEmptySubsequences: false)
+        if lines.last == "" { lines.removeLast() }
+        guard !lines.isEmpty else { return file }
+        file.hunks = [Hunk(
+            header: "@@ -0,0 +1,\(lines.count) @@",
+            oldStart: 0,
+            newStart: 1,
+            lines: lines.enumerated().map { index, text in
+                DiffLine(kind: .added, oldNumber: nil, newNumber: index + 1, text: String(text))
+            }
+        )]
+        return file
     }
 
     /// Commits on the branch since it left `base`, newest first.

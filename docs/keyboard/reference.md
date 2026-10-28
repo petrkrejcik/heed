@@ -57,6 +57,7 @@ This page is generated from the code (`mise run shots`).
 | `tab.open` | `<D-t>`, `<D-t>` (INSERT) | new tab in this pane: pick a terminal or a web page |
 | `tab.agent` | `gc` | the task's agent: its tab, else the agent closed last (resumed), else a new one |
 | `tab.go` `<n>` |  | go to tab n of this pane |
+| `tab.diff` |  | the task's Diff tab: its changes file by file, opened in its work pane |
 | `browser.new` `[url]` |  | new tab in this pane with a web page (no address: type one) |
 | `browser.back` | `<D-[>` (browser) | web page: back |
 | `browser.forward` | `<D-]>` (browser) | web page: forward |

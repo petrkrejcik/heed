@@ -111,18 +111,28 @@ enum ShotRunner {
             )
             return
         }
-        let frames = ShotFrames()
-        let view = ShotFrame(highlight: shot.highlight, frames: frames) {
-            subject(shot, model: model)
+        var frames = ShotFrames()
+        func renderer() -> ImageRenderer<some View> {
+            frames = ShotFrames()
+            let view = ShotFrame(highlight: shot.highlight, frames: frames) {
+                subject(shot, model: model)
+            }
+            .frame(width: shot.size.width, height: shot.size.height)
+            .environment(model)
+            .environment(\.colorScheme, .dark)
+            let renderer = ImageRenderer(content: view)
+            renderer.scale = 2
+            renderer.proposedSize = ProposedViewSize(shot.size)
+            return renderer
         }
-        .frame(width: shot.size.width, height: shot.size.height)
-        .environment(model)
-        .environment(\.colorScheme, .dark)
 
-        let renderer = ImageRenderer(content: view)
-        renderer.scale = 2
-        renderer.proposedSize = ProposedViewSize(shot.size)
-        guard var image = renderer.cgImage else { throw Failure(description: "nothing rendered") }
+        var drawn = renderer().cgImage
+        // A Diff tab asks for its web view's still while it is drawn; once they are taken, draw it again.
+        if DiffStills.shared.busy {
+            await DiffStills.shared.settle()
+            drawn = renderer().cgImage
+        }
+        guard var image = drawn else { throw Failure(description: "nothing rendered") }
         if let crop = shot.crop {
             guard let rect = frames.rects[crop] else { throw Failure(description: "region \(crop) not on screen") }
             let padded = rect.insetBy(dx: -shot.cropPadding, dy: -shot.cropPadding)

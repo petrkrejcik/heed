@@ -80,6 +80,7 @@ public enum Commands {
             "tab.agent", "the task's agent: its tab, else the agent closed last (resumed), else a new one", .panes
         ),
         .init("tab.go", "go to tab n of this pane", .panes, arguments: "<n>"),
+        .init("tab.diff", "the task's Diff tab: its changes file by file, opened in its work pane", .panes),
         .init("browser.new", "new tab in this pane with a web page (no address: type one)", .panes, arguments: "[url]"),
         .init("browser.back", "web page: back", .panes),
         .init("browser.forward", "web page: forward", .panes),

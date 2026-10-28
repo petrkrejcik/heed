@@ -146,6 +146,8 @@ final class ModelHost {
         BrowserSurfaces.shared.onOpenTab = { [weak model] paneID, url, show in
             model?.openPageTab(from: paneID, url: url.absoluteString, show: show)
         }
+        DiffSurfaces.shared.onClick = { [weak model] paneID in model?.clickedDiff(paneID) }
+        DiffSurfaces.shared.onCursor = { [weak model] paneID, cursor in model?.diffCursorMoved(cursor, paneID: paneID) }
     }
 }
 

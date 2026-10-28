@@ -186,51 +186,24 @@ public enum Fixtures {
         CommitSummary(sha: "0be7d20", subject: "Add a test for uploads behind a proxy"),
     ]
 
-    public static let diff: [FileDiff] = {
-        let text = """
-        diff --git a/x-pack/platform/plugins/shared/onechat/public/upload_image.ts b/x-pack/platform/plugins/shared/onechat/public/upload_image.ts
-        --- a/x-pack/platform/plugins/shared/onechat/public/upload_image.ts
-        +++ b/x-pack/platform/plugins/shared/onechat/public/upload_image.ts
-        @@ -18,9 +18,11 @@ export const uploadImage = async (
-           http: HttpSetup,
-           file: File
-         ) => {
-        -  const url = '/api/chat/attachments';
-        +  const url = http.basePath.prepend('/api/chat/attachments');
-        +  const headers = { 'kbn-xsrf': 'true' };
-           // the proxy strips cookies on cross-origin requests
-        -  const response = await fetch(url, { method: 'POST', body: file });
-        +  const response = await fetch(url, { method: 'POST', body: file, headers, credentials: 'same-origin' });
-           if (!response.ok) {
-        +    throw new UploadError(response.status);
-           }
-        @@ -61,6 +63,8 @@ export const uploadImage = async (
-         export class UploadError extends Error {
-        +  constructor(public readonly status: number) {
-        +    super(`upload failed: ${status}`);
-         }
-        diff --git a/x-pack/platform/plugins/shared/onechat/public/upload_image.test.ts b/x-pack/platform/plugins/shared/onechat/public/upload_image.test.ts
-        new file mode 100644
-        --- /dev/null
-        +++ b/x-pack/platform/plugins/shared/onechat/public/upload_image.test.ts
-        @@ -0,0 +1,3 @@
-        +describe('uploadImage', () => {
-        +  it('prepends the base path', () => {});
-        +});
-        diff --git a/x-pack/platform/plugins/shared/onechat/README.md b/x-pack/platform/plugins/shared/onechat/README.md
-        --- a/x-pack/platform/plugins/shared/onechat/README.md
-        +++ b/x-pack/platform/plugins/shared/onechat/README.md
-        @@ -40,2 +40,3 @@
-         Attachments go through the Kibana base path.
-        -A very long line that the linter rejects because it goes on and on.
-        +A shorter line.
-        +Another line.
+    /// Where the fixture branch left main.
+    public static let diffMergeBase = "7c1e9b2"
 
-        """
-        return DiffParser.parse(
-            text, repo: kibana, staged: ["x-pack/platform/plugins/shared/onechat/public/upload_image.ts"]
+    /// The upload fix's changes: staged ones in `upload_image.ts` and `tsconfig.json`, the rest not staged.
+    public static let diff: [FileDiff] = DiffParser.parse(
+        diffText, repo: kibana, staged: [
+            "x-pack/platform/plugins/shared/onechat/public/upload_image.ts",
+            "x-pack/platform/plugins/shared/onechat/tsconfig.json",
+        ]
+    )
+
+    /// A file's two sides, as `Git.contents` reads them in the real world.
+    public static func contents(of path: String) -> FileContents {
+        let sides = diffContents[path]
+        return FileContents(
+            path: path, old: sides?.old.map { .text($0) } ?? .missing, new: sides?.new.map { .text($0) } ?? .missing
         )
-    }()
+    }
 
     /// design/screens/Reader.png.
     static let pullDetail: PullDetail = {

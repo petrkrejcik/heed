@@ -1,0 +1,18 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="color-scheme" content="dark">
+<!-- The Diff tab: loaded from the app bundle with loadFileURL; nothing here reaches the network. -->
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: var(--heed-bg, #0c0d0f); }
+  #diff { height: 100%; }
+  .cm-mergeView { height: 100%; }
+  .cm-mergeViewEditor + .cm-mergeViewEditor { border-left: 1px solid var(--heed-line, #272b30); }
+</style>
+</head>
+<body>
+<div id="diff"></div>
+<script src="diff.js"></script>
+</body>
+</html>

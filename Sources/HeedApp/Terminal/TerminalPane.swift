@@ -42,6 +42,7 @@ enum PaneSurfaces {
     static func close(paneID: String) {
         TerminalSurfaces.shared.close(paneID: paneID)
         BrowserSurfaces.shared.close(paneID: paneID)
+        DiffSurfaces.shared.close(paneID: paneID)
     }
 }
 

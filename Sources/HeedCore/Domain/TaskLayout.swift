@@ -115,6 +115,22 @@ public struct TaskLayout: Hashable, Sendable {
         return pane
     }
 
+    /// The task's Diff tab, if it has one.
+    public var diffPane: PaneSpec? { panes.first { $0.role == .diff } }
+
+    /// `gd`: shows the task's Diff tab and focuses its pane, opening one in the work pane (beside the agent) when the
+    /// task has none. Returns it.
+    @discardableResult
+    public mutating func showDiff(directory: String) -> PaneSpec {
+        if let existing = diffPane {
+            focus(pane: existing.id)
+            return existing
+        }
+        let pane = PaneSpec(role: .diff, title: "diff", directory: directory)
+        add(PaneTab(title: "diff", pane: pane), show: true)
+        return pane
+    }
+
     /// `⌃w v` / `⌃w s`: a new pane beside the focused one with `tab` in it, focused.
     public mutating func split(_ axis: PaneTree.Axis, with tab: PaneTab) {
         guard let root, let focused else {

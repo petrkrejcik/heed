@@ -229,6 +229,8 @@ private struct TabStrip: View {
             }
         case .browser:
             Image(systemName: "globe").font(.system(size: 10))
+        case .diff:
+            Image(systemName: "plusminus").font(.system(size: 10, weight: .semibold))
         case .shell:
             EmptyView()
         }
@@ -351,7 +353,9 @@ private struct PaneView: View {
                     .frame(height: 30)
                     .background(Theme.paneHeader)
             }
-            if ShotMode.active {
+            if pane.role == .diff {
+                DiffTabView(pane: pane, active: active)
+            } else if ShotMode.active {
                 if pane.role == .browser { FakeBrowser(pane: pane) } else { FakeTerminal(pane: pane) }
             } else if pane.role == .browser, model.isFixture {
                 // Pages in fixtures and snapshots stay off the network.
@@ -390,7 +394,12 @@ private struct PaneView: View {
         .contentShape(Rectangle())
         .onTapGesture {
             // A page reports clicks into it itself; its address bar holds the address field, which must keep the click.
-            if pane.role == .browser { model.focusPane(pane.id) } else { model.clickedPane(pane.id) }
+            // The diff is read only: a click on it gives it the keys in NORMAL.
+            switch pane.role {
+            case .browser: model.focusPane(pane.id)
+            case .diff: model.clickedDiff(pane.id)
+            default: model.clickedPane(pane.id)
+            }
         }
     }
 }

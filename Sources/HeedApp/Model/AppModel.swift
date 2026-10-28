@@ -182,9 +182,17 @@ final class AppModel {
     private(set) var diffCommits: [CommitSummary] = []
     private(set) var diffFileIndex = 0
     private(set) var diffRow = 0
-    private(set) var diffSplit = false
     private(set) var diffLoading = false
     private var diffTask: Task<Void, Never>?
+
+    // Diff tabs
+    /// Each Diff tab's review, by pane id. Not persisted: a relaunch reads the diff again when the tab is shown.
+    private(set) var diffReviews: [String: DiffReview] = [:]
+    private var diffLoads: [String: Task<Void, Never>] = [:]
+    /// Side by side (else unified), for every Diff tab; a UI preference, kept in UserDefaults.
+    private(set) var diffSplit = UserDefaults.standard.object(forKey: "diffSideBySide") as? Bool ?? true {
+        didSet { if !isFixture { UserDefaults.standard.set(diffSplit, forKey: "diffSideBySide") } }
+    }
 
     /// Pane collapse state is a UI preference, not domain: kept in UserDefaults.
     private(set) var inspectorVisible = UserDefaults.standard.object(forKey: "inspectorVisible") as? Bool ?? true {
@@ -224,6 +232,7 @@ final class AppModel {
             sidebarCollapsed = false
             sidebarWidth = 330
             inspectorWidth = 320
+            diffSplit = true
             zmxHealth = ZmxHealth(path: "/opt/homebrew/bin/zmx", version: "0.8.1")
             issueInfo = Fixtures.issueInfo
         }
@@ -1107,6 +1116,7 @@ final class AppModel {
         case "tab.new": newTab()
         case "tab.open": openTabPicker()
         case "tab.agent": openAgentTab()
+        case "tab.diff": showDiffTab()
         case "browser.new": newPageTab(command.arguments.joined(separator: " "))
         case "browser.location":
             if let pane = focusedBrowserPane { beginAddressEdit(pane) } else { flash = "not on a web page" }
@@ -1137,7 +1147,9 @@ final class AppModel {
         case "sidebar.toggle": sidebarCollapsed.toggle()
         case "section.toggle": toggleSection(named: command.arguments.joined(separator: " "))
         case "mode.normal", "mode.insert", "mode.visual", "mode.command", "mode.hint":
-            if command.name == "mode.insert", view != .tasks || currentPane == nil { engine.enter(.normal) }
+            if command.name == "mode.insert", view != .tasks || currentPane == nil || currentPane?.role == .diff {
+                engine.enter(.normal)
+            }
             hintThenInsert = false
         case "hint.insert":
             engine.enter(.hint)
@@ -2413,6 +2425,138 @@ final class AppModel {
         terminalFocusRequest += 1
     }
 
+    // MARK: Diff tab
+
+    /// The focused pane's tab when it is a Diff tab on screen: what the diff keys act on.
+    var focusedDiffPane: String? {
+        guard view == .tasks, overlay == nil, reader == nil, issueReader == nil, let pane = currentPane,
+              pane.role == .diff
+        else { return nil }
+        return pane.id
+    }
+
+    /// `gd`: the current task's Diff tab, opened in its work pane or gone to. It reads the diff when it is drawn.
+    private func showDiffTab() {
+        guard let task = currentTask else { return flash = "no task here" }
+        var layout = layouts[task.id] ?? TaskLayout()
+        let pane = layout.showDiff(directory: task.directory)
+        commit(.layoutChanged(task: task.id, layout))
+        diffTabShown(pane.id)
+    }
+
+    /// A Diff tab came on screen: read the diff when it never was, or the last read is stale (a few seconds old, or
+    /// its agent finished a turn since).
+    func diffTabShown(_ paneID: String) {
+        let review = diffReviews[paneID]
+        guard let loadedAt = review?.loadedAt, Date().timeIntervalSince(loadedAt) < 2 else {
+            return loadDiffTab(paneID)
+        }
+    }
+
+    /// Reads the tab's scope again, off the main actor; the file you were on stays (and where you were in it).
+    private func loadDiffTab(_ paneID: String) {
+        guard let directory = diffDirectory(paneID) else { return }
+        var review = diffReviews[paneID] ?? DiffReview()
+        let scope = review.scope
+        if isFixture {
+            review.apply(DiffSnapshot(
+                scope: scope, files: Fixtures.diff, commits: Fixtures.diffCommits, mergeBase: Fixtures.diffMergeBase
+            ))
+            review.loadedAt = Date()
+            diffReviews[paneID] = review
+            return loadDiffContents(paneID)
+        }
+        review.loading = true
+        diffReviews[paneID] = review
+        diffLoads[paneID]?.cancel()
+        diffLoads[paneID] = Task {
+            let snapshot = try? await Git.snapshot(at: directory, scope: scope, base: "main", repo: Kibana.repo)
+            guard !Task.isCancelled, var review = diffReviews[paneID] else { return }
+            review.loading = false
+            review.loadedAt = Date()
+            if let snapshot, snapshot.scope == review.scope {
+                review.apply(snapshot)
+            } else if snapshot == nil {
+                flash = "couldn't read the diff in \((directory as NSString).lastPathComponent)"
+            }
+            diffReviews[paneID] = review
+            loadDiffContents(paneID)
+        }
+    }
+
+    /// The selected file's two sides, off the main actor.
+    private func loadDiffContents(_ paneID: String) {
+        guard let review = diffReviews[paneID], let file = review.selectedFile,
+              let directory = diffDirectory(paneID)
+        else { return }
+        if isFixture {
+            diffReviews[paneID]?.contents = Fixtures.contents(of: file.path)
+            return
+        }
+        let scope = review.scope, mergeBase = review.mergeBase
+        Task {
+            let contents = await Git.contents(of: file, in: directory, scope: scope, mergeBase: mergeBase)
+            guard let current = diffReviews[paneID], current.selected == file.path, current.scope == scope else {
+                return
+            }
+            diffReviews[paneID]?.contents = contents
+        }
+    }
+
+    /// The tab's scope (a segment clicked, `⇥`, `c`): the files are read again.
+    func setDiffScope(_ scope: DiffScope, paneID: String) {
+        clickedDiff(paneID)
+        guard var review = diffReviews[paneID], review.scope != scope else { return }
+        review.scope = scope
+        review.loadedAt = nil
+        diffReviews[paneID] = review
+        loadDiffTab(paneID)
+    }
+
+    /// Side by side or unified, for every Diff tab.
+    func setDiffSplit(_ split: Bool) {
+        diffSplit = split
+    }
+
+    func toggleDiffFolder(_ path: String, paneID: String) {
+        clickedDiff(paneID)
+        guard diffReviews[paneID] != nil else { return }
+        if diffReviews[paneID]?.collapsed.remove(path) == nil { diffReviews[paneID]?.collapsed.insert(path) }
+    }
+
+    func selectDiffFile(_ path: String, paneID: String) {
+        clickedDiff(paneID)
+        guard diffReviews[paneID]?.selected != path else { return }
+        diffReviews[paneID]?.select(path)
+        loadDiffContents(paneID)
+    }
+
+    /// The web view reported the line or hunk you are on.
+    func diffCursorMoved(_ cursor: DiffCursor, paneID: String) {
+        guard diffReviews[paneID]?.selected == cursor.path, diffReviews[paneID]?.cursor != cursor else { return }
+        diffReviews[paneID]?.cursor = cursor
+    }
+
+    /// A click in the diff: its tab takes the keys, in NORMAL (the diff is read only).
+    func clickedDiff(_ paneID: String) {
+        clickedOutsideTerminal()
+        if currentPane?.id != paneID { focusPane(paneID) }
+    }
+
+    /// The checkout a Diff tab reads: its task's, wherever that works now.
+    private func diffDirectory(_ paneID: String) -> String? {
+        guard let taskID = layouts.first(where: { $0.value.panes.contains { $0.id == paneID } })?.key else {
+            return nil
+        }
+        return tasks.first { $0.id == taskID }?.directory
+    }
+
+    /// A Diff tab closed: its review goes with it.
+    private func diffTabClosed(_ paneID: String) {
+        diffLoads.removeValue(forKey: paneID)?.cancel()
+        diffReviews.removeValue(forKey: paneID)
+    }
+
     // MARK: Filter
 
     /// `/` in any list view: typing goes to the status bar until ↩ (keep) or ⎋ (clear).
@@ -2557,6 +2701,7 @@ final class AppModel {
         guard var layout = layouts[taskID], layout.removePane(paneID) else { return }
         commit(.layoutChanged(task: taskID, layout))
         PaneSurfaces.close(paneID: paneID)
+        diffTabClosed(paneID)
         if layout.isEmpty { taskEmptied(taskID) }
     }
 

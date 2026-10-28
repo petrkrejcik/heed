@@ -11,12 +11,14 @@ public struct PaneSpec: Hashable, Sendable, Codable, Identifiable {
         case command
         /// A web page (`url`), not a terminal: `title` is the page's.
         case browser
+        /// The task's changes (`directory` is the checkout), not a terminal: read only, keys stay Heed's.
+        case diff
 
         /// A tab that shows a terminal and takes keys in INSERT.
         public var isTerminal: Bool {
             switch self {
             case .agent, .shell, .command: true
-            case .browser: false
+            case .browser, .diff: false
             }
         }
 
