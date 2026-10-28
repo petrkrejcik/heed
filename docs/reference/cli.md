@@ -13,13 +13,13 @@ after three seconds.
 |---|---|
 | `heed state <state> [--reason "…"]` | Report a state: working, idle, blocked, asking, done, limited, exited |
 | `heed notify "<message>"` | Show a message in the status bar, prefixed with the task |
-| `heed pr add <url>` | Set the task's PR, when it has none |
+| `heed pr add <url>` | Set the task's PR, when it has none. One already open for review moves an In Progress task to Ready for Review |
 | `heed issue add <url>` | Set the task's issue, when it has none |
 | `heed agent-session <agent> <id>` | Record this agent tab's own Claude session id, for resuming |
 | `heed command-exit <code>` | Report a pinned command's exit code |
 | `heed hook <agent> <event>` | An agent's hook: reads its JSON on stdin |
 | `heed tools` | Where `git` and `gh` are found (see [Finding git and gh](../configuration/tools.md)) |
-| `heed pk paths\|list\|new <title>\|watch` | Heed's view of pk's tasks, for scripts: pk's paths, every task, a new task, or the sidebar printed each time it changes. `--python <path>` overrides `[pk] python` |
+| `heed pk paths\|list\|new <title>\|ready <task>\|watch` | Heed's view of pk's tasks, for scripts: pk's paths, every task, a new task, pk's Ready for Review rule on one task, or the sidebar printed each time it changes. `--python <path>` overrides `[pk] python` |
 
 `heed tools` and `heed pk` talk to no app and have no time limit.
 

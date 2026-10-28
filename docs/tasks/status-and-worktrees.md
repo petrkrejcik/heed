@@ -71,6 +71,19 @@ Kibana answers on it. Heed checks every few seconds.
 When an agent finishes a turn on a task with a branch but no PR, Heed asks pk whether a PR was opened from that
 branch, and links it. `heed pr add` and `heed issue add` (and an agent's `gh pr create`) link through pk too.
 
+### Ready for Review by itself
+
+An In Progress task moves to Ready for Review when its PR is opened for review: linked while already open and not a
+draft, or taken out of draft (Heed sees that in its GitHub poll). The status bar says so, for example *Fix upload is
+Ready for Review: PR #123 is open*. pk makes the move, after checking the PR on GitHub.
+
+Only that change moves a task, never the PR's state alone. Set a task back to In Progress (`di`) while its PR is open,
+to work on review comments, and it stays In Progress. Tasks in any other status never move, and nothing moves a task
+anywhere else: a merged PR does not make it Done.
+
+A PR taken out of draft while Heed was closed still counts at the next launch: Heed compares with the PRs it saw last
+time.
+
 ## Refresh
 
 `r` in the Tasks view reads every note again. Heed also does this at launch, after showing what it had last time.

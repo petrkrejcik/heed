@@ -17,6 +17,9 @@ A task has one pull request and one issue. The PR shows on the task's sidebar ro
 
 A task that already has a PR keeps it: a second one does not replace it. The same goes for the issue.
 
+A PR that is open for review when it is linked, or later leaves draft, moves an In Progress task to Ready for Review
+(see [Ready for Review by itself](../tasks/status-and-worktrees.md#ready-for-review-by-itself)).
+
 PRs that mention the task's PR (GitHub's cross-references) are listed in the PR overlay under *Also mentions it*.
 
 | Key | |

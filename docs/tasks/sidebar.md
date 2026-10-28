@@ -14,7 +14,7 @@ The sidebar lists every task, in one section per status, in the Kanban's order.
 | **To Do** | Not started yet. | collapsed |
 | **In Progress** | Being worked on. | open |
 | **Blocked** | Waiting on something outside Heed. | open |
-| **Ready for Review** | Waiting for a review. | open |
+| **Ready for Review** | Waiting for a review. An In Progress task moves here by itself when its PR is opened for review ([how](status-and-worktrees.md#ready-for-review-by-itself)). | open |
 | **Done** | Finished. | collapsed |
 | **Dropped** | Given up. | collapsed |
 
