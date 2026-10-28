@@ -24,13 +24,11 @@ enum AppView: String, CaseIterable, Identifiable {
 enum Overlay: Equatable {
     case help
     case pr
-    case diff
 
     var name: String {
         switch self {
         case .help: "help"
         case .pr: "pr"
-        case .diff: "diff"
         }
     }
 }
@@ -54,7 +52,13 @@ final class AppModel {
     }
 
     /// Tabs and panes per task id.
-    private(set) var layouts: [String: TaskLayout] = [:] { didSet { rebuildList() } }
+    private(set) var layouts: [String: TaskLayout] = [:] {
+        didSet {
+            rebuildList()
+            updateScope()
+        }
+    }
+
     /// What each agent tab is doing, by pane id.
     private(set) var agents: [String: AgentTab] = [:] {
         didSet {
@@ -170,20 +174,12 @@ final class AppModel {
     /// The PR the overlay shows (the current task's).
     private(set) var overlayPull: PullRef?
 
-    /// Scoped key bindings follow what has focus: the diff, the PR overlay or reader, else the view.
+    /// Scoped key bindings follow what has focus: the PR overlay or reader, a Diff tab, else the view.
     private func updateScope() {
-        engine.scope = overlay == .diff ? "diff" : issueReader != nil ? "issue"
-            : (overlay == .pr || reader != nil) ? "pr" : view.rawValue
+        let scope = issueReader != nil ? "issue" : (overlay == .pr || reader != nil) ? "pr"
+            : focusedDiffPane != nil ? "diff" : view.rawValue
+        if engine.scope != scope { engine.scope = scope }
     }
-
-    // Diff overlay
-    private(set) var diffScope: DiffScope = .all
-    private(set) var diffFiles: [FileDiff] = []
-    private(set) var diffCommits: [CommitSummary] = []
-    private(set) var diffFileIndex = 0
-    private(set) var diffRow = 0
-    private(set) var diffLoading = false
-    private var diffTask: Task<Void, Never>?
 
     // Diff tabs
     /// Each Diff tab's review, by pane id. Not persisted: a relaunch reads the diff again when the tab is shown.
@@ -704,7 +700,10 @@ final class AppModel {
                     return createWorktree(for: task.id)
                 }
             }
-            if state == .idle || state == .done { syncPull(of: task) }
+            if state == .idle || state == .done {
+                syncPull(of: task)
+                agentTurnEnded(in: task.id)
+            }
         case let .prAdd(url):
             // Sent by the agent's hooks when it opened a PR (or by `heed pr add`). A task has one PR; pk writes it.
             guard task.pr == nil, let pull = PullRef(url: url) else { return }
@@ -997,6 +996,7 @@ final class AppModel {
         }
         let before = engine.mode
         engine.paneScope = focusedBrowserPane == nil ? nil : "browser"
+        updateScope()
         let outcome = engine.handle(stroke)
         switch outcome {
         case .terminal:
@@ -1130,18 +1130,10 @@ final class AppModel {
         case "view.prs": view = .prs
         case "overlay.help": overlay = overlay == .help ? nil : .help
         case "agents.stop": confirmStopAgents()
-        case "overlay.diff": toggleDiff()
-        case "diff.hunk.next": jumpHunk(by: 1)
-        case "diff.hunk.prev": jumpHunk(by: -1)
-        case "diff.file.next": moveDiffFile(by: 1)
-        case "diff.file.prev": moveDiffFile(by: -1)
-        case "diff.scope.next": cycleDiffScope(by: 1)
-        case "diff.scope.prev": cycleDiffScope(by: -1)
-        case "diff.commit": cycleDiffCommit()
-        case "diff.split": diffSplit.toggle()
-        case "diff.ask": askAboutHunk()
-        case "diff.copy": copyDiffLocation()
-        case "diff.edit": openDiffFile()
+        case "diff.hunk.next", "diff.hunk.prev", "diff.file.next", "diff.file.prev", "diff.page.down",
+             "diff.page.up", "diff.scope.next", "diff.scope.prev", "diff.commit", "diff.split", "diff.ask",
+             "diff.copy", "diff.edit", "diff.refresh":
+            diffCommand(command.name)
         case "overlay.close": closeTopmost()
         case "inspector.toggle": inspectorVisible.toggle()
         case "sidebar.toggle": sidebarCollapsed.toggle()
@@ -1236,11 +1228,6 @@ final class AppModel {
     // MARK: Rows
 
     private func moveRow(by delta: Int) {
-        if overlay == .diff {
-            let count = diffRows.count
-            if count > 0 { diffRow = min(max(diffRow + delta, 0), count - 1) }
-            return
-        }
         if shownPull != nil, overlay == .pr || reader != nil { return }
         switch view {
         case .inbox, .issues, .prs: setRow((itemCursor[view] ?? 0) + delta)
@@ -2293,138 +2280,6 @@ final class AppModel {
         task.pull.map { PullTag.of($0, pull: github.pull($0), detail: pullDetails[$0.description]) }
     }
 
-    // MARK: Diff overlay
-
-    /// One row of the current file: a hunk header or a line.
-    enum DiffRow: Hashable {
-        case header(hunk: Int, text: String)
-        case line(hunk: Int, DiffLine)
-    }
-
-    var currentDiffFile: FileDiff? { diffFiles.indices.contains(diffFileIndex) ? diffFiles[diffFileIndex] : nil }
-
-    var diffRows: [DiffRow] {
-        guard let file = currentDiffFile else { return [] }
-        return file.hunks.enumerated().flatMap { index, hunk in
-            [DiffRow.header(hunk: index, text: hunk.header)] + hunk.lines.map { DiffRow.line(hunk: index, $0) }
-        }
-    }
-
-    private func toggleDiff() {
-        if overlay == .diff {
-            overlay = nil
-            return
-        }
-        guard currentTask != nil else {
-            flash = "no task"
-            return
-        }
-        overlay = .diff
-        loadDiff()
-    }
-
-    /// Diffs the current task's checkout against main, off the main actor.
-    private func loadDiff() {
-        guard let task = currentTask else { return }
-        guard !isFixture else {
-            diffFiles = Fixtures.diff
-            diffCommits = Fixtures.diffCommits
-            return
-        }
-        let directory = task.directory
-        let scope = diffScope
-        diffLoading = true
-        diffTask?.cancel()
-        diffTask = Task {
-            defer { diffLoading = false }
-            let files = await (try? Git.diff(at: directory, scope: scope, base: "main", repo: Kibana.repo)) ?? []
-            let commits = await (try? Git.commits(at: directory, base: "main")) ?? []
-            guard !Task.isCancelled else { return }
-            diffFiles = files
-            diffCommits = commits
-            diffFileIndex = min(diffFileIndex, max(files.count - 1, 0))
-            diffRow = 0
-        }
-    }
-
-    private func jumpHunk(by delta: Int) {
-        let rows = diffRows
-        let headers = rows.indices.filter { if case .header = rows[$0] { true } else { false } }
-        guard !headers.isEmpty else { return }
-        if delta > 0 {
-            if let next = headers.first(where: { $0 > diffRow }) { diffRow = next } else { moveDiffFile(by: 1) }
-        } else if let previous = headers.last(where: { $0 < diffRow }) {
-            diffRow = previous
-        }
-    }
-
-    private func moveDiffFile(by delta: Int) {
-        guard !diffFiles.isEmpty else { return }
-        diffFileIndex = min(max(diffFileIndex + delta, 0), diffFiles.count - 1)
-        diffRow = 0
-    }
-
-    private func cycleDiffScope(by delta: Int) {
-        let cycle = DiffScope.cycle
-        let index = cycle.firstIndex(of: diffScope) ?? 0
-        diffScope = cycle[((index + delta) % cycle.count + cycle.count) % cycle.count]
-        loadDiff()
-    }
-
-    private func cycleDiffCommit() {
-        guard !diffCommits.isEmpty else {
-            flash = "no commits on this branch yet"
-            return
-        }
-        if case let .commit(sha) = diffScope, let index = diffCommits.firstIndex(where: { $0.sha == sha }),
-           index + 1 < diffCommits.count
-        {
-            diffScope = .commit(diffCommits[index + 1].sha)
-        } else if case .commit = diffScope {
-            diffScope = .all
-        } else {
-            diffScope = .commit(diffCommits[0].sha)
-        }
-        loadDiff()
-    }
-
-    /// The file line under the cursor (the new side, else the old side).
-    private var diffLocation: (path: String, line: Int)? {
-        guard let file = currentDiffFile else { return nil }
-        let rows = diffRows
-        guard rows.indices.contains(diffRow) else { return (file.path, 1) }
-        switch rows[diffRow] {
-        case let .line(_, line): return (file.path, line.newNumber ?? line.oldNumber ?? 1)
-        case let .header(hunk, _): return (file.path, file.hunks[hunk].newStart)
-        }
-    }
-
-    private func copyDiffLocation() {
-        guard let location = diffLocation else { return }
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString("\(location.path):\(location.line)", forType: .string)
-        flash = "copied \(location.path):\(location.line)"
-    }
-
-    private func openDiffFile() {
-        guard let file = currentDiffFile, let root = currentTask?.directory else { return }
-        NSWorkspace.shared.open(URL(fileURLWithPath: root).appendingPathComponent(file.path))
-    }
-
-    /// Types a question about the hunk into the agent's pane, unsent, and switches to INSERT there to finish it.
-    private func askAboutHunk() {
-        guard let location = diffLocation, let task = currentTask,
-              let paneID = layouts[task.id]?.agentPane else { return }
-        TerminalSurfaces.shared.typeText(
-            "About \(location.path) around line \(location.line) (the hunk in my diff): ",
-            paneID: paneID
-        )
-        overlay = nil
-        focusPane(paneID)
-        engine.enter(.insert)
-        terminalFocusRequest += 1
-    }
-
     // MARK: Diff tab
 
     /// The focused pane's tab when it is a Diff tab on screen: what the diff keys act on.
@@ -2528,6 +2383,7 @@ final class AppModel {
         clickedDiff(paneID)
         guard diffReviews[paneID]?.selected != path else { return }
         diffReviews[paneID]?.select(path)
+        diffFocus[paneID] = .first
         loadDiffContents(paneID)
     }
 
@@ -2543,6 +2399,102 @@ final class AppModel {
         if currentPane?.id != paneID { focusPane(paneID) }
     }
 
+    /// The keys of a focused Diff tab (`[keys.diff]`).
+    private func diffCommand(_ name: String) {
+        guard let paneID = focusedDiffPane, let review = diffReviews[paneID] else {
+            return flash = "not on a Diff tab (\(keyText(for: "tab.diff")) opens it)"
+        }
+        switch name {
+        case "diff.hunk.next": jumpDiffHunk(1, paneID: paneID)
+        case "diff.hunk.prev": jumpDiffHunk(-1, paneID: paneID)
+        case "diff.file.next": moveDiffFile(1, paneID: paneID)
+        case "diff.file.prev": moveDiffFile(-1, paneID: paneID)
+        case "diff.page.down": DiffSurfaces.shared.scrollPage(0.5, paneID: paneID)
+        case "diff.page.up": DiffSurfaces.shared.scrollPage(-0.5, paneID: paneID)
+        case "diff.scope.next": setDiffScope(review.scope.cycled(by: 1), paneID: paneID)
+        case "diff.scope.prev": setDiffScope(review.scope.cycled(by: -1), paneID: paneID)
+        case "diff.commit":
+            var next = review
+            guard next.cycleCommit() else { return flash = "no commits on this branch yet" }
+            setDiffScope(next.scope, paneID: paneID)
+        case "diff.split": setDiffSplit(!diffSplit)
+        case "diff.ask": askAboutDiff(paneID)
+        case "diff.copy": copyDiffLocation(paneID)
+        case "diff.edit": openDiffFile(paneID)
+        case "diff.refresh": loadDiffTab(paneID)
+        default: break
+        }
+    }
+
+    /// Where a Diff tab's web view goes once it draws the next file: its first hunk, or its last (`N` from the
+    /// file after it).
+    private(set) var diffFocus: [String: DiffPayload.Focus] = [:]
+
+    /// `n` / `N`: the next hunk in the file, else the first hunk of the next file (the last of the previous one).
+    private func jumpDiffHunk(_ delta: Int, paneID: String) {
+        Task {
+            if await DiffSurfaces.shared.hunk(delta, paneID: paneID) { return }
+            guard var review = diffReviews[paneID] else { return }
+            guard review.moveFile(by: delta) else { return flash = delta > 0 ? "last change" : "first change" }
+            diffFocus[paneID] = delta > 0 ? .first : .last
+            diffReviews[paneID] = review
+            loadDiffContents(paneID)
+        }
+    }
+
+    /// `]f` / `[f`: the next or previous file, on its first hunk.
+    private func moveDiffFile(_ delta: Int, paneID: String) {
+        guard var review = diffReviews[paneID], review.moveFile(by: delta) else { return }
+        diffFocus[paneID] = .first
+        diffReviews[paneID] = review
+        loadDiffContents(paneID)
+    }
+
+    /// `y`: `path:line` of where you are, for pasting into a prompt or a review.
+    private func copyDiffLocation(_ paneID: String) {
+        guard let location = diffReviews[paneID]?.location else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString("\(location.path):\(location.line)", forType: .string)
+        flash = "copied \(location.path):\(location.line)"
+    }
+
+    /// `e`: the file in the app that opens it.
+    private func openDiffFile(_ paneID: String) {
+        guard let path = diffReviews[paneID]?.selectedFile?.path, let root = diffDirectory(paneID) else { return }
+        NSWorkspace.shared.open(URL(fileURLWithPath: root).appendingPathComponent(path))
+    }
+
+    /// `a`: a question about the line you are on, typed into the task's agent pane unsent; INSERT there to finish it.
+    private func askAboutDiff(_ paneID: String) {
+        guard let location = diffReviews[paneID]?.location, let task = currentTask, let layout = layouts[task.id]
+        else { return }
+        let panes = layout.panes
+        guard let target = (panes.first { $0.role == .agent } ?? panes.first { $0.role.isTerminal })?.id else {
+            return flash = "no agent or terminal in \(task.title) (\(keyText(for: "tab.agent")) starts one)"
+        }
+        TerminalSurfaces.shared.typeText(
+            "About \(location.path) around line \(location.line) (the hunk in my diff): ", paneID: target
+        )
+        focusPane(target)
+        engine.enter(.insert)
+        terminalFocusRequest += 1
+    }
+
+    /// An agent in the task finished a turn: its Diff tab reads the diff again, now when it is on screen, else when
+    /// it is next shown.
+    private func agentTurnEnded(in taskID: String) {
+        guard let layout = layouts[taskID] else { return }
+        for pane in layout.panes where pane.role == .diff && diffReviews[pane.id] != nil {
+            let shown = view == .tasks && currentTask?.id == taskID
+                && layout.groups.contains { $0.active?.pane.id == pane.id }
+            if shown {
+                loadDiffTab(pane.id)
+            } else {
+                diffReviews[pane.id]?.loadedAt = nil
+            }
+        }
+    }
+
     /// The checkout a Diff tab reads: its task's, wherever that works now.
     private func diffDirectory(_ paneID: String) -> String? {
         guard let taskID = layouts.first(where: { $0.value.panes.contains { $0.id == paneID } })?.key else {
@@ -2555,6 +2507,7 @@ final class AppModel {
     private func diffTabClosed(_ paneID: String) {
         diffLoads.removeValue(forKey: paneID)?.cancel()
         diffReviews.removeValue(forKey: paneID)
+        diffFocus.removeValue(forKey: paneID)
     }
 
     // MARK: Filter

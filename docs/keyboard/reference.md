@@ -57,7 +57,7 @@ This page is generated from the code (`mise run shots`).
 | `tab.open` | `<D-t>`, `<D-t>` (INSERT) | new tab in this pane: pick a terminal or a web page |
 | `tab.agent` | `gc` | the task's agent: its tab, else the agent closed last (resumed), else a new one |
 | `tab.go` `<n>` |  | go to tab n of this pane |
-| `tab.diff` |  | the task's Diff tab: its changes file by file, opened in its work pane |
+| `tab.diff` | `gd` | the task's Diff tab: its changes file by file, opened in its work pane |
 | `browser.new` `[url]` |  | new tab in this pane with a web page (no address: type one) |
 | `browser.back` | `<D-[>` (browser) | web page: back |
 | `browser.forward` | `<D-]>` (browser) | web page: forward |
@@ -79,9 +79,8 @@ This page is generated from the code (`mise run shots`).
 | `view.prs` | `gp` | pull requests |
 | `overlay.pr` |  | PR overlay for this task (toggle) |
 | `overlay.item` | `go` | open the PR or issue under the cursor; in Tasks, the task's PR (toggle) |
-| `overlay.diff` | `gd` | diff overlay: commits, staged, unstaged |
 | `overlay.help` | `?`, `<D-/>`, `?` (VISUAL), `<D-/>` (VISUAL), `<D-/>` (INSERT), `<D-/>` (COMMAND) | keys & states |
-| `overlay.close` | `<Esc>`, `<Esc>` (diff), `<Esc>` (issue), `<Esc>` (pr) | close overlay |
+| `overlay.close` | `<Esc>`, `<Esc>` (issue), `<Esc>` (pr) | close overlay |
 | `pr.task` | `gS` | jump from a PR to its task |
 | `jump.back` | `<C-o>` | back |
 | `open.browser` | `gB` | open as a web page in a tab: the item under the cursor; in Tasks its PR or issue (a picker when there are both, Kibana when there are none) |
@@ -124,14 +123,17 @@ This page is generated from the code (`mise run shots`).
 | `issues.repo.prev` | `<S-Tab>` (issues) | previous repo in the Issues repo column |
 | `issues.repo` `[name]` |  | show one repo's issues (no name: every repo) |
 | `pr.start` | `S` (pr) | start a new task from this PR |
-| `diff.hunk.next` | `n` (diff) | next hunk |
-| `diff.hunk.prev` | `N` (diff) | previous hunk |
-| `diff.file.next` | `]f` (diff) | next file |
-| `diff.file.prev` | `[f` (diff) | previous file |
-| `diff.scope.next` | `<Tab>` (diff) | next scope: all, committed, staged, unstaged |
-| `diff.scope.prev` | `<S-Tab>` (diff) | previous scope |
-| `diff.commit` | `c` (diff) | show one commit (cycles) |
-| `diff.split` | `t` (diff) | unified / split |
-| `diff.ask` | `a` (diff) | ask the agent about this hunk |
-| `diff.copy` | `y` (diff) | copy path:line |
-| `diff.edit` | `e` (diff) | open the file in the editor |
+| `diff.hunk.next` | `n` (diff) | Diff tab: next hunk (past the last, the next file's first) |
+| `diff.hunk.prev` | `N` (diff) | Diff tab: previous hunk |
+| `diff.file.next` | `]f` (diff), `j` (diff), `<Down>` (diff) | Diff tab: next file |
+| `diff.file.prev` | `[f` (diff), `k` (diff), `<Up>` (diff) | Diff tab: previous file |
+| `diff.page.down` | `<C-d>` (diff) | Diff tab: scroll half a page down |
+| `diff.page.up` | `<C-u>` (diff) | Diff tab: scroll half a page up |
+| `diff.scope.next` | `<Tab>` (diff) | Diff tab: next scope (uncommitted, all, committed, staged, unstaged) |
+| `diff.scope.prev` | `<S-Tab>` (diff) | Diff tab: previous scope |
+| `diff.commit` | `c` (diff) | Diff tab: show one commit (cycles, newest first) |
+| `diff.split` | `t` (diff) | Diff tab: side by side / unified |
+| `diff.ask` | `a` (diff) | Diff tab: ask the agent about this line (typed into its pane, unsent) |
+| `diff.copy` | `y` (diff) | Diff tab: copy path:line |
+| `diff.edit` | `e` (diff) | Diff tab: open the file in the editor |
+| `diff.refresh` | `r` (diff) | Diff tab: read the diff again |

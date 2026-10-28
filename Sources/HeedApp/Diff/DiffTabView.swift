@@ -15,13 +15,17 @@ struct DiffTabView: View {
             GeometryReader { geometry in
                 HStack(spacing: 0) {
                     DiffFileList(pane: pane, review: review)
-                        .frame(width: min(300, max(180, geometry.size.width * 0.28)))
+                        .frame(width: min(300, max(140, geometry.size.width * 0.3)))
+                        .shotRegion(.diffFiles)
                     DiffFileView(pane: pane, review: review)
                 }
             }
             DiffFooter()
         }
+        .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
+        .clipped()
         .background(Theme.pane)
+        .shotRegion(.diffTab)
         .onAppear { model.diffTabShown(pane.id) }
     }
 }
@@ -32,32 +36,55 @@ private struct DiffToolbar: View {
     let review: DiffReview
 
     var body: some View {
-        HStack(spacing: 8) {
-            Segments {
-                ForEach(DiffScope.cycle, id: \.self) { scope in
-                    Segment(scope.title, on: review.scope == scope) { model.setDiffScope(scope, paneID: pane.id) }
+        // A narrow pane gets the scope and the mode you are on, each a click to the next.
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 8) {
+                Segments {
+                    ForEach(DiffScope.cycle, id: \.self) { scope in
+                        Segment(scope.title, on: review.scope == scope) { model.setDiffScope(scope, paneID: pane.id) }
+                    }
+                    if case let .commit(sha) = review.scope { Segment(sha, on: true) {} }
                 }
-                if case let .commit(sha) = review.scope { Segment(sha, on: true) {} }
+                keys("diff.scope.next")
+                if let commit = model.keyLabel(for: "diff.commit") {
+                    KeyCap(text: commit)
+                    Text("commit").foregroundStyle(Theme.fg3)
+                }
+                if review.loading { Text("reading…").foregroundStyle(Theme.fg3) }
+                Spacer(minLength: 8)
+                Segments {
+                    Segment("Side by side", on: model.diffSplit) { model.setDiffSplit(true) }
+                    Segment("Unified", on: !model.diffSplit) { model.setDiffSplit(false) }
+                }
+                keys("diff.split")
             }
-            KeyCap(text: "⇥")
-            if model.keyLabel(for: "diff.commit") != nil {
-                KeyCap(text: model.keyLabel(for: "diff.commit") ?? "c")
-                Text("commit").foregroundStyle(Theme.fg3)
+            HStack(spacing: 8) {
+                Segments {
+                    Segment(review.scope.title, on: true) {
+                        model.setDiffScope(review.scope.cycled(by: 1), paneID: pane.id)
+                    }
+                }
+                keys("diff.scope.next")
+                Spacer(minLength: 8)
+                Segments {
+                    Segment(model.diffSplit ? "Side by side" : "Unified", on: true) {
+                        model.setDiffSplit(!model.diffSplit)
+                    }
+                }
+                keys("diff.split")
             }
-            if review.loading { Text("reading…").foregroundStyle(Theme.fg3) }
-            Spacer(minLength: 8)
-            Segments {
-                Segment("Side by side", on: model.diffSplit) { model.setDiffSplit(true) }
-                Segment("Unified", on: !model.diffSplit) { model.setDiffSplit(false) }
-            }
-            KeyCap(text: model.keyLabel(for: "diff.split") ?? "t")
         }
         .font(Theme.ui(11.5))
         .lineLimit(1)
         .padding(.horizontal, 10)
-        .frame(height: 30)
+        .frame(minWidth: 0, maxWidth: .infinity, minHeight: 30, maxHeight: 30, alignment: .leading)
+        .clipped()
         .background(Theme.paneHeader)
         .overlay(alignment: .bottom) { Theme.line.frame(height: 1) }
+    }
+
+    @ViewBuilder private func keys(_ command: String) -> some View {
+        if let key = model.keyLabel(for: command) { KeyCap(text: key) }
     }
 }
 
@@ -149,6 +176,7 @@ private struct DiffFileList: View {
             }
             .font(Theme.ui(11))
             .foregroundStyle(Theme.fg3)
+            .lineLimit(1)
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
         }
@@ -203,12 +231,15 @@ private struct DiffTreeRow: View {
                 Spacer(minLength: 4)
                 Circle().fill(file.staged ? Theme.done : .clear).overlay(Circle().strokeBorder(Theme.done))
                     .frame(width: 6, height: 6)
-                if file.binary {
-                    Text("bin").foregroundStyle(Theme.fg3)
-                } else {
-                    Text("+\(file.additions)").foregroundStyle(Theme.done)
-                    if file.deletions > 0 { Text("−\(file.deletions)").foregroundStyle(Theme.err) }
+                HStack(spacing: 6) {
+                    if file.binary {
+                        Text("bin").foregroundStyle(Theme.fg3)
+                    } else {
+                        Text("+\(file.additions)").foregroundStyle(Theme.done)
+                        if file.deletions > 0 { Text("−\(file.deletions)").foregroundStyle(Theme.err) }
+                    }
                 }
+                .fixedSize()
             }
         }
         .font(Theme.mono(11.5))
@@ -244,8 +275,10 @@ private struct DiffFileView: View {
                             detail: model.keyLabel(for: "diff.edit").map { "\($0) opens it in your editor" }
                         )
                     } else {
-                        DiffWebArea(paneID: pane.id, payload: DiffPayload(contents: contents, split: model.diffSplit))
-                            .shotRegion(.diffBody)
+                        DiffWebArea(paneID: pane.id, payload: DiffPayload(
+                            contents: contents, split: model.diffSplit, focus: model.diffFocus[pane.id] ?? .first
+                        ))
+                        .shotRegion(.diffBody)
                     }
                 } else {
                     message("Reading \((file.path as NSString).lastPathComponent)…")
@@ -343,7 +376,8 @@ private struct DiffFooter: View {
         .font(Theme.ui(11.5))
         .lineLimit(1)
         .padding(.horizontal, 12)
-        .frame(height: 28)
+        .frame(minWidth: 0, maxWidth: .infinity, minHeight: 28, maxHeight: 28, alignment: .leading)
+        .clipped()
         .background(Theme.paneHeader)
         .overlay(alignment: .top) { Theme.line.frame(height: 1) }
     }

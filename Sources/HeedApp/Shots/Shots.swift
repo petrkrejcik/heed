@@ -69,7 +69,7 @@ enum Shots {
         Shot(id: "landing/prs", chrome: false, keys: "gp"),
         Shot(id: "landing/pr", chrome: false, keys: "2jgo"),
         Shot(id: "landing/resume", chrome: false, prepare: { $0.showResumeForFixture() }),
-        Shot(id: "landing/diff", chrome: false, keys: "2jgd"),
+        Shot(id: "landing/diff", chrome: false, keys: "2jgd<C-w>z"),
         Shot(id: "landing/inbox", chrome: false, keys: "gm<Space>j<Space>"),
     ]
 
@@ -128,8 +128,11 @@ enum Shots {
     ]
 
     static let diff: [Shot] = [
-        Shot(id: "diff/overlay", keys: "2jgd"),
-        Shot(id: "diff/split", keys: "2jgdt"),
+        Shot(id: "diff/tab", keys: "2jgd<C-w>z"),
+        Shot(id: "diff/beside", keys: "2jgd", highlight: [.diffTab]),
+        Shot(id: "diff/unified", keys: "2jgd<C-w>zt"),
+        Shot(id: "diff/typescript", keys: "2jgd<C-w>zjj"),
+        Shot(id: "diff/files", size: short, keys: "2jgd<C-w>z", crop: .diffFiles, cropPadding: 0),
     ]
 
     static let keyboard: [Shot] = [

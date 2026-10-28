@@ -52,9 +52,6 @@ struct MainWindow: View {
             if model.overlay == .pr { PullOverlayView().shotRegion(.reader).padding(.top, 44).padding(.bottom, 28) }
         }
         .overlay {
-            if model.overlay == .diff { DiffOverlayView().shotRegion(.diffBody).padding(.top, 44).padding(.bottom, 28) }
-        }
-        .overlay {
             if model.reader != nil { ReaderView().shotRegion(.reader).padding(.top, 44).padding(.bottom, 28) }
         }
         .overlay {
@@ -356,13 +353,14 @@ struct StatusBar: View {
         case .normal where model.confirmation != nil: "y or ↩ confirm · n, ⎋ or q cancel"
         case .normal where model.newTask != nil: "type a title · ↩ create · ⎋ cancel"
         case .normal where model.filtering: "words match anywhere · ⌃w word · ⌃u clear · ↩ keep · ⎋ clear"
-        case .normal where model.overlay == .diff: "j k line · n hunk · ]f file · ⇥ scope · c commit · t split · gd close"
         case .normal where model.issueReader != nil: "s new task · gB browser · ⎋ back"
         case .normal where model.reader != nil || model.overlay == .pr:
             "\(model.keyText(for: "pr.start")) new task · gS task · gB browser · ⎋ back"
         case .normal where model.view == .inbox: "↩ read · space pick · v range · s new task · x mark read · t unread/all · / filter"
         case .normal where model.view == .issues: "↩ read · space pick · s new task · t filter · ⇥ repo · / filter"
         case .normal where model.view == .prs: "↩ open · v select · gS task · r sync"
+        case .normal where model.focusedDiffPane != nil:
+            "j k file · n hunk · ⇥ scope · c commit · t side by side · r read again · h l pane · gt tab"
         case .normal: "i insert · o new task · m pin · { } group · : command · ? keys"
         case .insert: "⇧⎋ or \(KeyCapText.of(model.config.insertEscape)) normal · ⌘/ keys"
         case .visual where model.view == .inbox:

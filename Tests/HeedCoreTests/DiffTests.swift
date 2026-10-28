@@ -44,30 +44,6 @@ struct DiffParserTests {
         #expect(lines[5].oldNumber == 79 && lines[5].newNumber == 80)
     }
 
-    @Test func pairedLinesGetWordHighlights() throws {
-        let lines = try #require(DiffParser.parse(sample).first?.hunks.first?.lines)
-        let old = Array(lines[2].text)
-        let new = Array(lines[3].text)
-        let oldRange = try #require(lines[2].changed)
-        let newRange = try #require(lines[3].changed)
-        #expect(String(old[oldRange]) == "fragment")
-        #expect(String(new[newRange]) == "slug, StringComparer.Ordinal")
-        #expect(lines[4].changed == nil)
-    }
-
-    @Test func rewritesAreNotWordHighlighted() {
-        let (old, new) = DiffParser.changedRanges("completely different", "nothing alike here")
-        #expect(old == nil && new == nil)
-    }
-
-    @Test func splitRowsPairDeletionsWithAdditions() throws {
-        let hunk = try #require(DiffParser.parse(sample).first?.hunks.first)
-        let rows = DiffParser.splitRows(hunk)
-        #expect(rows.count == 6)
-        #expect(rows[2].left?.kind == .deleted && rows[2].right?.kind == .added)
-        #expect(rows[3].left == nil && rows[3].right?.kind == .added)
-    }
-
     @Test func gitDiffScopes() async throws {
         let path = FileManager.default.temporaryDirectory.appendingPathComponent("heed-diff-\(UUID().uuidString)").path
         defer { try? FileManager.default.removeItem(atPath: path) }

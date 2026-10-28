@@ -21,7 +21,7 @@ public enum DefaultKeys {
         ("gt", "tab.next"), ("gT", "tab.prev"), ("<D-}>", "tab.next"), ("<D-{>", "tab.prev"), ("gn", "tab.new"),
         ("gc", "tab.agent"), ("<D-t>", "tab.open"),
         ("gs", "view.tasks"), ("gm", "view.inbox"), ("gi", "view.issues"), ("gp", "view.prs"),
-        ("go", "overlay.item"), ("gd", "overlay.diff"), ("gS", "pr.task"),
+        ("go", "overlay.item"), ("gd", "tab.diff"), ("gS", "pr.task"),
         ("<C-o>", "jump.back"), ("gB", "open.browser"), ("gR", "open.repo"),
         ("zi", "inspector.toggle"), ("zs", "sidebar.toggle"), ("za", "section.toggle"), ("<CR>", "open.reader"),
         ("i", "mode.insert"), ("v", "mode.visual"), ("V", "mode.visual"), (":", "mode.command"),
@@ -75,11 +75,13 @@ public enum DefaultKeys {
         "prs": [
             ("r", "github.sync"), ("<Space>", "select.toggle"),
         ],
-        /// The diff overlay.
+        /// A focused Diff tab (NORMAL only: the diff is read only).
         "diff": [
             ("n", "diff.hunk.next"), ("N", "diff.hunk.prev"), ("]f", "diff.file.next"), ("[f", "diff.file.prev"),
+            ("j", "diff.file.next"), ("k", "diff.file.prev"), ("<Down>", "diff.file.next"), ("<Up>", "diff.file.prev"),
+            ("<C-d>", "diff.page.down"), ("<C-u>", "diff.page.up"),
             ("<Tab>", "diff.scope.next"), ("<S-Tab>", "diff.scope.prev"), ("c", "diff.commit"), ("t", "diff.split"),
-            ("a", "diff.ask"), ("y", "diff.copy"), ("e", "diff.edit"), ("<Esc>", "overlay.close"),
+            ("a", "diff.ask"), ("y", "diff.copy"), ("e", "diff.edit"), ("r", "diff.refresh"),
         ],
         /// The issue reader.
         "issue": [("s", "items.start"), ("<Esc>", "overlay.close")],

@@ -34,8 +34,6 @@ public struct DiffLine: Hashable, Sendable {
     public var oldNumber: Int?
     public var newNumber: Int?
     public var text: String
-    /// The changed part of a line paired with its counterpart (character offsets), for word-level highlights.
-    public var changed: Range<Int>?
 }
 
 /// What the Diff tab compares.
@@ -140,7 +138,7 @@ public enum DiffParser {
         var newLine = 0
 
         func flushHunk() {
-            if let finished = hunk { current?.hunks.append(withWordHighlights(finished)) }
+            if let finished = hunk { current?.hunks.append(finished) }
             hunk = nil
         }
         func flushFile() {
@@ -211,81 +209,6 @@ public enum DiffParser {
             return Int(part.dropFirst().split(separator: ",").first ?? "0") ?? 0
         }
         return (start(parts.count > 1 ? parts[1] : nil), start(parts.count > 2 ? parts[2] : nil))
-    }
-
-    /// Pairs each run of deleted lines with the added run after it, line by line, and marks what differs between
-    /// the pair: everything between their common prefix and suffix.
-    static func withWordHighlights(_ hunk: Hunk) -> Hunk {
-        var hunk = hunk
-        var index = 0
-        while index < hunk.lines.count {
-            guard hunk.lines[index].kind == .deleted else {
-                index += 1
-                continue
-            }
-            let deletedStart = index
-            while index < hunk.lines.count, hunk.lines[index].kind == .deleted {
-                index += 1
-            }
-            let addedStart = index
-            while index < hunk.lines.count, hunk.lines[index].kind == .added {
-                index += 1
-            }
-            let pairs = min(addedStart - deletedStart, index - addedStart)
-            for offset in 0 ..< pairs {
-                let (old, new) = changedRanges(
-                    hunk.lines[deletedStart + offset].text,
-                    hunk.lines[addedStart + offset].text
-                )
-                hunk.lines[deletedStart + offset].changed = old
-                hunk.lines[addedStart + offset].changed = new
-            }
-        }
-        return hunk
-    }
-
-    static func changedRanges(_ old: String, _ new: String) -> (Range<Int>?, Range<Int>?) {
-        let a = Array(old)
-        let b = Array(new)
-        var prefix = 0
-        while prefix < a.count, prefix < b.count, a[prefix] == b[prefix] {
-            prefix += 1
-        }
-        var suffix = 0
-        while suffix < a.count - prefix, suffix < b.count - prefix, a[a.count - 1 - suffix] == b[b.count - 1 - suffix] {
-            suffix += 1
-        }
-        let oldRange = prefix < a.count - suffix ? prefix ..< a.count - suffix : nil
-        let newRange = prefix < b.count - suffix ? prefix ..< b.count - suffix : nil
-        // A pair that shares almost nothing is a rewrite, not an edit: no word highlight.
-        let shared = prefix + suffix
-        guard shared * 3 >= min(a.count, b.count) else { return (nil, nil) }
-        return (oldRange, newRange)
-    }
-
-    /// Splits a hunk into side-by-side rows: context on both sides, deleted on the left, added on the right.
-    public static func splitRows(_ hunk: Hunk) -> [(left: DiffLine?, right: DiffLine?)] {
-        var rows: [(DiffLine?, DiffLine?)] = []
-        var deleted: [DiffLine] = []
-        var added: [DiffLine] = []
-        func flush() {
-            for index in 0 ..< max(deleted.count, added.count) {
-                rows.append((index < deleted.count ? deleted[index] : nil, index < added.count ? added[index] : nil))
-            }
-            deleted = []
-            added = []
-        }
-        for line in hunk.lines {
-            switch line.kind {
-            case .deleted: deleted.append(line)
-            case .added: added.append(line)
-            case .context:
-                flush()
-                rows.append((line, line))
-            }
-        }
-        flush()
-        return rows
     }
 }
 
