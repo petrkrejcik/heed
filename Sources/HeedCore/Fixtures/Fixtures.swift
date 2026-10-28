@@ -63,16 +63,16 @@ public enum Fixtures {
                 id: "t3", title: "Review PR 299044 - Timeline freeze", status: .inProgress, kind: "review",
                 pr: pullURL(299_044), worktree: review, branch: "review-299044-timeline-freeze",
                 notePath: "\(notes)/Review PR 299044 - Timeline freeze.md", port: 5603, running: false,
-                lastActivity: ago(95)
+                lastActivity: ago(57)
             ),
             WorkTask(
                 id: "t4", title: "Chat input cmd+z breaks after paste", status: .blocked, issue: issueURL(298_812),
-                worktree: undo, branch: "298812-chat-input-cmd-z",
+                pr: pullURL(298_830), worktree: undo, branch: "298812-chat-input-cmd-z",
                 notePath: "\(notes)/Chat input cmd+z breaks after paste.md", port: 5604, running: false,
                 lastActivity: ago(60 * 26)
             ),
             WorkTask(
-                id: "t5", title: "Investigate SSE batching", status: .inProgress,
+                id: "t5", title: "Investigate SSE batching", status: .inProgress, pr: pullURL(299_480),
                 notePath: "\(notes)/Investigate SSE batching.md", lastActivity: ago(1)
             ),
             WorkTask(
@@ -134,16 +134,24 @@ public enum Fixtures {
             "t5": TaskLayout(tabs: [agentTab("t5", main)]),
             "t8": TaskLayout(tabs: [agentTab("t8", scroll)]),
         ]
-        func agent(_ state: AgentState, _ activity: String, reason: String? = nil, id: String) -> AgentTab {
-            AgentTab(state: ObservedState(state, reason: reason), activity: activity, claudeSessionID: id)
+        /// `turn`: minutes since its last turn ended, where the prompt cache countdown starts.
+        func agent(
+            _ state: AgentState, _ activity: String, reason: String? = nil, id: String, turn: Double? = nil
+        ) -> AgentTab {
+            AgentTab(
+                state: ObservedState(state, reason: reason), activity: activity, claudeSessionID: id,
+                lastTurnAt: turn.map(ago)
+            )
         }
+        // The cache tags: Kibana main 20m, the upload fix 42m (its working agent refreshes its own cache, the idle one
+        // counts), the review 3m (amber); the others expired.
         let agents: [String: AgentTab] = [
-            "t1-agent": agent(.idle, "idle 40m", id: "4d0c2a5e-1f6b-4c8e-9a37-2b5e8d1f0c64"),
-            "t2-agent": agent(.working, "running jest · 2m", id: "7f3a9c1e-52b4-4e0d-9a61-0c8d3e1f2b77"),
-            "t2-agent2": agent(.idle, "idle 18m", id: "2c81d6aa-9e17-4b3f-8d05-6a4e7b9c0d12"),
-            "t3-agent": agent(.idle, "idle 1h", id: "91be40d2-7a35-4c68-b2f9-13e5a8d07c46"),
-            "t4-agent": agent(.idle, "idle 1d", id: "e0457f3b-18c2-4d9a-a6b1-5f2d9c8e3a04"),
-            "t8-agent": agent(.done, "done 5h", id: "5a9e2f60-3c71-4b8d-9e24-81f0d6c3a7b5"),
+            "t1-agent": agent(.idle, "idle 40m", id: "4d0c2a5e-1f6b-4c8e-9a37-2b5e8d1f0c64", turn: 40),
+            "t2-agent": agent(.working, "running jest · 2m", id: "7f3a9c1e-52b4-4e0d-9a61-0c8d3e1f2b77", turn: 30),
+            "t2-agent2": agent(.idle, "idle 18m", id: "2c81d6aa-9e17-4b3f-8d05-6a4e7b9c0d12", turn: 18),
+            "t3-agent": agent(.idle, "idle 57m", id: "91be40d2-7a35-4c68-b2f9-13e5a8d07c46", turn: 57),
+            "t4-agent": agent(.idle, "idle 1d", id: "e0457f3b-18c2-4d9a-a6b1-5f2d9c8e3a04", turn: 60 * 26),
+            "t8-agent": agent(.done, "done 5h", id: "5a9e2f60-3c71-4b8d-9e24-81f0d6c3a7b5", turn: 60 * 5),
             "t5-agent": agent(
                 .asking,
                 "2 questions waiting",
@@ -273,11 +281,12 @@ public enum Fixtures {
         return detail
     }()
 
-    /// The other PRs' details: the one under review is green, an older one of yours conflicts.
+    /// The other PRs' details: the one under review is green, an older one of yours conflicts, the blocked fix is a
+    /// draft, the SSE spike was closed.
     static let otherDetails: [PullDetail] = {
         func detail(
             _ number: Int, _ title: String, _ branch: String, author: String, mergeable: String, state: String,
-            checks: CheckSummary, review: String?
+            checks: CheckSummary, review: String?, prState: String = "OPEN", draft: Bool = false
         ) -> PullDetail {
             var detail = PullDetail(
                 ref: PullRef(repo: kibana, number: number), title: title, body: "", author: author,
@@ -286,8 +295,8 @@ public enum Fixtures {
                 reviews: review.map { [PullDetail.Review(author: "reviewer", state: $0)] } ?? [], threads: [],
                 failingChecks: [], checks: checks, closes: [], fetchedAt: Clock.now
             )
-            detail.state = "OPEN"
-            detail.isDraft = false
+            detail.state = prState
+            detail.isDraft = draft
             detail.mergeable = mergeable
             detail.mergeState = state
             detail.reviewDecision = review
@@ -304,6 +313,16 @@ public enum Fixtures {
                 298_901, "[Agent Builder] Keep scroll position on new messages", "298760-keep-scroll",
                 author: "you", mergeable: "CONFLICTING", state: "DIRTY", checks: CheckSummary(passed: 3),
                 review: "APPROVED"
+            ),
+            detail(
+                298_830, "[Agent Builder] Keep the undo stack after a paste", "298812-chat-input-cmd-z",
+                author: "you", mergeable: "MERGEABLE", state: "CLEAN", checks: CheckSummary(passed: 4),
+                review: nil, draft: true
+            ),
+            detail(
+                299_480, "[Agent Builder] Spike: batch SSE events", "sse-batching-spike",
+                author: "you", mergeable: "MERGEABLE", state: "CLEAN", checks: CheckSummary(passed: 4),
+                review: nil, prState: "CLOSED"
             ),
         ]
     }()

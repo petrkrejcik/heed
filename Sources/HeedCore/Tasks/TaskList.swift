@@ -1,6 +1,7 @@
 import Foundation
 
-/// A sidebar row's state, rolled up from all of the task's tabs: the most urgent agent, and whether Kibana runs.
+/// A sidebar row's state, rolled up from all of the task's tabs: the most urgent agent, whether Kibana runs, and when
+/// the agents whose turn is over ended it.
 public struct TaskRollup: Hashable, Sendable {
     /// The most urgent agent tab's state; nil when the task has no agent tab.
     public var agent: ObservedState?
@@ -8,12 +9,18 @@ public struct TaskRollup: Hashable, Sendable {
     public var activity: String
     public var agentCount: Int
     public var kibanaRunning: Bool
+    /// Where the prompt cache countdowns start (`PromptCache.turnEnded`), one per agent tab that has one.
+    public var cacheTurns: [Date]
 
-    public init(agent: ObservedState?, activity: String = "", agentCount: Int = 0, kibanaRunning: Bool = false) {
+    public init(
+        agent: ObservedState?, activity: String = "", agentCount: Int = 0, kibanaRunning: Bool = false,
+        cacheTurns: [Date] = []
+    ) {
         self.agent = agent
         self.activity = activity
         self.agentCount = agentCount
         self.kibanaRunning = kibanaRunning
+        self.cacheTurns = cacheTurns
     }
 
     public var needsYou: Bool { agent?.state.needsYou ?? false }
@@ -39,7 +46,8 @@ public struct TaskRollup: Hashable, Sendable {
             (urgency($0.element.state.state), $0.offset) < (urgency($1.element.state.state), $1.offset)
         }?.element
         return TaskRollup(
-            agent: top?.state, activity: top?.activity ?? "", agentCount: tabs.count, kibanaRunning: task.running
+            agent: top?.state, activity: top?.activity ?? "", agentCount: tabs.count, kibanaRunning: task.running,
+            cacheTurns: tabs.compactMap(PromptCache.turnEnded)
         )
     }
 }

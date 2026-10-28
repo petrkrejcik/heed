@@ -2274,8 +2274,10 @@ final class AppModel {
         PullStatus.of(pull: github.pull(ref), detail: pullDetails[ref.description])
     }
 
-    /// Where the task's PR stands, for its sidebar row.
-    func pullStatus(of task: WorkTask) -> PullStatus? { task.pull.map(pullStatus(for:)) }
+    /// The task's PR tag on its sidebar row.
+    func pullTag(of task: WorkTask) -> PullTag? {
+        task.pull.map { PullTag.of($0, pull: github.pull($0), detail: pullDetails[$0.description]) }
+    }
 
     // MARK: Diff overlay
 

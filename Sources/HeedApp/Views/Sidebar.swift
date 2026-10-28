@@ -32,7 +32,7 @@ struct Sidebar: View {
                                         isCursor: index == model.cursor,
                                         pinNumber: list.pins.firstIndex(of: task).map { $0 + 1 },
                                         hint: model.hintLabel(for: .task(task.id)),
-                                        pull: model.pullStatus(of: task)
+                                        pull: model.pullTag(of: task)
                                     )
                                     .contentShape(Rectangle())
                                     .onTapGesture { model.clickTask(task.id) }
@@ -92,7 +92,8 @@ struct Sidebar: View {
     }
 }
 
-/// One task: its title and worktree folder, the most urgent agent's glyph, Kibana when it runs, and its PR.
+/// One task: the most urgent agent's glyph, its title and pin, its worktree folder, then its tags (Kibana when it runs,
+/// its PR, the prompt cache countdown) when it has any. What the agent is doing is in the tooltip.
 struct TaskRow: View {
     let task: WorkTask
     let rollup: TaskRollup
@@ -100,7 +101,7 @@ struct TaskRow: View {
     let isCursor: Bool
     let pinNumber: Int?
     let hint: String?
-    var pull: PullStatus?
+    var pull: PullTag?
 
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
@@ -117,34 +118,22 @@ struct TaskRow: View {
                 }
             }
             .padding(.top, 2)
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: 0) {
                 HStack(spacing: 6) {
                     Text(task.title)
                         .font(Theme.ui(13, weight: .medium))
                         .lineLimit(1)
                         .truncationMode(.tail)
-                        .help(task.title)
                     Spacer(minLength: 4)
                     if let pinNumber { KeyCap(text: "'\(pinNumber)") }
-                    if rollup.kibanaRunning, let port = task.port { KibanaMark(port: port) }
-                    if let ref = task.pull {
-                        HStack(spacing: 4) {
-                            if let pull { PullMark(status: pull, compact: true) }
-                            Text(verbatim: "#\(ref.number)").font(Theme.mono(10.5)).foregroundStyle(Theme.fg2)
-                        }
-                    }
                 }
                 Text(task.worktreeName ?? "main checkout")
                     .font(Theme.mono(11))
                     .foregroundStyle(Theme.fg3)
                     .lineLimit(1)
                     .truncationMode(.middle)
-                if !activity.isEmpty {
-                    Text(activity)
-                        .font(Theme.ui(11.5))
-                        .foregroundStyle(Theme.fg3)
-                        .lineLimit(1)
-                }
+                    .padding(.top, 4)
+                tags
             }
         }
         .padding(.leading, 6)
@@ -154,12 +143,96 @@ struct TaskRow: View {
         .overlay(alignment: .topLeading) {
             if let hint { HintBadge(label: hint).padding(.leading, 8).padding(.top, 8) }
         }
+        .help(activity.isEmpty ? task.title : "\(task.title)\n\(activity)")
     }
+
+    /// The tags line. With a prompt cache counting down it redraws on its own once a minute, on the minute the
+    /// countdown changes (counted from the turn), and nothing else in the list does.
+    @ViewBuilder private var tags: some View {
+        if let cache = PromptCache.countdown(turns: rollup.cacheTurns, now: Clock.now) {
+            TimelineView(.periodic(from: cache.turnEndedAt, by: 60)) { _ in
+                TaskTagsLine(tags: tagList(now: Clock.now))
+            }
+        } else {
+            TaskTagsLine(tags: tagList(now: Clock.now))
+        }
+    }
+
+    private func tagList(now: Date) -> [TaskTag] { TaskTag.of(task, rollup: rollup, pull: pull, now: now) }
 
     /// "2 agents · running jest · 2m"; a single agent just says what it does.
     private var activity: String {
         let count = rollup.agentCount > 1 ? "\(rollup.agentCount) agents" : nil
         return [count, rollup.activity.isEmpty ? nil : rollup.activity].compactMap(\.self).joined(separator: " · ")
+    }
+}
+
+/// A row's tags, left to right; nothing at all (no line, no gap) when there are none.
+struct TaskTagsLine: View {
+    let tags: [TaskTag]
+
+    var body: some View {
+        if !tags.isEmpty {
+            HStack(spacing: 10) {
+                ForEach(tags, id: \.self) { tag in
+                    switch tag {
+                    case let .kibana(port): KibanaMark(port: port)
+                    case let .pull(pull): PullTagMark(tag: pull)
+                    case let .cache(countdown): CacheMark(countdown: countdown)
+                    }
+                }
+            }
+            .lineLimit(1)
+            .padding(.top, 5)
+        }
+    }
+}
+
+/// A task's PR: `#number` in its state's color (draft grey, open green, merged violet, closed red, as GitHub does),
+/// after the CI or review mark when there is something to act on (failing, conflict, threads).
+struct PullTagMark: View {
+    let tag: PullTag
+
+    var body: some View {
+        HStack(spacing: 4) {
+            if let alert = tag.alert { PullMark(status: alert, compact: true) }
+            Text(verbatim: "#\(tag.number)").font(Theme.mono(10.5)).foregroundStyle(color)
+        }
+        .fixedSize()
+        .help(help)
+    }
+
+    private var color: Color {
+        switch tag.state {
+        case .draft: Theme.fg3
+        case .open: Theme.done
+        case .merged: Theme.ask
+        case .closed: Theme.err
+        case nil: Theme.fg2
+        }
+    }
+
+    private var help: String {
+        let alert = tag.alert.map { " · " + PullMark(status: $0).text } ?? ""
+        return "#\(tag.number) \(tag.state?.rawValue ?? "not synced yet")\(alert)"
+    }
+}
+
+/// The prompt cache's minutes left, amber in its last five.
+struct CacheMark: View {
+    let countdown: PromptCache.Countdown
+
+    var body: some View {
+        HStack(spacing: 3) {
+            Image(systemName: "hourglass").font(.system(size: 9.5))
+            Text(verbatim: "\(countdown.minutesLeft)m").font(Theme.mono(10.5))
+        }
+        .foregroundStyle(countdown.isWarning ? Theme.block : Theme.fg3)
+        .fixedSize()
+        .help(
+            "Prompt cache: \(countdown.minutesLeft) min left. It lasts an hour from the agent's last turn; "
+                + "a prompt sent before then is cheaper and faster."
+        )
     }
 }
 
