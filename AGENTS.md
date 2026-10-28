@@ -20,8 +20,9 @@
 
 - This is a personal hard fork. Read the PRD first: `/Users/petr/notes/Projects/Heed fork.md`. It wins over this
  file, the upstream brief (`design/BRIEF.md`) and the boards (`design/screens/*.png`, still the visual reference).
- The current milestone's plan: `/Users/petr/notes/Projects/Heed fork - browser.md`. Milestones branch from the
- fork's `main` and merge back into it without a PR.
+ The work is split into tasks, listed in order under the PRD's `## Tasks`; each task's note
+ (`/Users/petr/notes/Projects/Heed fork - <task>.md`) holds its plan. Each task gets its own branch from the fork's
+ `main`, named after the task, and merges back into it without a PR.
 - `mise run test` and `mise run lint` before committing. Without mise, run the tasks' commands from `mise.toml` with
  the env from `mise.local.toml` (this Mac has no mise: it puts zig and the lint tools on the path and sets `TOOLCHAINS`
  so `xcrun metal` works for `scripts/ghostty.sh`). Core logic goes in `HeedCore` with tests; the app layer
