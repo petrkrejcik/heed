@@ -20,7 +20,7 @@ global_activate = "<C-M-h>"        # brings Heed forward from any app
 ```
 
 - **Per mode**: `[keys.normal]`, `[keys.visual]`, `[keys.insert]`, `[keys.command]`, `[keys.hint]`.
-- **Per view**: `[keys.inbox]`, `[keys.issues]`, `[keys.prs]`, `[keys.diff]`, `[keys.pr]`, `[keys.issue]`. View keys apply in NORMAL in that view, before NORMAL's own.
+- **Per view**: `[keys.inbox]`, `[keys.issues]`, `[keys.prs]`, `[keys.diff]` (a focused Diff tab), `[keys.pr]`, `[keys.issue]`. View keys apply in NORMAL in that view, before NORMAL's own.
 - **Notation**: `gg`, `<C-w>v` (⌃w then v), `<D-/>` (⌘/), `<M-x>` (⌥x), `<S-Tab>`, `<CR>`, `<Esc>`, `<Space>`.
 
 The [key reference](reference.md) lists every command name; `:` completes them.

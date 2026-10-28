@@ -132,7 +132,7 @@ enum Shots {
         Shot(id: "diff/beside", keys: "2jgd", highlight: [.diffTab]),
         Shot(id: "diff/unified", keys: "2jgd<C-w>zt"),
         Shot(id: "diff/typescript", keys: "2jgd<C-w>zjj"),
-        Shot(id: "diff/files", size: short, keys: "2jgd<C-w>z", crop: .diffFiles, cropPadding: 0),
+        Shot(id: "diff/files", keys: "2jgd<C-w>z", crop: .diffFiles, cropPadding: 0),
     ]
 
     static let keyboard: [Shot] = [
