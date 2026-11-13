@@ -357,6 +357,8 @@ private struct PaneView: View {
             }
             if pane.role == .diff {
                 DiffTabView(pane: pane, active: active)
+            } else if pane.role == .note {
+                NoteTabView(pane: pane, active: active)
             } else if ShotMode.active {
                 if pane.role == .browser { FakeBrowser(pane: pane) } else { FakeTerminal(pane: pane) }
             } else if pane.role == .browser, model.isFixture {
@@ -400,6 +402,7 @@ private struct PaneView: View {
             switch pane.role {
             case .browser: model.focusPane(pane.id)
             case .diff: model.clickedDiff(pane.id)
+            case .note: model.clickedNote(pane.id)
             default: model.clickedPane(pane.id)
             }
         }

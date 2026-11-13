@@ -24,6 +24,9 @@ cp "$root/Resources/heed.icns" "$root/Resources/menubar.svg" "$app/Contents/Reso
 # The Diff tab's page (CodeMirror, built by scripts/diff-web.sh and committed).
 rm -rf "$app/Contents/Resources/diff"
 cp -R "$root/Resources/diff" "$app/Contents/Resources/"
+# The Note tab's page (markdown-it + highlight.js, built by scripts/note-web.sh and committed).
+rm -rf "$app/Contents/Resources/note"
+cp -R "$root/Resources/note" "$app/Contents/Resources/"
 codesign --force --sign - "$app/Contents/Helpers/heed"
 codesign --force --sign - "$app"
 # The helper must be the small CLI, never the app: hooks run it on every agent event.

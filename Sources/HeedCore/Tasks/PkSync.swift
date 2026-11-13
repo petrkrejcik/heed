@@ -9,23 +9,28 @@ public actor PkSync {
     public typealias Tasks = @Sendable () async -> [WorkTask]
     public typealias Apply = @Sendable ([DomainChange]) async -> Void
     public typealias Report = @Sendable (String) async -> Void
+    /// Called when vault file events arrive outside the projects folder (note live reload, index updates).
+    public typealias OnVaultChange = @Sendable ([FileEvent]) async -> Void
 
     private let bridge: PkBridge
     private let tasks: Tasks
     private let apply: Apply
     private let report: Report
+    private let onVaultChange: OnVaultChange?
     private let now: @Sendable () -> Date
     private var watcher: VaultWatcher?
     private var last: Task<Void, Never>?
 
     public init(
         bridge: PkBridge, tasks: @escaping Tasks, apply: @escaping Apply, report: @escaping Report = { _ in },
+        onVaultChange: OnVaultChange? = nil,
         now: @escaping @Sendable () -> Date = { Date() }
     ) {
         self.bridge = bridge
         self.tasks = tasks
         self.apply = apply
         self.report = report
+        self.onVaultChange = onVaultChange
         self.now = now
     }
 
@@ -39,7 +44,9 @@ public actor PkSync {
             await report("\(error)")
             return nil
         }
-        let watcher = VaultWatcher(projects: paths.projects, portsFile: paths.portsFile) { [weak self] change in
+        let watcher = VaultWatcher(
+            projects: paths.projects, portsFile: paths.portsFile, vault: paths.vault
+        ) { [weak self] change in
             guard let self else { return }
             Task { await self.changed(change) }
         }
@@ -74,9 +81,8 @@ public actor PkSync {
                 return
             }
             if !notes.isEmpty { enqueue { await self.read(notes) } }
-        case .vault:
-            // Vault-wide changes are handled by the app layer (NoteIndex + live reload).
-            break
+        case let .vault(events):
+            if let onVaultChange { Task { await onVaultChange(events) } }
         }
     }
 

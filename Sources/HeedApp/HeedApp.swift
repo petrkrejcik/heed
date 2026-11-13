@@ -148,6 +148,9 @@ final class ModelHost {
         }
         DiffSurfaces.shared.onClick = { [weak model] paneID in model?.clickedDiff(paneID) }
         DiffSurfaces.shared.onCursor = { [weak model] paneID, cursor in model?.diffCursorMoved(cursor, paneID: paneID) }
+        NoteSurfaces.shared.onClick = { [weak model] paneID in model?.clickedNote(paneID) }
+        NoteSurfaces.shared.onLink = { [weak model] paneID, link in model?.noteLink(link, paneID: paneID) }
+        NoteSurfaces.shared.onReload = { [weak model] paneID in model?.loadNoteTab(paneID) }
     }
 }
 

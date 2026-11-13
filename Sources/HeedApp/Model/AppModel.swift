@@ -186,6 +186,12 @@ final class AppModel {
     /// Each Diff tab's review, by pane id. Not persisted: a relaunch reads the diff again when the tab is shown.
     private(set) var diffReviews: [String: DiffReview] = [:]
     private var diffLoads: [String: Task<Void, Never>] = [:]
+
+    // Note tabs
+    /// In-flight note load tasks, by pane id.
+    private var noteLoads: [String: Task<Void, Never>] = [:]
+    /// The vault's note index (names, aliases, paths); built at startup, updated from vault watcher events.
+    private(set) var noteIndex: [NoteEntry] = []
     /// Side by side (else unified), for every Diff tab; a UI preference, kept in UserDefaults.
     private(set) var diffSplit = UserDefaults.standard.object(forKey: "diffSideBySide") as? Bool ?? true {
         didSet { if !isFixture { UserDefaults.standard.set(diffSplit, forKey: "diffSideBySide") } }
@@ -279,12 +285,28 @@ final class AppModel {
             bridge: pk,
             tasks: { [weak self] in await MainActor.run { self?.tasks ?? [] } },
             apply: { [weak self] changes in await MainActor.run { self?.applyFromPk(changes) } },
-            report: { [weak self] message in await MainActor.run { self?.flash = message } }
+            report: { [weak self] message in await MainActor.run { self?.flash = message } },
+            onVaultChange: { [weak self] events in await MainActor.run { self?.vaultChanged(events) } }
         )
         pkSync = sync
         if let paths = await sync.start() {
             pkPaths = paths
             Kibana.configuredMain = paths.kibanaMain
+            // Build the note index from the whole vault.
+            let vault = paths.vault
+            Task {
+                let entries = await NoteIndex.scan(vault: vault)
+                noteIndex = entries
+            }
+        }
+    }
+
+    /// Vault file events from the watcher: update the note index and live-reload any affected open note tabs.
+    private func vaultChanged(_ events: [FileEvent]) {
+        guard let vault = pkPaths?.vault else { return }
+        noteIndex = NoteIndex.applying(events, to: noteIndex, vault: vault)
+        for event in events where !event.isDirectory && event.path.hasSuffix(".md") {
+            noteFileChanged(event.path)
         }
     }
 
@@ -2520,6 +2542,12 @@ final class AppModel {
         diffFocus.removeValue(forKey: paneID)
     }
 
+    /// A Note tab closed: cancel any in-flight load, close the web view.
+    private func noteTabClosed(_ paneID: String) {
+        noteLoads.removeValue(forKey: paneID)?.cancel()
+        NoteSurfaces.shared.close(paneID: paneID)
+    }
+
     // MARK: Note tab (Step 1 stubs — wired in Step 2)
 
     /// The focused pane when it is a Note tab: what note scope keys act on.
@@ -2569,17 +2597,92 @@ final class AppModel {
         flash = "copied \((path as NSString).lastPathComponent)"
     }
 
-    private func reloadNote(_: String) {
-        // TODO: wire in Step 2 (NoteSurfaces.shared.reload(paneID:))
-        flash = "note reload: not yet wired (Step 2)"
+    private func reloadNote(_ paneID: String) {
+        loadNoteTab(paneID)
     }
 
-    private func noteScroll(_: Double, paneID _: String) {
-        // TODO: wire in Step 2 (NoteSurfaces.shared.scrollPage(fraction, paneID:))
+    private func noteScroll(_ fraction: Double, paneID: String) {
+        NoteSurfaces.shared.scrollPage(fraction, paneID: paneID)
     }
 
-    private func noteScrollEdge(top _: Bool, paneID _: String) {
-        // TODO: wire in Step 2 (NoteSurfaces.shared.scrollEdge(top:, paneID:))
+    private func noteScrollEdge(top: Bool, paneID: String) {
+        NoteSurfaces.shared.scrollEdge(top: top, paneID: paneID)
+    }
+
+    // MARK: Note tab loading
+
+    /// A Note tab came on screen: load its content.
+    func noteTabShown(_ paneID: String) {
+        guard noteLoads[paneID] == nil else { return }
+        loadNoteTab(paneID)
+    }
+
+    /// Reads the note file and resolves its wikilinks, off the main actor.
+    func loadNoteTab(_ paneID: String) {
+        guard !isFixture else { return } // Fixtures are handled by NoteTabView directly.
+        guard let path = currentLayout?.pane(paneID)?.path else { return }
+        let vault = pkPaths?.vault
+        let entries = noteIndex
+        noteLoads[paneID]?.cancel()
+        noteLoads[paneID] = Task {
+            let result = await Task.detached(priority: .userInitiated) { () -> NotePayload in
+                let markdown = (try? String(contentsOfFile: path, encoding: .utf8)) ?? ""
+                var linksResolved: [String: String?] = [:]
+                if let vault {
+                    let resolved = WikilinkResolver.resolveAll(in: markdown, entries: entries)
+                    for (k, v) in resolved {
+                        linksResolved[k] = v
+                    }
+                }
+                return NotePayload(markdown: markdown, path: path, links: linksResolved, embeds: [:])
+            }.value
+            guard !Task.isCancelled else { return }
+            noteLoads.removeValue(forKey: paneID)
+            NoteSurfaces.shared.show(result, paneID: paneID)
+        }
+    }
+
+    /// A wikilink was clicked in a note tab.
+    func noteLink(_ link: NoteLink, paneID: String) {
+        switch link {
+        case let .wikilink(_, path, newTab):
+            guard let path else { return }
+            guard let task = currentTask else { return }
+            let title = ((path as NSString).deletingPathExtension as NSString).lastPathComponent
+            if newTab {
+                var layout = layouts[task.id] ?? TaskLayout()
+                layout.showNote(path: path, title: title, directory: task.directory, show: true)
+                commit(.layoutChanged(task: task.id, layout))
+            } else {
+                var layout = layouts[task.id] ?? TaskLayout()
+                layout.replaceNote(paneID: paneID, path: path, title: title)
+                commit(.layoutChanged(task: task.id, layout))
+                loadNoteTab(paneID)
+            }
+        case let .webURL(url, _):
+            openLink(url, from: linkSource)
+        }
+    }
+
+    func clickedNote(_ paneID: String) {
+        clickedOutsideTerminal()
+        if currentPane?.id != paneID { focusPane(paneID) }
+    }
+
+    /// Live reload: when an open note's file changes, re-read.
+    func noteFileChanged(_ path: String) {
+        for (taskID, layout) in layouts {
+            for pane in layout.panes where pane.role == .note && pane.path == path {
+                let shown = view == .tasks && currentTask?.id == taskID
+                    && layout.groups.contains { $0.active?.pane.id == pane.id }
+                if shown {
+                    loadNoteTab(pane.id)
+                } else {
+                    noteLoads[pane.id]?.cancel()
+                    noteLoads.removeValue(forKey: pane.id)
+                }
+            }
+        }
     }
 
     // MARK: Filter
@@ -2727,6 +2830,7 @@ final class AppModel {
         commit(.layoutChanged(task: taskID, layout))
         PaneSurfaces.close(paneID: paneID)
         diffTabClosed(paneID)
+        noteTabClosed(paneID)
         if layout.isEmpty { taskEmptied(taskID) }
     }
 

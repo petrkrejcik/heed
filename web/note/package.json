@@ -1,0 +1,22 @@
+{
+  "name": "heed-note",
+  "private": true,
+  "description": "The Note tab's web view: markdown-it + highlight.js, bundled into Resources/note/note.js",
+  "license": "MIT",
+  "scripts": {
+    "build": "esbuild src/main.ts --bundle --minify --format=iife --target=safari17 --legal-comments=none --outfile=../../Resources/note/note.js"
+  },
+  "dependencies": {
+    "highlight.js": "^11.11.1",
+    "markdown-it": "^14.1.0",
+    "markdown-it-footnote": "^4.0.0"
+  },
+  "devDependencies": {
+    "@types/markdown-it": "^14.1.2",
+    "esbuild": "^0.25.5",
+    "typescript": "^5.8.3"
+  },
+  "allowScripts": {
+    "esbuild@0.25.12": true
+  }
+}
