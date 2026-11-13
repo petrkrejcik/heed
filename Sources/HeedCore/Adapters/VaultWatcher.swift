@@ -3,15 +3,21 @@ import Foundation
 
 /// Watches pk's notes folder with FSEvents (recursive, per file, batched about 200 ms) and the ports file with a
 /// dispatch source, and reports what changed on its own queue. No polling: macOS tells it.
+///
+/// When `vault` is supplied the FSEvents stream watches both `projects` and the whole vault (minus dot folders at the
+/// scan level), so a note tab can live-reload on any change and `NoteIndex` stays current.
 public final class VaultWatcher: @unchecked Sendable {
     public enum Change: Sendable, Equatable {
         /// File events in the notes folder, one batch.
         case notes([FileEvent])
+        /// File events in the vault outside the notes folder (notes-tab live reload).
+        case vault([FileEvent])
         /// The ports file was written (a port reserved by `pk kbn`).
         case ports
     }
 
     private let projects: String
+    private let vault: String?
     private let portsFile: String
     private let onChange: @Sendable (Change) -> Void
     private let queue = DispatchQueue(label: "heed.vault")
@@ -20,8 +26,12 @@ public final class VaultWatcher: @unchecked Sendable {
     private var pendingPorts: DispatchWorkItem?
     private var stopped = false
 
-    public init(projects: String, portsFile: String, onChange: @escaping @Sendable (Change) -> Void) {
+    public init(
+        projects: String, portsFile: String, vault: String? = nil,
+        onChange: @escaping @Sendable (Change) -> Void
+    ) {
         self.projects = projects
+        self.vault = vault
         self.portsFile = portsFile
         self.onChange = onChange
     }
@@ -64,14 +74,25 @@ public final class VaultWatcher: @unchecked Sendable {
             guard let info else { return }
             let watcher = Unmanaged<VaultWatcher>.fromOpaque(info).takeUnretainedValue()
             let list = unsafeBitCast(paths, to: NSArray.self) as? [String] ?? []
-            let events = (0 ..< min(count, list.count)).map { index in
-                VaultWatcher.event(path: list[index], flags: flags[index])
+            var notesEvents: [FileEvent] = []
+            var vaultEvents: [FileEvent] = []
+            for index in 0 ..< min(count, list.count) {
+                let event = VaultWatcher.event(path: list[index], flags: flags[index])
+                if list[index].hasPrefix(watcher.projects) {
+                    notesEvents.append(event)
+                } else {
+                    vaultEvents.append(event)
+                }
             }
-            watcher.onChange(.notes(events))
+            if !notesEvents.isEmpty { watcher.onChange(.notes(notesEvents)) }
+            if !vaultEvents.isEmpty { watcher.onChange(.vault(vaultEvents)) }
         }
         let flags = FSEventStreamCreateFlags(kFSEventStreamCreateFlagUseCFTypes | kFSEventStreamCreateFlagFileEvents)
+        // Watch both the projects folder and the vault root (when supplied).
+        var watchPaths: [String] = [projects]
+        if let vault, vault != projects, !vault.isEmpty { watchPaths.append(vault) }
         guard let stream = FSEventStreamCreate(
-            nil, callback, &context, [projects] as CFArray, FSEventStreamEventId(kFSEventStreamEventIdSinceNow), 0.2,
+            nil, callback, &context, watchPaths as CFArray, FSEventStreamEventId(kFSEventStreamEventIdSinceNow), 0.2,
             flags
         ) else { return }
         FSEventStreamSetDispatchQueue(stream, queue)

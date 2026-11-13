@@ -5,12 +5,14 @@ public struct NewTabPicker: Equatable, Sendable {
     public enum Kind: String, CaseIterable, Sendable {
         case terminal
         case page
+        case note
 
         /// The key that picks it in the dialog.
         public var key: String {
             switch self {
             case .terminal: "t"
             case .page: "b"
+            case .note: "n"
             }
         }
 
@@ -18,6 +20,7 @@ public struct NewTabPicker: Equatable, Sendable {
             switch self {
             case .terminal: "Terminal"
             case .page: "Web page"
+            case .note: "Note"
             }
         }
     }

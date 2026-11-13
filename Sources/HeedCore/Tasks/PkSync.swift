@@ -74,6 +74,9 @@ public actor PkSync {
                 return
             }
             if !notes.isEmpty { enqueue { await self.read(notes) } }
+        case .vault:
+            // Vault-wide changes are handled by the app layer (NoteIndex + live reload).
+            break
         }
     }
 

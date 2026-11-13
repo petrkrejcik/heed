@@ -58,6 +58,14 @@ This page is generated from the code (`mise run shots`).
 | `tab.agent` | `gc` | the task's agent: its tab, else the agent closed last (resumed), else a new one |
 | `tab.go` `<n>` |  | go to tab n of this pane |
 | `tab.diff` | `gd` | the task's Diff tab: its changes file by file, opened in its work pane |
+| `note.pick` `[words]` | `gN` | pick a note from the vault and open it in a tab (gN) |
+| `note.obsidian` | `e` (note) | note tab: open the note in Obsidian |
+| `note.copy` | `y` (note) | note tab: copy the note's absolute path |
+| `note.reload` | `r` (note) | note tab: read the note again |
+| `note.scroll.down` | `j` (note), `<Down>` (note), `<C-d>` (note) | note tab: scroll half a page down |
+| `note.scroll.up` | `k` (note), `<Up>` (note), `<C-u>` (note) | note tab: scroll half a page up |
+| `note.scroll.top` | `gg` (note) | note tab: scroll to the top |
+| `note.scroll.bottom` | `G` (note) | note tab: scroll to the bottom |
 | `browser.new` `[url]` |  | new tab in this pane with a web page (no address: type one) |
 | `browser.back` | `<D-[>` (browser) | web page: back |
 | `browser.forward` | `<D-]>` (browser) | web page: forward |

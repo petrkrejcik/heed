@@ -175,10 +175,10 @@ final class AppModel {
     /// The PR the overlay shows (the current task's).
     private(set) var overlayPull: PullRef?
 
-    /// Scoped key bindings follow what has focus: the PR overlay or reader, a Diff tab, else the view.
+    /// Scoped key bindings follow what has focus: the PR overlay or reader, a Diff tab, a Note tab, else the view.
     private func updateScope() {
         let scope = issueReader != nil ? "issue" : (overlay == .pr || reader != nil) ? "pr"
-            : focusedDiffPane != nil ? "diff" : view.rawValue
+            : focusedDiffPane != nil ? "diff" : focusedNotePane != nil ? "note" : view.rawValue
         if engine.scope != scope { engine.scope = scope }
     }
 
@@ -1133,12 +1133,20 @@ final class AppModel {
              "diff.page.up", "diff.scope.next", "diff.scope.prev", "diff.commit", "diff.split", "diff.ask",
              "diff.copy", "diff.edit", "diff.refresh":
             diffCommand(command.name)
+        case "note.pick":
+            openNotePicker(query: command.arguments.joined(separator: " "))
+        case "note.obsidian", "note.copy", "note.reload",
+             "note.scroll.down", "note.scroll.up", "note.scroll.top", "note.scroll.bottom":
+            noteCommand(command.name)
         case "overlay.close": closeTopmost()
         case "inspector.toggle": inspectorVisible.toggle()
         case "sidebar.toggle": sidebarCollapsed.toggle()
         case "section.toggle": toggleSection(named: command.arguments.joined(separator: " "))
         case "mode.normal", "mode.insert", "mode.visual", "mode.command", "mode.hint":
-            if command.name == "mode.insert", view != .tasks || currentPane == nil || currentPane?.role == .diff {
+            if command.name == "mode.insert",
+               view != .tasks || currentPane == nil
+               || currentPane?.role == .diff || currentPane?.role == .note
+            {
                 engine.enter(.normal)
             }
             hintThenInsert = false
@@ -2092,6 +2100,7 @@ final class AppModel {
         switch kind {
         case .terminal: newTab()
         case .page: newPageTab("")
+        case .note: perform(CommandInvocation(name: "note.pick"))
         }
     }
 
@@ -2509,6 +2518,68 @@ final class AppModel {
         diffLoads.removeValue(forKey: paneID)?.cancel()
         diffReviews.removeValue(forKey: paneID)
         diffFocus.removeValue(forKey: paneID)
+    }
+
+    // MARK: Note tab (Step 1 stubs — wired in Step 2)
+
+    /// The focused pane when it is a Note tab: what note scope keys act on.
+    var focusedNotePane: String? {
+        guard view == .tasks, overlay == nil, reader == nil, issueReader == nil, let pane = currentPane,
+              pane.role == .note
+        else { return nil }
+        return pane.id
+    }
+
+    /// `gN` / `:note [words]`: opens the note picker (or directly opens when query is unambiguous).
+    private func openNotePicker(query _: String) {
+        guard currentTask != nil else { return flash = "no task to open a note in" }
+        view = .tasks
+        // TODO: wire note picker in Step 3 (notePicker = NotePicker(...))
+        flash = "note picker: not yet wired (Step 3)"
+    }
+
+    /// Keys for the focused Note tab.
+    private func noteCommand(_ name: String) {
+        guard let paneID = focusedNotePane else {
+            return flash = "not on a Note tab (\(keyText(for: "note.pick")) opens one)"
+        }
+        switch name {
+        case "note.obsidian": openNoteInObsidian(paneID)
+        case "note.copy": copyNotePath(paneID)
+        case "note.reload": reloadNote(paneID)
+        case "note.scroll.down": noteScroll(0.5, paneID: paneID)
+        case "note.scroll.up": noteScroll(-0.5, paneID: paneID)
+        case "note.scroll.top": noteScrollEdge(top: true, paneID: paneID)
+        case "note.scroll.bottom": noteScrollEdge(top: false, paneID: paneID)
+        default: break
+        }
+    }
+
+    private func openNoteInObsidian(_ paneID: String) {
+        guard let path = currentLayout?.pane(paneID)?.path,
+              let encoded = path.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed)
+        else { return }
+        NSWorkspace.shared.open(URL(string: "obsidian://open?path=\(encoded)")!)
+    }
+
+    private func copyNotePath(_ paneID: String) {
+        guard let path = currentLayout?.pane(paneID)?.path else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(path, forType: .string)
+        flash = "copied \((path as NSString).lastPathComponent)"
+    }
+
+    private func reloadNote(_: String) {
+        // TODO: wire in Step 2 (NoteSurfaces.shared.reload(paneID:))
+        flash = "note reload: not yet wired (Step 2)"
+    }
+
+    private func noteScroll(_: Double, paneID _: String) {
+        // TODO: wire in Step 2 (NoteSurfaces.shared.scrollPage(fraction, paneID:))
+    }
+
+    private func noteScrollEdge(top _: Bool, paneID _: String) {
+        // TODO: wire in Step 2 (NoteSurfaces.shared.scrollEdge(top:, paneID:))
     }
 
     // MARK: Filter

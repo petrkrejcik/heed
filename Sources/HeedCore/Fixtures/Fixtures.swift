@@ -129,6 +129,10 @@ public enum Fixtures {
                     id: "t3-page", role: .browser, title: "", directory: review,
                     url: "http://localhost:5603/app/agent_builder"
                 )),
+                PaneTab(id: "t3-t3", title: "Fix image upload 403", pane: PaneSpec(
+                    id: "t3-note", role: .note, title: "Fix image upload 403", directory: review,
+                    path: "\(notes)/Fix image upload 403.md"
+                )),
             ]),
             "t4": TaskLayout(tabs: [agentTab("t4", undo)]),
             "t5": TaskLayout(tabs: [agentTab("t5", main)]),

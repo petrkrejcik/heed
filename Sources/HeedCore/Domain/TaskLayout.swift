@@ -131,6 +131,32 @@ public struct TaskLayout: Hashable, Sendable {
         return pane
     }
 
+    /// The task's note tab at `notePath`, if it has one open.
+    public func notePane(path: String) -> PaneSpec? { panes.first { $0.role == .note && $0.path == path } }
+
+    /// `gN` / note picker: shows the note tab for `path`, opening one in the work pane when the task has none for it.
+    /// `show` focuses the tab. Returns the pane.
+    @discardableResult
+    public mutating func showNote(path: String, title: String, directory: String, show: Bool) -> PaneSpec {
+        if let existing = notePane(path: path) {
+            if show { focus(pane: existing.id) }
+            return existing
+        }
+        let pane = PaneSpec(role: .note, title: title, directory: directory, path: path)
+        add(PaneTab(title: title, pane: pane), show: show)
+        return pane
+    }
+
+    /// Replaces the note shown by pane `id` in place (a wikilink click navigates within the tab).
+    public mutating func replaceNote(paneID: String, path: String, title: String) {
+        guard let group = group(ofPane: paneID), let index = group.index(ofPane: paneID) else { return }
+        root = root?.updatingGroup(group.id) { g in
+            g.tabs[index].pane.path = path
+            g.tabs[index].pane.title = title
+            g.tabs[index].title = title
+        }
+    }
+
     /// `⌃w v` / `⌃w s`: a new pane beside the focused one with `tab` in it, focused.
     public mutating func split(_ axis: PaneTree.Axis, with tab: PaneTab) {
         guard let root, let focused else {

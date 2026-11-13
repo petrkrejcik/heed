@@ -21,7 +21,7 @@ public enum DefaultKeys {
         ("gt", "tab.next"), ("gT", "tab.prev"), ("<D-}>", "tab.next"), ("<D-{>", "tab.prev"), ("gn", "tab.new"),
         ("gc", "tab.agent"), ("<D-t>", "tab.open"),
         ("gs", "view.tasks"), ("gm", "view.inbox"), ("gi", "view.issues"), ("gp", "view.prs"),
-        ("go", "overlay.item"), ("gd", "tab.diff"), ("gS", "pr.task"),
+        ("go", "overlay.item"), ("gd", "tab.diff"), ("gN", "note.pick"), ("gS", "pr.task"),
         ("<C-o>", "jump.back"), ("gB", "open.browser"), ("gR", "open.repo"),
         ("zi", "inspector.toggle"), ("zs", "sidebar.toggle"), ("za", "section.toggle"), ("<CR>", "open.reader"),
         ("i", "mode.insert"), ("v", "mode.visual"), ("V", "mode.visual"), (":", "mode.command"),
@@ -82,6 +82,14 @@ public enum DefaultKeys {
             ("<C-d>", "diff.page.down"), ("<C-u>", "diff.page.up"),
             ("<Tab>", "diff.scope.next"), ("<S-Tab>", "diff.scope.prev"), ("c", "diff.commit"), ("t", "diff.split"),
             ("a", "diff.ask"), ("y", "diff.copy"), ("e", "diff.edit"), ("r", "diff.refresh"),
+        ],
+        /// A focused Note tab (NORMAL only: notes are read only).
+        "note": [
+            ("j", "note.scroll.down"), ("k", "note.scroll.up"),
+            ("<Down>", "note.scroll.down"), ("<Up>", "note.scroll.up"),
+            ("<C-d>", "note.scroll.down"), ("<C-u>", "note.scroll.up"),
+            ("gg", "note.scroll.top"), ("G", "note.scroll.bottom"),
+            ("e", "note.obsidian"), ("y", "note.copy"), ("r", "note.reload"),
         ],
         /// The issue reader.
         "issue": [("s", "items.start"), ("<Esc>", "overlay.close")],
