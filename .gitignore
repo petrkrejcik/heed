@@ -10,3 +10,4 @@ mise.local.toml
 dist/
 .artifacts/
 web/diff/node_modules/
+web/note/node_modules/
