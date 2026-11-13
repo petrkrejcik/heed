@@ -67,6 +67,9 @@ struct MainWindow: View {
             if let picker = model.linkPicker { LinkPickerView(picker: picker) }
         }
         .overlay {
+            if let picker = model.notePicker { NotePickerView(picker: picker) }
+        }
+        .overlay {
             if let picker = model.tabPicker { TabPickerView(picker: picker) }
         }
         .overlay {
@@ -601,7 +604,8 @@ struct TabPickerView: View {
                 ForEach(NewTabPicker.Kind.allCases, id: \.self) { kind in
                     HStack(spacing: 10) {
                         KeyCap(text: kind.key)
-                        Image(systemName: kind == .page ? "globe" : "terminal").font(.system(size: 11))
+                        Image(systemName: kind == .page ? "globe" : kind == .note ? "doc.text" : "terminal")
+                            .font(.system(size: 11))
                             .foregroundStyle(Theme.fg3).frame(width: 16)
                         Text(kind.label).font(Theme.ui(13))
                         Spacer(minLength: 8)
@@ -627,6 +631,87 @@ struct TabPickerView: View {
             .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Theme.line))
             .shadow(color: .black.opacity(0.5), radius: 30)
             .shotRegion(.picker)
+        }
+    }
+}
+
+/// `gN` / `:note`: fuzzy search over vault notes.
+struct NotePickerView: View {
+    @Environment(AppModel.self) private var model
+    let picker: NotePicker
+
+    var body: some View {
+        ZStack {
+            Color.black.opacity(0.5)
+                .onTapGesture { model.cancelNotePicker() }
+            VStack(alignment: .leading, spacing: 0) {
+                // Query input row.
+                HStack(spacing: 8) {
+                    Image(systemName: "doc.text.magnifyingglass").font(.system(size: 13))
+                        .foregroundStyle(Theme.fg3)
+                    if picker.query.isEmpty {
+                        Text("Note…").font(Theme.mono(13)).foregroundStyle(Theme.fg3)
+                    } else {
+                        Text(picker.query).font(Theme.mono(13))
+                    }
+                    Spacer(minLength: 0)
+                }
+                .padding(16)
+                .overlay(alignment: .bottom) { Theme.line.frame(height: 1) }
+
+                // Results list.
+                let rows = picker.rows
+                if rows.isEmpty {
+                    Text("No notes").font(Theme.ui(13)).foregroundStyle(Theme.fg3)
+                        .padding(16)
+                } else {
+                    ForEach(Array(rows.prefix(12).enumerated()), id: \.element.path) { index, entry in
+                        HStack(spacing: 8) {
+                            Image(systemName: "doc.text").font(.system(size: 10))
+                                .foregroundStyle(Theme.fg3).frame(width: 14)
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(entry.name).font(Theme.mono(12.5, weight: .semibold)).lineLimit(1)
+                                if !entry.folder.isEmpty {
+                                    Text(entry.folder).font(Theme.mono(11)).foregroundStyle(Theme.fg3)
+                                        .lineLimit(1)
+                                }
+                            }
+                            Spacer(minLength: 8)
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 7)
+                        .background(index == picker.cursor ? Theme.bg3 : .clear)
+                        .overlay(alignment: .leading) {
+                            if index == picker.cursor { Theme.block.frame(width: 2) }
+                        }
+                        .contentShape(Rectangle())
+                        .onTapGesture { model.openNoteEntry(entry) }
+                    }
+                }
+
+                // Hints footer.
+                HStack(spacing: 14) {
+                    hint("↩", "open")
+                    hint("⌘↩", "background")
+                    hint("j k", "move")
+                    hint("⎋", "close")
+                }
+                .padding(16)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .overlay(alignment: .top) { Theme.line.frame(height: 1) }
+            }
+            .frame(width: 480, alignment: .leading)
+            .background(RoundedRectangle(cornerRadius: 10).fill(Theme.bg2))
+            .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Theme.line))
+            .shadow(color: .black.opacity(0.5), radius: 30)
+            .shotRegion(.picker)
+        }
+    }
+
+    private func hint(_ keys: String, _ text: String) -> some View {
+        HStack(spacing: 5) {
+            KeyCap(text: keys)
+            Text(text).font(Theme.ui(11.5)).foregroundStyle(Theme.fg3)
         }
     }
 }

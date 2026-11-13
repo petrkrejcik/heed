@@ -415,11 +415,12 @@ function render(payload: NotePayload) {
   }
 
   // Apply plugins if not already registered.
+  // Order matters: wikilinks must be registered before callouts (callouts uses ruler.after("wikilinks")).
   if (!(md as any).__heedPluginsApplied) {
     (md as any).__heedPluginsApplied = true;
+    md.use((md: MarkdownIt) => wikilinkPlugin(md, linksForWikilinks));
     md.use(calloutPlugin);
     md.use(taskListPlugin);
-    md.use((md: MarkdownIt) => wikilinkPlugin(md, linksForWikilinks));
   } else {
     // Update the links map in place (the plugin captures the reference).
     for (const k of Object.keys(linksForWikilinks)) {

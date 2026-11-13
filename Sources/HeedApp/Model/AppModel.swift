@@ -192,6 +192,8 @@ final class AppModel {
     private var noteLoads: [String: Task<Void, Never>] = [:]
     /// The vault's note index (names, aliases, paths); built at startup, updated from vault watcher events.
     private(set) var noteIndex: [NoteEntry] = []
+    /// The active note picker, when `gN` or `:note` is in progress.
+    private(set) var notePicker: NotePicker?
     /// Side by side (else unified), for every Diff tab; a UI preference, kept in UserDefaults.
     private(set) var diffSplit = UserDefaults.standard.object(forKey: "diffSideBySide") as? Bool ?? true {
         didSet { if !isFixture { UserDefaults.standard.set(diffSplit, forKey: "diffSideBySide") } }
@@ -977,6 +979,10 @@ final class AppModel {
         }
         if linkPicker != nil {
             answerLinkPicker(stroke)
+            return true
+        }
+        if notePicker != nil {
+            answerNotePicker(stroke)
             return true
         }
         if tabPicker != nil {
@@ -2558,12 +2564,59 @@ final class AppModel {
         return pane.id
     }
 
-    /// `gN` / `:note [words]`: opens the note picker (or directly opens when query is unambiguous).
-    private func openNotePicker(query _: String) {
+    /// `gN` / `:note [words]`: opens the note picker, or opens directly when the query has one clear match.
+    private func openNotePicker(query: String) {
         guard currentTask != nil else { return flash = "no task to open a note in" }
         view = .tasks
-        // TODO: wire note picker in Step 3 (notePicker = NotePicker(...))
-        flash = "note picker: not yet wired (Step 3)"
+        let entries = isFixture ? Fixtures.noteEntries : noteIndex
+        let taskNotePath = currentTask?.notePath
+        let epicTitle = currentTask?.epic
+        let epicNotePath = epicTitle.flatMap { title in
+            entries.first {
+                $0.name.lowercased() == title.lowercased()
+                    || $0.aliases.contains { $0.lowercased() == title.lowercased() }
+            }?.path
+        }
+        var picker = NotePicker(
+            allEntries: entries,
+            taskNotePath: taskNotePath,
+            epicNotePath: epicNotePath,
+            query: query
+        )
+        // `:note words` with exactly one clear top match: open directly.
+        if !query.isEmpty, picker.rows.count == 1 {
+            openNote(picker.rows[0], show: true)
+            return
+        }
+        notePicker = picker
+    }
+
+    private func answerNotePicker(_ stroke: KeyStroke) {
+        guard var picker = notePicker else { return }
+        switch picker.handle(stroke) {
+        case .handled:
+            notePicker = picker
+        case .cancel:
+            notePicker = nil
+        case let .open(entry, show: show):
+            notePicker = nil
+            openNote(entry, show: show)
+        }
+    }
+
+    private func openNote(_ entry: NoteEntry, show: Bool) {
+        guard let task = currentTask else { return }
+        var layout = layouts[task.id] ?? TaskLayout()
+        layout.showNote(path: entry.path, title: entry.name, directory: task.directory, show: show)
+        commit(.layoutChanged(task: task.id, layout))
+    }
+
+    func cancelNotePicker() { notePicker = nil }
+
+    /// A tap on a row in `NotePickerView`: open the note and show it.
+    func openNoteEntry(_ entry: NoteEntry) {
+        notePicker = nil
+        openNote(entry, show: true)
     }
 
     /// Keys for the focused Note tab.
@@ -3171,7 +3224,7 @@ final class AppModel {
     /// Whether a click on a list may act: not while a dialog or form has the keyboard.
     private var clicksReachLists: Bool {
         newTask == nil && confirmation == nil && resume == nil && firstRun == nil && linkPicker == nil
-            && tabPicker == nil
+            && notePicker == nil && tabPicker == nil
     }
 
     /// A click on a task in the sidebar or the rail selects it; a double-click also types into its agent pane.
