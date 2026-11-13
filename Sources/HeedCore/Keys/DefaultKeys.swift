@@ -85,8 +85,8 @@ public enum DefaultKeys {
         ],
         /// A focused Note tab (NORMAL only: notes are read only).
         "note": [
-            ("j", "note.scroll.down"), ("k", "note.scroll.up"),
-            ("<Down>", "note.scroll.down"), ("<Up>", "note.scroll.up"),
+            ("j", "note.line.down"), ("k", "note.line.up"),
+            ("<Down>", "note.line.down"), ("<Up>", "note.line.up"),
             ("<C-d>", "note.scroll.down"), ("<C-u>", "note.scroll.up"),
             ("gg", "note.scroll.top"), ("G", "note.scroll.bottom"),
             ("e", "note.obsidian"), ("y", "note.copy"), ("r", "note.reload"),

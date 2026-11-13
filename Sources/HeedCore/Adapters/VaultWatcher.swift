@@ -10,7 +10,7 @@ public final class VaultWatcher: @unchecked Sendable {
     public enum Change: Sendable, Equatable {
         /// File events in the notes folder, one batch.
         case notes([FileEvent])
-        /// File events in the vault outside the notes folder (notes-tab live reload).
+        /// File events anywhere in the vault, the notes folder included (note tabs and the note index).
         case vault([FileEvent])
         /// The ports file was written (a port reserved by `pk kbn`).
         case ports
@@ -74,23 +74,12 @@ public final class VaultWatcher: @unchecked Sendable {
             guard let info else { return }
             let watcher = Unmanaged<VaultWatcher>.fromOpaque(info).takeUnretainedValue()
             let list = unsafeBitCast(paths, to: NSArray.self) as? [String] ?? []
-            var notesEvents: [FileEvent] = []
-            var vaultEvents: [FileEvent] = []
-            for index in 0 ..< min(count, list.count) {
-                let event = VaultWatcher.event(path: list[index], flags: flags[index])
-                if list[index].hasPrefix(watcher.projects) {
-                    notesEvents.append(event)
-                } else {
-                    vaultEvents.append(event)
-                }
-            }
-            if !notesEvents.isEmpty { watcher.onChange(.notes(notesEvents)) }
-            if !vaultEvents.isEmpty { watcher.onChange(.vault(vaultEvents)) }
+            let events = (0 ..< min(count, list.count)).map { VaultWatcher.event(path: list[$0], flags: flags[$0]) }
+            let (notes, vault) = watcher.split(events)
+            if !notes.isEmpty { watcher.onChange(.notes(notes)) }
+            if !vault.isEmpty { watcher.onChange(.vault(vault)) }
         }
         let flags = FSEventStreamCreateFlags(kFSEventStreamCreateFlagUseCFTypes | kFSEventStreamCreateFlagFileEvents)
-        // Watch both the projects folder and the vault root (when supplied).
-        var watchPaths: [String] = [projects]
-        if let vault, vault != projects, !vault.isEmpty { watchPaths.append(vault) }
         guard let stream = FSEventStreamCreate(
             nil, callback, &context, watchPaths as CFArray, FSEventStreamEventId(kFSEventStreamEventIdSinceNow), 0.2,
             flags
@@ -98,6 +87,24 @@ public final class VaultWatcher: @unchecked Sendable {
         FSEventStreamSetDispatchQueue(stream, queue)
         FSEventStreamStart(stream)
         self.stream = stream
+    }
+
+    /// The vault when the notes folder is inside it (one stream covers both), else both folders.
+    var watchPaths: [String] {
+        guard let vault, !vault.isEmpty else { return [projects] }
+        return Self.isInside(projects, vault) ? [vault] : [projects, vault]
+    }
+
+    /// The notes folder's events (for tasks), and every event in the vault, the notes folder's too (for note tabs).
+    func split(_ events: [FileEvent]) -> (notes: [FileEvent], vault: [FileEvent]) {
+        let notes = events.filter { Self.isInside($0.path, projects) }
+        guard let vault, !vault.isEmpty else { return (notes, []) }
+        return (notes, events.filter { Self.isInside($0.path, vault) })
+    }
+
+    static func isInside(_ path: String, _ folder: String) -> Bool {
+        let folder = folder.hasSuffix("/") ? String(folder.dropLast()) : folder
+        return path == folder || path.hasPrefix(folder + "/")
     }
 
     static func event(path: String, flags: FSEventStreamEventFlags) -> FileEvent {

@@ -9,7 +9,9 @@
   "dependencies": {
     "highlight.js": "^11.11.1",
     "markdown-it": "^14.1.0",
-    "markdown-it-footnote": "^4.0.0"
+    "markdown-it-footnote": "^4.0.0",
+    "markdown-it-mark": "^4.0.0",
+    "mermaid": "^11.17.2"
   },
   "devDependencies": {
     "@types/markdown-it": "^14.1.2",

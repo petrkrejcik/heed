@@ -62,8 +62,10 @@ This page is generated from the code (`mise run shots`).
 | `note.obsidian` | `e` (note) | note tab: open the note in Obsidian |
 | `note.copy` | `y` (note) | note tab: copy the note's absolute path |
 | `note.reload` | `r` (note) | note tab: read the note again |
-| `note.scroll.down` | `j` (note), `<Down>` (note), `<C-d>` (note) | note tab: scroll half a page down |
-| `note.scroll.up` | `k` (note), `<Up>` (note), `<C-u>` (note) | note tab: scroll half a page up |
+| `note.scroll.down` | `<C-d>` (note) | note tab: scroll half a page down |
+| `note.scroll.up` | `<C-u>` (note) | note tab: scroll half a page up |
+| `note.line.down` | `j` (note), `<Down>` (note) | note tab: scroll a few lines down |
+| `note.line.up` | `k` (note), `<Up>` (note) | note tab: scroll a few lines up |
 | `note.scroll.top` | `gg` (note) | note tab: scroll to the top |
 | `note.scroll.bottom` | `G` (note) | note tab: scroll to the bottom |
 | `browser.new` `[url]` |  | new tab in this pane with a web page (no address: type one) |

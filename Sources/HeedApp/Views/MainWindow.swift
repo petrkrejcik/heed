@@ -665,7 +665,8 @@ struct NotePickerView: View {
                     Text("No notes").font(Theme.ui(13)).foregroundStyle(Theme.fg3)
                         .padding(16)
                 } else {
-                    ForEach(Array(rows.prefix(12).enumerated()), id: \.element.path) { index, entry in
+                    let first = max(0, min(picker.cursor - 11, rows.count - 12))
+                    ForEach(Array(rows.enumerated().dropFirst(first).prefix(12)), id: \.element.path) { index, entry in
                         HStack(spacing: 8) {
                             Image(systemName: "doc.text").font(.system(size: 10))
                                 .foregroundStyle(Theme.fg3).frame(width: 14)
@@ -693,7 +694,7 @@ struct NotePickerView: View {
                 HStack(spacing: 14) {
                     hint("↩", "open")
                     hint("⌘↩", "background")
-                    hint("j k", "move")
+                    hint("⌃j ⌃k", "move")
                     hint("⎋", "close")
                 }
                 .padding(16)

@@ -58,29 +58,32 @@ public enum FuzzyMatcher {
         return max(score, 0.001)
     }
 
-    /// Ranks `entries` by how well they match `query`. Entries with no match are excluded.
-    /// `taskNotePath` and `epicNotePath` get a small bonus.
+    /// Ranks `entries` by how well they match `query`. Each word of the query must match the name, an alias or the
+    /// folder, in any order; entries where one doesn't are excluded. `taskNotePath` and `epicNotePath` get a small
+    /// bonus.
     public static func rank(
         entries: [NoteEntry],
         query: String,
         taskNotePath: String? = nil,
         epicNotePath: String? = nil
     ) -> [Result] {
-        guard !query.isEmpty else { return [] }
+        let words = query.split(whereSeparator: \.isWhitespace).map(String.init)
+        guard !words.isEmpty else { return [] }
         var results: [Result] = []
         for entry in entries {
             var best: Double = 0
-            // Name scores highest weight.
-            let nameScore = score(query: query, text: entry.name) * 3
-            if nameScore > best { best = nameScore }
-            // Aliases score second.
-            for alias in entry.aliases {
-                let s = score(query: query, text: alias) * 2
-                if s > best { best = s }
+            for word in words {
+                var wordBest = score(query: word, text: entry.name) * 3
+                for alias in entry.aliases {
+                    wordBest = max(wordBest, score(query: word, text: alias) * 2)
+                }
+                wordBest = max(wordBest, score(query: word, text: entry.folder))
+                guard wordBest > 0 else {
+                    best = 0
+                    break
+                }
+                best += wordBest
             }
-            // Folder scores last.
-            let folderScore = score(query: query, text: entry.folder)
-            if folderScore > best { best = folderScore }
             guard best > 0 else { continue }
             // Small bonus for task note and epic.
             if entry.path == taskNotePath { best += 2 }
@@ -172,9 +175,9 @@ public struct NotePicker: Equatable, Sendable {
             return open(show: true)
         case KeyStroke("CR", .command):
             return open(show: false)
-        case KeyStroke("n", .control), KeyStroke("j"), KeyStroke("Down"):
+        case KeyStroke("n", .control), KeyStroke("j", .control), KeyStroke("Down"):
             moveCursor(by: 1)
-        case KeyStroke("p", .control), KeyStroke("k"), KeyStroke("Up"):
+        case KeyStroke("p", .control), KeyStroke("k", .control), KeyStroke("Up"):
             moveCursor(by: -1)
         case KeyStroke("w", .control):
             dropLastWord()

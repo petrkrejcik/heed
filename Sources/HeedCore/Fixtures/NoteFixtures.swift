@@ -42,21 +42,29 @@ extension Fixtures {
 
     # Fix image upload 403
 
-    > [!note]
-    > Upload goes through the Kibana base path with the XSRF header.
+    > [!note] Maintaining this note
+    > Upload goes through the Kibana base path with the XSRF header. Epic: [[Chat attachments|the epic]].
 
     ## Problem
 
     Uploading an image in the chat fails with **403** when Kibana runs behind a reverse proxy.
-    The fix sends uploads through `kbnFetch` instead of raw `fetch`.
-
-    See [[Chat attachments]] for the epic.
+    The fix sends uploads through `kbnFetch` instead of raw `fetch`. Not [[Archived plan]] any more.
 
     ## Plan
 
     - [x] Add `credentials: 'same-origin'` to the fetch call
     - [x] Pass the XSRF header via `kbnFetch`
     - [ ] Add a test for uploads behind a proxy
+
+    > [!warning]- Proxy setups we don't test
+    > Path rewriting proxies that drop custom headers.
+
+    ```mermaid
+    flowchart LR
+      Chat --> kbnFetch --> Proxy --> Kibana
+    ```
+
+    ![[Kibana main]]
 
     ## Code
 

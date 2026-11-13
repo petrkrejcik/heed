@@ -87,6 +87,8 @@ public enum Commands {
         .init("note.reload", "note tab: read the note again", .panes),
         .init("note.scroll.down", "note tab: scroll half a page down", .panes),
         .init("note.scroll.up", "note tab: scroll half a page up", .panes),
+        .init("note.line.down", "note tab: scroll a few lines down", .panes),
+        .init("note.line.up", "note tab: scroll a few lines up", .panes),
         .init("note.scroll.top", "note tab: scroll to the top", .panes),
         .init("note.scroll.bottom", "note tab: scroll to the bottom", .panes),
         .init("browser.new", "new tab in this pane with a web page (no address: type one)", .panes, arguments: "[url]"),

@@ -348,12 +348,24 @@ struct NotePickerTests {
         }
     }
 
-    @Test func jkMoveTheCursor() {
+    @Test func controlJKMoveTheCursorAndPlainJKAreTyped() {
         var p = picker()
-        #expect(p.handle(KeyStroke("j")) == .handled)
+        _ = p.handle(KeyStroke("j", .control))
         #expect(p.cursor == 1)
-        #expect(p.handle(KeyStroke("k")) == .handled)
+        _ = p.handle(KeyStroke("k", .control))
         #expect(p.cursor == 0)
+        _ = p.handle(KeyStroke("j"))
+        _ = p.handle(KeyStroke("k"))
+        #expect(p.query == "jk")
+    }
+
+    @Test func eachWordMatchesOnItsOwn() {
+        let entries = [
+            NoteEntry(path: "/v/a.md", name: "Fix image upload 403", relativePath: "Projects/a", folder: "Projects"),
+            NoteEntry(path: "/v/b.md", name: "Image gallery", relativePath: "b", folder: ""),
+        ]
+        let rows = NotePicker(allEntries: entries, taskNotePath: nil, epicNotePath: nil, query: "403 image").rows
+        #expect(rows.map(\.path) == ["/v/a.md"])
     }
 
     @Test func controlNPMoveTheCursor() {
@@ -367,11 +379,11 @@ struct NotePickerTests {
     @Test func cursorDoesNotGoOutOfBounds() {
         var p = picker()
         for _ in 0 ..< 10 {
-            _ = p.handle(KeyStroke("j"))
+            _ = p.handle(KeyStroke("Down"))
         }
         #expect(p.cursor == entries.count - 1)
         for _ in 0 ..< 10 {
-            _ = p.handle(KeyStroke("k"))
+            _ = p.handle(KeyStroke("Up"))
         }
         #expect(p.cursor == 0)
     }
@@ -453,8 +465,10 @@ struct NoteCommandTests {
                 return nil
             }
         }
-        #expect(run("j") == ["note.scroll.down"])
-        #expect(run("k") == ["note.scroll.up"])
+        #expect(run("j") == ["note.line.down"])
+        #expect(run("k") == ["note.line.up"])
+        #expect(run("<C-d>") == ["note.scroll.down"])
+        #expect(run("<C-u>") == ["note.scroll.up"])
         #expect(run("e") == ["note.obsidian"])
         #expect(run("y") == ["note.copy"])
         #expect(run("r") == ["note.reload"])
@@ -467,5 +481,79 @@ struct NoteCommandTests {
         let resolved = CommandAliases.resolve("note chat")
         #expect(resolved.name == "note.pick")
         #expect(resolved.arguments == ["chat"])
+    }
+}
+
+// MARK: - NoteDocument
+
+struct NoteDocumentTests {
+    private let entries = [
+        NoteEntry(path: "/v/Projects/Task.md", name: "Task", relativePath: "Projects/Task", folder: "Projects"),
+        NoteEntry(path: "/v/Epic.md", name: "Epic", relativePath: "Epic"),
+        NoteEntry(path: "/v/Inner.md", name: "Inner", relativePath: "Inner"),
+    ]
+    private let files = [
+        "/v/Projects/Task.md": "See [[Epic|the epic]] and [[Missing]].\n\n![[Epic]]\n\n![[shot.png|300]] ![[Task]]",
+        "/v/Epic.md": "Epic text with [[Inner]].",
+    ]
+
+    private func load() -> NoteDocument {
+        NoteDocument.load(
+            path: "/v/Projects/Task.md", entries: entries, read: { files[$0] },
+            findFile: { $0 == "shot.png" ? "/v/attachments/shot.png" : nil }
+        )
+    }
+
+    @Test func linksResolveAsWritten() {
+        let document = load()
+        #expect(document.links["Epic|the epic"] == .some("/v/Epic.md"))
+        #expect(document.links["Missing"] == .some(nil))
+    }
+
+    @Test func anEmbeddedNoteBringsItsTextAndItsLinks() {
+        let document = load()
+        #expect(document.embeds["Epic"] == .note("Epic text with [[Inner]]."))
+        #expect(document.links["Inner"] == .some("/v/Inner.md"))
+    }
+
+    @Test func anImageEmbedIsTheFileFoundByName() {
+        #expect(load().embeds["shot.png|300"] == .file("/v/attachments/shot.png"))
+    }
+
+    @Test func aNoteDoesNotEmbedItself() {
+        #expect(load().embeds["Task"] == nil)
+    }
+
+    @Test func attachmentsAreFoundAnywhereInTheVaultButNotInDotFolders() throws {
+        let vault = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString).path
+        defer { try? FileManager.default.removeItem(atPath: vault) }
+        let files = FileManager.default
+        try files.createDirectory(atPath: vault + "/attachments", withIntermediateDirectories: true)
+        try files.createDirectory(atPath: vault + "/.trash", withIntermediateDirectories: true)
+        files.createFile(atPath: vault + "/attachments/shot.png", contents: Data())
+        files.createFile(atPath: vault + "/.trash/old.png", contents: Data())
+        let note = vault + "/Projects/Task.md"
+        #expect(NoteIndex.findFile("shot.png", notePath: note, vault: vault)?
+            .hasSuffix("/attachments/shot.png") == true)
+        #expect(NoteIndex.findFile("old.png", notePath: note, vault: vault) == nil)
+    }
+}
+
+// MARK: - VaultWatcher
+
+struct VaultWatcherSplitTests {
+    @Test func oneStreamCoversTheVaultAndTheNotesFolderInsideIt() {
+        let watcher = VaultWatcher(projects: "/v/Projects", portsFile: "/p", vault: "/v") { _ in }
+        #expect(watcher.watchPaths == ["/v"])
+    }
+
+    @Test func noteTabsHearAboutTaskNotesToo() {
+        let watcher = VaultWatcher(projects: "/v/Projects", portsFile: "/p", vault: "/v") { _ in }
+        let task = FileEvent(path: "/v/Projects/Task.md", isDirectory: false, structural: false)
+        let other = FileEvent(path: "/v/Other.md", isDirectory: false, structural: false)
+        let sibling = FileEvent(path: "/v/Projects-old/X.md", isDirectory: false, structural: false)
+        let (notes, vault) = watcher.split([task, other, sibling])
+        #expect(notes == [task])
+        #expect(vault == [task, other, sibling])
     }
 }

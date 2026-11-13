@@ -2,21 +2,25 @@
  * Heed Note tab renderer.
  *
  * Swift sends: { markdown, path, links, embeds, scroll? }
- *   links:  { "[[target]]raw" -> absolutePath | null }
- *   embeds: { "target" -> { markdown?: string, imageURL?: string } }
+ *   links:  { "<inside of [[…]]>" -> absolutePath | null }
+ *   embeds: { "<inside of ![[…]]>" -> { markdown?: string, imageURL?: string } }
  *   scroll?: number (0-1 fraction to restore)
  *
  * JS posts back (via window.webkit.messageHandlers.heed.postMessage):
  *   { type: "ready" }
  *   { type: "shown" }
- *   { type: "link", target: string, url?: string, newTab: boolean }  — wikilink or web link clicked
+ *   { type: "link", target, path, newTab }  a wikilink clicked
+ *   { type: "link", url, newTab }           a web link clicked
  */
 
 import MarkdownIt from "markdown-it";
+import type StateCore from "markdown-it/lib/rules_core/state_core.mjs";
+import type StateInline from "markdown-it/lib/rules_inline/state_inline.mjs";
+import type Token from "markdown-it/lib/token.mjs";
 import footnotePlugin from "markdown-it-footnote";
+import markPlugin from "markdown-it-mark";
 import hljs from "highlight.js/lib/core";
 
-// Register only the languages we care about to keep the bundle small.
 import typescript from "highlight.js/lib/languages/typescript";
 import javascript from "highlight.js/lib/languages/javascript";
 import json from "highlight.js/lib/languages/json";
@@ -27,430 +31,364 @@ import python from "highlight.js/lib/languages/python";
 import css from "highlight.js/lib/languages/css";
 import markdownLang from "highlight.js/lib/languages/markdown";
 import diff from "highlight.js/lib/languages/diff";
-hljs.registerLanguage("typescript", typescript);
-hljs.registerLanguage("ts", typescript);
-hljs.registerLanguage("javascript", javascript);
-hljs.registerLanguage("js", javascript);
-hljs.registerLanguage("json", json);
-hljs.registerLanguage("bash", bash);
-hljs.registerLanguage("shell", bash);
-hljs.registerLanguage("yaml", yaml);
-hljs.registerLanguage("swift", swift);
-hljs.registerLanguage("python", python);
-hljs.registerLanguage("css", css);
-hljs.registerLanguage("markdown", markdownLang);
-hljs.registerLanguage("diff", diff);
+for (const [name, lang] of [
+  ["typescript", typescript], ["ts", typescript], ["tsx", typescript],
+  ["javascript", javascript], ["js", javascript], ["jsx", javascript],
+  ["json", json], ["bash", bash], ["sh", bash], ["shell", bash], ["zsh", bash],
+  ["yaml", yaml], ["yml", yaml], ["swift", swift], ["python", python], ["py", python],
+  ["css", css], ["scss", css], ["markdown", markdownLang], ["md", markdownLang], ["diff", diff],
+] as const) {
+  hljs.registerLanguage(name, lang);
+}
 
-// ── Types ──────────────────────────────────────────────────────────────────
+interface Embed {
+  markdown?: string;
+  imageURL?: string;
+}
 
 interface NotePayload {
   markdown: string;
   path: string;
-  /** resolved: target -> absolute path or null */
   links: Record<string, string | null>;
-  /** embeds: target -> { markdown?: string; imageURL?: string } */
-  embeds: Record<string, { markdown?: string; imageURL?: string }>;
-  /** 0-1 scroll fraction to restore */
+  embeds: Record<string, Embed>;
   scroll?: number;
 }
-
-// ── webkit bridge ──────────────────────────────────────────────────────────
 
 function post(msg: object) {
   (window as any).webkit?.messageHandlers?.heed?.postMessage(msg);
 }
 
-// ── markdown-it setup ──────────────────────────────────────────────────────
+// The note being rendered: the inline rules read its links and embeds.
+let current: NotePayload = { markdown: "", path: "", links: {}, embeds: {} };
+let embedDepth = 0;
 
 const md: MarkdownIt = new MarkdownIt({
   html: false,
   linkify: true,
   typographer: false,
   highlight(code: string, lang: string): string {
-    if (lang && hljs.getLanguage(lang)) {
-      try {
-        return (
-          '<pre class="hljs"><code>' +
-          hljs.highlight(code, { language: lang, ignoreIllegals: true }).value +
-          "</code></pre>"
-        );
-      } catch {}
+    const name = (lang || "").toLowerCase();
+    if (name === "mermaid") {
+      return `<pre class="heed-mermaid-source">${md.utils.escapeHtml(code)}</pre>`;
     }
-    return (
-      '<pre class="hljs"><code>' +
-      md.utils.escapeHtml(code) +
-      "</code></pre>"
-    );
+    const body = hljs.getLanguage(name)
+      ? hljs.highlight(code, { language: name, ignoreIllegals: true }).value
+      : md.utils.escapeHtml(code);
+    return `<pre class="hljs"><code>${body}</code></pre>`;
   },
 });
 
 md.use(footnotePlugin);
+md.use(markPlugin);
+md.inline.ruler.before("link", "wikilink", wikilinkRule);
+md.inline.ruler.before("link", "tag", tagRule);
+md.core.ruler.push("callouts", calloutRule);
+md.core.ruler.push("task_lists", taskListRule);
 
-// ── Custom plugins ─────────────────────────────────────────────────────────
+// ── Wikilinks and embeds: [[target#heading|alias]], ![[target]] ─────────────
 
-/** ==highlight== → <mark> */
-md.core.ruler.push("obsidian_highlight", (state) => {
-  for (const token of state.tokens) {
-    if (token.type === "inline" && token.children) {
-      token.children = processInlineTokens(token.children);
-    }
+function wikilinkRule(state: StateInline, silent: boolean): boolean {
+  const src = state.src;
+  let pos = state.pos;
+  const embed = src.charCodeAt(pos) === 0x21 /* ! */;
+  if (embed) pos++;
+  if (src.charCodeAt(pos) !== 0x5b || src.charCodeAt(pos + 1) !== 0x5b) return false;
+  const end = src.indexOf("]]", pos + 2);
+  if (end < 0) return false;
+  const raw = src.slice(pos + 2, end);
+  if (!raw || raw.includes("\n") || raw.includes("[")) return false;
+  if (!silent) {
+    const token = state.push("html_inline", "", 0);
+    token.content = embed ? renderEmbed(raw) : renderWikilink(raw);
   }
-});
-
-function processInlineTokens(tokens: any[]): any[] {
-  const result: any[] = [];
-  let i = 0;
-  while (i < tokens.length) {
-    const tok = tokens[i];
-    if (tok.type === "text") {
-      let content = tok.content as string;
-      // Hide Obsidian comments: %%...%%
-      content = content.replace(/%%[^%]*%%/g, "");
-      // ==highlight== → <mark>
-      content = content.replace(/==(.*?)==/g, "<mark>$1</mark>");
-      // #tag (at word boundary, not inside code)
-      content = content.replace(
-        /(?<!\w)#([a-zA-Z][a-zA-Z0-9_/-]*)/g,
-        '<span class="heed-tag">#$1</span>'
-      );
-      tok.content = content;
-    }
-    result.push(tok);
-    i++;
-  }
-  return result;
+  state.pos = end + 2;
+  return true;
 }
 
-/** Wikilinks: [[target]], [[target|alias]], [[target#heading]] */
-function wikilinkPlugin(md: MarkdownIt, links: Record<string, string | null>) {
-  md.core.ruler.after("obsidian_highlight", "wikilinks", (state) => {
-    for (const token of state.tokens) {
-      if (token.type === "inline" && token.children) {
-        token.children = expandWikilinks(token.children, links);
-      }
+function linkLabel(raw: string): string {
+  const pipe = raw.lastIndexOf("|");
+  if (pipe >= 0) return raw.slice(pipe + 1);
+  const [target, heading] = raw.split("#", 2);
+  if (heading === undefined) return target;
+  return target ? `${target} › ${heading}` : heading;
+}
+
+function renderWikilink(raw: string): string {
+  const resolved = current.links[raw];
+  const label = escHtml(linkLabel(raw));
+  if (resolved) {
+    return `<a href="#" class="heed-wikilink" data-target="${escAttr(raw)}" data-path="${escAttr(resolved)}">${label}</a>`;
+  }
+  return `<span class="heed-wikilink-unresolved" title="No note with this name">${label}</span>`;
+}
+
+function renderEmbed(raw: string): string {
+  const embed = current.embeds[raw];
+  const target = raw.split("|")[0];
+  if (embed?.imageURL) {
+    const width = raw.includes("|") ? Number(raw.slice(raw.lastIndexOf("|") + 1)) : NaN;
+    const size = Number.isFinite(width) && width > 0 ? ` width="${width}"` : "";
+    return `<img src="${escAttr(embed.imageURL)}" class="heed-embed-image" alt="${escAttr(target)}"${size}>`;
+  }
+  if (embed?.markdown !== undefined && embedDepth === 0) {
+    embedDepth++;
+    try {
+      const { body } = extractFrontmatter(embed.markdown);
+      embedded.push(md.render(body));
+      return `<span class="heed-embed-slot" data-index="${embedded.length - 1}"></span>`;
+    } finally {
+      embedDepth--;
     }
+  }
+  return renderWikilink(target);
+}
+
+// Embedded notes are blocks; markdown puts them inside a paragraph, so they go in after the HTML is parsed.
+let embedded: string[] = [];
+
+function placeEmbeds(root: HTMLElement) {
+  root.querySelectorAll<HTMLElement>("span.heed-embed-slot").forEach((slot) => {
+    const block = document.createElement("div");
+    block.className = "heed-embed";
+    block.innerHTML = embedded[Number(slot.dataset.index)] ?? "";
+    const paragraph = slot.parentElement;
+    if (paragraph?.tagName === "P" && paragraph.childNodes.length === 1) paragraph.replaceWith(block);
+    else slot.replaceWith(block);
   });
 }
 
-function expandWikilinks(
-  tokens: any[],
-  links: Record<string, string | null>
-): any[] {
-  const result: any[] = [];
-  for (const tok of tokens) {
-    if (tok.type !== "text") {
-      result.push(tok);
+// ── #tags ──────────────────────────────────────────────────────────────────
+
+const tagChar = /[\p{L}\p{N}_\/-]/u;
+
+function tagRule(state: StateInline, silent: boolean): boolean {
+  const src = state.src;
+  const start = state.pos;
+  if (src.charCodeAt(start) !== 0x23 /* # */) return false;
+  if (start > 0 && !/\s|[(\[,]/.test(src[start - 1])) return false;
+  let end = start + 1;
+  while (end < src.length && tagChar.test(src[end])) end++;
+  const name = src.slice(start + 1, end);
+  if (!name || /^\d+$/.test(name)) return false;
+  if (!silent) {
+    const token = state.push("html_inline", "", 0);
+    token.content = `<span class="heed-tag">#${escHtml(name)}</span>`;
+  }
+  state.pos = end;
+  return true;
+}
+
+// ── Callouts: > [!type]± Title ──────────────────────────────────────────────
+
+const calloutMarker = /^\[!([\w-]+)\]([+-]?)[ \t]*/;
+
+function calloutRule(state: StateCore) {
+  const tokens = state.tokens;
+  for (let i = 0; i < tokens.length; i++) {
+    const open = tokens[i];
+    if (open.type !== "blockquote_open") continue;
+    const inline = tokens[i + 2];
+    if (tokens[i + 1]?.type !== "paragraph_open" || inline?.type !== "inline") continue;
+    const first = inline.children?.[0];
+    const marker = first?.type === "text" ? first.content.match(calloutMarker) : null;
+    if (!first || !marker) continue;
+
+    const type = marker[1].toLowerCase();
+    const fold = marker[2];
+    first.content = first.content.slice(marker[0].length);
+
+    // The title is the rest of the first line; the body starts after its line break.
+    const children = inline.children!;
+    const breakAt = children.findIndex((t) => t.type === "softbreak" || t.type === "hardbreak");
+    const titleChildren = breakAt < 0 ? children : children.slice(0, breakAt);
+    const bodyChildren = breakAt < 0 ? [] : children.slice(breakAt + 1);
+    const titleEmpty = titleChildren.every((t) => t.type === "text" && !t.content.trim());
+
+    const title = new state.Token("inline", "", 0);
+    title.children = titleEmpty ? [textToken(state, capitalize(type))] : titleChildren;
+    title.content = "";
+
+    const close = findClose(tokens, i);
+    const tag = fold ? "details" : "div";
+    open.tag = tag;
+    tokens[close].tag = tag;
+    open.attrSet("class", `heed-callout heed-callout-${type}`);
+    open.attrSet("data-callout", type);
+    if (fold === "+") open.attrSet("open", "");
+
+    const titleTag = fold ? "summary" : "div";
+    const before = [
+      html(state, `<${titleTag} class="heed-callout-title"><span class="heed-callout-icon"></span>`),
+      title,
+      html(state, `</${titleTag}><div class="heed-callout-content">`),
+    ];
+    if (bodyChildren.length) {
+      inline.children = bodyChildren;
+    } else {
+      // The first paragraph was only the title: drop it.
+      tokens.splice(i + 1, 3);
+    }
+    tokens.splice(i + 1, 0, ...before);
+    const newClose = findClose(tokens, i);
+    tokens.splice(newClose, 0, html(state, "</div>"));
+  }
+}
+
+function findClose(tokens: Token[], openIndex: number): number {
+  let depth = 0;
+  for (let j = openIndex; j < tokens.length; j++) {
+    if (tokens[j].type === "blockquote_open") depth++;
+    if (tokens[j].type === "blockquote_close" && --depth === 0) return j;
+  }
+  return tokens.length - 1;
+}
+
+// ── Task lists: - [ ] / - [x] ───────────────────────────────────────────────
+
+const taskMarker = /^\[([ xX])\][ \t]/;
+
+function taskListRule(state: StateCore) {
+  const tokens = state.tokens;
+  for (let i = 2; i < tokens.length; i++) {
+    const inline = tokens[i];
+    if (inline.type !== "inline" || tokens[i - 1].type !== "paragraph_open" || tokens[i - 2].type !== "list_item_open") {
       continue;
     }
-    const text = tok.content as string;
-    const parts = splitByWikilinks(text);
-    for (const part of parts) {
-      if (part.type === "text") {
-        const t = Object.assign({}, tok);
-        t.content = part.value;
-        result.push(t);
-      } else {
-        // wikilink
-        const raw = part.raw!;
-        const target = part.target!;
-        const alias = part.alias || target;
-        const resolved = links[raw];
-        const tokenOpen = newToken("html_inline", "");
-        if (resolved !== null && resolved !== undefined) {
-          tokenOpen.content = `<a href="#" class="heed-wikilink" data-target="${escAttr(raw)}" data-path="${escAttr(resolved || "")}">${escHtml(alias)}</a>`;
-        } else {
-          tokenOpen.content = `<span class="heed-wikilink-unresolved" data-target="${escAttr(raw)}">${escHtml(alias)}</span>`;
-        }
-        result.push(tokenOpen);
+    const first = inline.children?.[0];
+    const marker = first?.type === "text" ? first.content.match(taskMarker) : null;
+    if (!first || !marker) continue;
+    first.content = first.content.slice(marker[0].length);
+    const checked = marker[1] !== " ";
+    inline.children!.unshift(
+      html(state, `<input type="checkbox" disabled${checked ? " checked" : ""} class="heed-task-checkbox">`)
+    );
+    tokens[i - 2].attrSet("class", checked ? "heed-task heed-task-done" : "heed-task");
+    for (let j = i - 3; j >= 0; j--) {
+      const t = tokens[j];
+      if ((t.type === "bullet_list_open" || t.type === "ordered_list_open") && t.level === tokens[i - 2].level - 1) {
+        t.attrSet("class", "heed-task-list");
+        break;
       }
     }
   }
-  return result;
 }
 
-interface TextPart {
-  type: "text" | "wikilink";
-  value: string;
-  raw?: string;
-  target?: string;
-  alias?: string;
+function html(state: StateCore, content: string): Token {
+  const token = new state.Token("html_inline", "", 0);
+  token.content = content;
+  return token;
 }
 
-function splitByWikilinks(text: string): TextPart[] {
-  const parts: TextPart[] = [];
-  let last = 0;
-  const re = /\[\[([^\]\n]+)\]\]/g;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(text)) !== null) {
-    if (m.index > last) parts.push({ type: "text", value: text.slice(last, m.index) });
-    const inner = m[1];
-    const raw = inner;
-    // Strip heading and alias.
-    let target = inner;
-    let alias: string | undefined;
-    if (target.includes("|")) {
-      const idx = target.lastIndexOf("|");
-      alias = target.slice(idx + 1);
-      target = target.slice(0, idx);
-    }
-    if (target.includes("#")) target = target.slice(0, target.indexOf("#"));
-    parts.push({ type: "wikilink", value: "", raw, target, alias: alias || target });
-    last = m.index + m[0].length;
-  }
-  if (last < text.length) parts.push({ type: "text", value: text.slice(last) });
-  return parts;
+function textToken(state: StateCore, content: string): Token {
+  const token = new state.Token("text", "", 0);
+  token.content = content;
+  return token;
 }
 
-/** Obsidian callouts: > [!type] Title */
-function calloutPlugin(md: MarkdownIt) {
-  const origBlockquote = md.renderer.rules.blockquote_open!;
-  md.core.ruler.after("wikilinks", "callouts", (state) => {
-    const tokens = state.tokens;
-    for (let i = 0; i < tokens.length; i++) {
-      if (tokens[i].type !== "blockquote_open") continue;
-      // Find the first inline token inside.
-      let j = i + 1;
-      while (j < tokens.length && tokens[j].type !== "blockquote_close") {
-        if (tokens[j].type === "inline") {
-          const content = tokens[j].content;
-          const m = content.match(/^\[!([a-zA-Z]+)\]([+-]?)(.*)$/);
-          if (m) {
-            const type = m[1].toLowerCase();
-            const foldable = m[2];
-            const title = m[3].trim() || capitalize(type);
-            tokens[i].attrSet("class", `heed-callout heed-callout-${type}`);
-            tokens[i].attrSet("data-callout", type);
-            if (foldable) tokens[i].attrSet("data-foldable", foldable);
-            // Replace first inline with just a title element.
-            tokens[j].content = "";
-            const titleToken = new state.Token("html_block", "", 0);
-            titleToken.content = `<div class="heed-callout-title"><span class="heed-callout-icon"></span>${escHtml(title)}</div>`;
-            tokens.splice(j, 0, titleToken);
-          }
-          break;
-        }
-        j++;
-      }
-    }
-  });
-}
+// ── Frontmatter as properties ───────────────────────────────────────────────
 
-/** Task lists: - [ ] / - [x] */
-function taskListPlugin(md: MarkdownIt) {
-  md.core.ruler.push("task_lists", (state) => {
-    const tokens = state.tokens;
-    for (let i = 0; i < tokens.length; i++) {
-      if (tokens[i].type === "bullet_list_open") {
-        processListTokens(tokens, i, state);
-      }
-    }
-  });
-}
-
-function processListTokens(tokens: any[], listStart: number, state: any) {
-  let i = listStart + 1;
-  while (i < tokens.length && tokens[i].type !== "bullet_list_close") {
-    if (tokens[i].type === "inline") {
-      const c = tokens[i].content;
-      const checked = c.startsWith("[x] ") || c.startsWith("[X] ");
-      const unchecked = c.startsWith("[ ] ");
-      if (checked || unchecked) {
-        tokens[i].content = c.slice(4);
-        const prefix = new state.Token("html_inline", "", 0);
-        prefix.content = `<input type="checkbox" disabled${checked ? " checked" : ""} class="heed-task-checkbox"> `;
-        if (!tokens[i].children) tokens[i].children = [];
-        tokens[i].children!.unshift(prefix);
-      }
-    }
-    i++;
-  }
-}
-
-/** Frontmatter: parse and render as a properties table. */
-function extractFrontmatter(markdown: string): {
-  body: string;
-  props: Record<string, any>;
-} {
-  if (!markdown.startsWith("---")) return { body: markdown, props: {} };
-  const end = markdown.indexOf("\n---", 4);
-  if (end < 0) return { body: markdown, props: {} };
-  const yaml = markdown.slice(4, end).trim();
-  const body = markdown.slice(end + 4).trimStart();
-  const props: Record<string, any> = {};
-  let currentKey = "";
-  let inList = false;
-  for (const line of yaml.split("\n")) {
-    const kv = line.match(/^([a-zA-Z_][a-zA-Z0-9_-]*):\s*(.*)/);
+function extractFrontmatter(markdown: string): { body: string; props: [string, string[]][] } {
+  const match = markdown.match(/^---[ \t]*\r?\n([\s\S]*?)\r?\n(?:---|\.\.\.)[ \t]*(?:\r?\n|$)/);
+  if (!match) return { body: markdown, props: [] };
+  const props: [string, string[]][] = [];
+  for (const line of match[1].split(/\r?\n/)) {
+    const kv = line.match(/^([A-Za-z_][\w -]*):\s*(.*)$/);
     if (kv) {
-      currentKey = kv[1];
-      const val = kv[2].trim();
-      if (val === "" || val === null) {
-        inList = true;
-        props[currentKey] = [];
-      } else if (val.startsWith("[")) {
-        inList = false;
-        props[currentKey] = val
-          .slice(1, val.lastIndexOf("]"))
-          .split(",")
-          .map((s) => s.trim().replace(/^["']|["']$/g, ""))
-          .filter(Boolean);
-      } else {
-        inList = false;
-        props[currentKey] = val.replace(/^["']|["']$/g, "");
-      }
-    } else if (inList && line.trim().startsWith("- ")) {
-      (props[currentKey] as string[]).push(line.trim().slice(2));
+      const value = kv[2].trim();
+      if (!value) props.push([kv[1], []]);
+      else if (value.startsWith("[") && value.endsWith("]") && !value.startsWith("[[")) {
+        props.push([kv[1], value.slice(1, -1).split(",").map(unquote).filter(Boolean)]);
+      } else props.push([kv[1], [unquote(value)]]);
+    } else if (props.length && /^\s+-\s+/.test(line)) {
+      props[props.length - 1][1].push(unquote(line.replace(/^\s+-\s+/, "")));
     }
   }
-  return { body, props };
+  return { body: markdown.slice(match[0].length), props };
 }
 
-function renderFrontmatter(
-  props: Record<string, any>,
-  links: Record<string, string | null>
-): string {
-  const skipped = new Set(["type", "task_id"]);
-  const entries = Object.entries(props).filter(([k]) => !skipped.has(k));
-  if (entries.length === 0) return "";
-  let html = '<div class="heed-properties">\n';
-  for (const [key, value] of entries) {
-    const label = key.replace(/_/g, " ");
-    const values = Array.isArray(value) ? value : [value];
-    const rendered = values
-      .map((v) => {
-        const s = String(v);
-        // Render wikilinks inside property values.
-        const wikilinkMatch = s.match(/^\[\[([^\]]+)\]\]$/) || s.match(/^\[\[([^\]]+)\]\]$/);
-        if (wikilinkMatch) {
-          const raw = wikilinkMatch[1];
-          const resolved = links[raw];
-          if (resolved) {
-            return `<a href="#" class="heed-wikilink" data-target="${escAttr(raw)}" data-path="${escAttr(resolved)}">${escHtml(raw.includes("|") ? raw.slice(raw.lastIndexOf("|") + 1) : raw)}</a>`;
-          }
-          return `<span class="heed-wikilink-unresolved">${escHtml(raw)}</span>`;
-        }
-        return escHtml(s);
-      })
-      .join(", ");
-    html += `  <div class="heed-property"><span class="heed-property-key">${escHtml(label)}</span><span class="heed-property-value">${rendered}</span></div>\n`;
-  }
-  html += "</div>\n";
-  return html;
+function unquote(s: string): string {
+  return s.trim().replace(/^(["'])(.*)\1$/, "$2");
 }
 
-// ── Utilities ──────────────────────────────────────────────────────────────
+const hiddenProperties = new Set(["type", "task_id"]);
 
-function newToken(type: string, tag: string): any {
-  return { type, tag, attrs: null, map: null, level: 0, children: null, content: "", markup: "", info: "", meta: null, block: false, hidden: false };
+function renderProperties(props: [string, string[]][]): string {
+  const rows = props.filter(([key, values]) => !hiddenProperties.has(key) && values.length);
+  if (!rows.length) return "";
+  const items = rows.map(([key, values]) => {
+    const rendered = values.map((value) => {
+      if (key === "tags") return `<span class="heed-tag">#${escHtml(value.replace(/^#/, ""))}</span>`;
+      const wikilink = value.match(/^\[\[([^\]]+)\]\]$/);
+      if (wikilink) return renderWikilink(wikilink[1]);
+      if (/^https?:\/\//.test(value)) return `<a href="${escAttr(value)}">${escHtml(value)}</a>`;
+      return escHtml(value);
+    });
+    const separator = key === "tags" ? " " : ", ";
+    return `<div class="heed-property"><span class="heed-property-key">${escHtml(key.replace(/_/g, " "))}</span><span class="heed-property-value">${rendered.join(separator)}</span></div>`;
+  });
+  return `<div class="heed-properties">${items.join("")}</div>`;
 }
 
-function escAttr(s: string): string {
-  return s.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
-}
+// ── Mermaid, loaded only when a note has a diagram ──────────────────────────
 
-function escHtml(s: string): string {
-  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-}
+let mermaidLoading: Promise<any> | null = null;
 
-function capitalize(s: string): string {
-  return s.charAt(0).toUpperCase() + s.slice(1);
-}
-
-// ── Mermaid lazy loading ───────────────────────────────────────────────────
-
-let mermaidLoaded = false;
-
-async function loadMermaid(): Promise<void> {
-  if (mermaidLoaded) return;
-  mermaidLoaded = true;
-  return new Promise((resolve) => {
+function loadMermaid(): Promise<any> {
+  mermaidLoading ??= new Promise((resolve) => {
     const script = document.createElement("script");
-    // mermaid.js lives next to note.js in the bundle folder.
     script.src = "mermaid.js";
     script.onload = () => {
-      (window as any).mermaid?.initialize({
-        startOnLoad: false,
-        theme: "dark",
-        securityLevel: "loose",
-      });
-      resolve();
+      const mermaid = (window as any).mermaid;
+      mermaid?.initialize({ startOnLoad: false, theme: "dark", securityLevel: "strict" });
+      resolve(mermaid);
     };
-    script.onerror = () => resolve();
+    script.onerror = () => resolve(null);
     document.head.appendChild(script);
+  });
+  return mermaidLoading;
+}
+
+async function renderMermaid(): Promise<void> {
+  const sources = Array.from(document.querySelectorAll<HTMLElement>("pre.heed-mermaid-source"));
+  if (!sources.length) return;
+  const mermaid = await loadMermaid();
+  if (!mermaid) return;
+  for (const [index, source] of sources.entries()) {
+    try {
+      const { svg } = await mermaid.render(`heed-mermaid-${Date.now()}-${index}`, source.textContent || "");
+      const figure = document.createElement("div");
+      figure.className = "heed-mermaid";
+      figure.innerHTML = svg;
+      source.replaceWith(figure);
+    } catch {
+      source.classList.add("heed-mermaid-failed");
+    }
+  }
+}
+
+// ── Rendering ───────────────────────────────────────────────────────────────
+
+function resolveImageSources(root: HTMLElement, notePath: string) {
+  const folder = notePath.slice(0, notePath.lastIndexOf("/") + 1);
+  root.querySelectorAll<HTMLImageElement>("img:not(.heed-embed-image)").forEach((img) => {
+    const src = img.getAttribute("src") || "";
+    if (!src || /^[a-z][\w+.-]*:/i.test(src)) return;
+    const absolute = src.startsWith("/") ? src : folder + decodeURI(src);
+    img.src = "heed-vault://" + encodeURI(absolute);
   });
 }
 
-async function renderMermaid() {
-  const pre = Array.from(document.querySelectorAll("pre.hljs code.language-mermaid")).concat(
-    Array.from(document.querySelectorAll("pre code.language-mermaid"))
-  ) as HTMLElement[];
-  if (pre.length === 0) return;
-  await loadMermaid();
-  const mermaid = (window as any).mermaid;
-  if (!mermaid) return;
-  for (const el of pre) {
-    const container = document.createElement("div");
-    container.className = "heed-mermaid";
-    container.textContent = el.textContent || "";
-    el.closest("pre")?.replaceWith(container);
-  }
-  try {
-    await mermaid.run({ nodes: document.querySelectorAll(".heed-mermaid") });
-  } catch {}
-}
-
-// ── Main renderer ──────────────────────────────────────────────────────────
-
-function render(payload: NotePayload) {
-  const { body, props } = extractFrontmatter(payload.markdown);
-
-  // Register plugins with current links map.
-  // Re-register each render to pick up fresh link resolutions.
-  const mdLocal = md;
-  // We re-use the same md instance; wikilink plugin reads closure-captured links.
-  const links = payload.links;
-  const linksForWikilinks: Record<string, string | null> = {};
-  for (const [raw, resolved] of Object.entries(links)) {
-    linksForWikilinks[raw] = resolved;
-  }
-
-  // Apply plugins if not already registered.
-  // Order matters: wikilinks must be registered before callouts (callouts uses ruler.after("wikilinks")).
-  if (!(md as any).__heedPluginsApplied) {
-    (md as any).__heedPluginsApplied = true;
-    md.use((md: MarkdownIt) => wikilinkPlugin(md, linksForWikilinks));
-    md.use(calloutPlugin);
-    md.use(taskListPlugin);
-  } else {
-    // Update the links map in place (the plugin captures the reference).
-    for (const k of Object.keys(linksForWikilinks)) {
-      (md as any).__heedLinks[k] = linksForWikilinks[k];
-    }
-  }
-  (md as any).__heedLinks = linksForWikilinks;
-
-  const propsHtml = renderFrontmatter(props, payload.links);
-  const bodyHtml = md.render(body);
-
+async function render(payload: NotePayload) {
+  current = payload;
+  const markdown = payload.markdown.replace(/%%[\s\S]*?%%/g, "");
+  const { body, props } = extractFrontmatter(markdown);
   const content = document.getElementById("content")!;
-  content.innerHTML = propsHtml + bodyHtml;
-
-  // Render embeds: replace ![[target]] spans with actual content.
-  for (const [target, embed] of Object.entries(payload.embeds)) {
-    const sel = `[data-embed="${CSS.escape(target)}"]`;
-    document.querySelectorAll(sel).forEach((el) => {
-      if (embed.imageURL) {
-        el.outerHTML = `<img src="${escAttr(embed.imageURL)}" class="heed-embed-image" alt="${escAttr(target)}">`;
-      } else if (embed.markdown) {
-        el.outerHTML = `<div class="heed-embed">${md.render(embed.markdown)}</div>`;
-      }
-    });
-  }
-
-  renderMermaid();
+  embedded = [];
+  content.innerHTML = renderProperties(props) + md.render(body);
+  placeEmbeds(content);
+  resolveImageSources(content, payload.path);
+  await renderMermaid();
 }
-
-// ── Scroll helpers ─────────────────────────────────────────────────────────
 
 function scrollPage(fraction: number) {
   const el = document.documentElement;
@@ -467,51 +405,47 @@ function getScroll(): number {
   return max > 0 ? el.scrollTop / max : 0;
 }
 
-// ── Click handling ─────────────────────────────────────────────────────────
-
 document.addEventListener("click", (e) => {
-  const target = e.target as HTMLElement;
-  const link = target.closest("a");
+  const link = (e.target as HTMLElement).closest("a");
   if (!link) return;
   e.preventDefault();
-
   const newTab = e.metaKey;
-
   if (link.classList.contains("heed-wikilink")) {
-    const raw = link.dataset.target || "";
-    const path = link.dataset.path || "";
-    post({ type: "link", target: raw, path, newTab });
+    post({ type: "link", target: link.dataset.target || "", path: link.dataset.path || "", newTab });
     return;
   }
-
   const href = link.getAttribute("href") || "";
-  if (href && href !== "#") {
-    post({ type: "link", url: href, newTab });
+  if (href.startsWith("#fn") || href.startsWith("#fnref")) {
+    document.getElementById(href.slice(1))?.scrollIntoView({ block: "center" });
+    return;
   }
+  if (href && href !== "#") post({ type: "link", url: href, newTab });
 });
 
-// ── Public API (called by Swift via callAsyncJavaScript) ───────────────────
+function escAttr(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
+}
+
+function escHtml(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+function capitalize(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
 
 (window as any).heedNote = {
-  show(payload: NotePayload) {
-    render(payload);
-    if (payload.scroll !== undefined && payload.scroll !== null) {
-      const max =
-        document.documentElement.scrollHeight - document.documentElement.clientHeight;
-      document.documentElement.scrollTop = Math.round(payload.scroll * max);
-    }
+  async show(payload: NotePayload) {
+    const keep = getScroll();
+    await render(payload);
+    const fraction = payload.scroll ?? keep;
+    const el = document.documentElement;
+    el.scrollTop = Math.round(fraction * (el.scrollHeight - el.clientHeight));
     post({ type: "shown" });
   },
   scrollPage,
   scrollEdge,
   getScroll,
-  reload() {
-    post({ type: "reload" });
-  },
 };
 
-// ── Bootstrap ─────────────────────────────────────────────────────────────
-
-document.addEventListener("DOMContentLoaded", () => {
-  post({ type: "ready" });
-});
+post({ type: "ready" });

@@ -107,6 +107,9 @@ enum Shots {
         Shot(id: "tasks/new-tab", keys: "<D-t>", crop: .picker, cropPadding: 30),
         Shot(id: "tasks/web-page-new", keys: "<D-t>b", crop: .panes),
         Shot(id: "tasks/web-page-failed", keys: "3jl", crop: .panes),
+        Shot(id: "tasks/note-tab", size: CGSize(width: 1440, height: 1100), keys: "3jlgt", highlight: [.panes]),
+        Shot(id: "tasks/note-picker", keys: "2jgN", crop: .picker, cropPadding: 30),
+        Shot(id: "tasks/note-picker-query", keys: "2jgNchat", crop: .picker, cropPadding: 30),
     ]
 
     static let short = CGSize(width: 1440, height: 640)

@@ -4,7 +4,7 @@ import SwiftUI
 import WebKit
 
 /// The payload Swift sends to the note web view.
-struct NotePayload: Equatable {
+struct NotePayload: Hashable {
     var markdown: String
     var path: String
     /// Wikilink target (raw, as it appears in `[[…]]`) → absolute path or nil when unresolved.
@@ -14,9 +14,27 @@ struct NotePayload: Equatable {
     /// Scroll fraction (0–1) to restore; nil keeps the current position.
     var scroll: Double?
 
-    struct NoteEmbed: Equatable {
+    struct NoteEmbed: Hashable {
         var markdown: String?
         var imageURL: String?
+    }
+
+    init(markdown: String, path: String, links: [String: String?], embeds: [String: NoteEmbed], scroll: Double? = nil) {
+        self.markdown = markdown
+        self.path = path
+        self.links = links
+        self.embeds = embeds
+        self.scroll = scroll
+    }
+
+    init(_ document: NoteDocument) {
+        let embeds = document.embeds.mapValues { embed -> NoteEmbed in
+            switch embed {
+            case let .note(markdown): NoteEmbed(markdown: markdown)
+            case let .file(path): NoteEmbed(imageURL: HeedVaultSchemeHandler.url(for: path))
+            }
+        }
+        self.init(markdown: document.markdown, path: document.path, links: document.links, embeds: embeds)
     }
 
     func jsArguments(keepScroll: Bool) -> [String: Any] {
@@ -32,7 +50,7 @@ struct NotePayload: Equatable {
             embedsDict[k] = d
         }
         var args: [String: Any] = ["markdown": markdown, "path": path, "links": linksDict, "embeds": embedsDict]
-        if !keepScroll, let scroll { args["scroll"] = scroll }
+        if !keepScroll { args["scroll"] = scroll ?? 0 }
         return args
     }
 }
@@ -268,45 +286,47 @@ private final class NoteNavigation: NSObject, WKNavigationDelegate {
 
 /// Serves files under the vault root as `heed-vault:///absolute/path/to/file`.
 /// Only reads; never writes; nothing outside the vault is served.
-private final class HeedVaultSchemeHandler: NSObject, WKURLSchemeHandler {
+@MainActor
+final class HeedVaultSchemeHandler: NSObject, WKURLSchemeHandler {
     let vaultRoot: String
+    private var stopped: Set<ObjectIdentifier> = []
 
     init(vaultRoot: String) {
-        self.vaultRoot = vaultRoot
+        self.vaultRoot = (vaultRoot as NSString).standardizingPath
+    }
+
+    nonisolated static func url(for path: String) -> String {
+        "heed-vault://" + (path.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? path)
     }
 
     func webView(_: WKWebView, start task: WKURLSchemeTask) {
-        guard let url = task.request.url,
-              url.scheme == "heed-vault"
-        else {
-            task.didFailWithError(URLError(.badURL))
-            return
+        guard let url = task.request.url, url.scheme == "heed-vault" else {
+            return task.didFailWithError(URLError(.badURL))
         }
-        // The path component is the absolute file path.
-        let path = url.path
-        guard path.hasPrefix(vaultRoot) else {
-            task.didFailWithError(URLError(.noPermissionsToReadFile))
-            return
+        let path = (url.path as NSString).standardizingPath
+        guard path.hasPrefix(vaultRoot + "/") else {
+            return task.didFailWithError(URLError(.noPermissionsToReadFile))
         }
-        // Read the file on a background thread; WKURLSchemeTask is not sendable so keep the call synchronous.
-        DispatchQueue.global(qos: .userInitiated).async {
-            do {
-                let data = try Data(contentsOf: URL(fileURLWithPath: path))
-                let mimeType = Self.mimeType(for: path)
-                let response = URLResponse(
-                    url: url, mimeType: mimeType,
-                    expectedContentLength: data.count, textEncodingName: "utf-8"
-                )
-                task.didReceive(response)
-                task.didReceive(data)
-                task.didFinish()
-            } catch {
-                task.didFailWithError(error)
-            }
+        let id = ObjectIdentifier(task)
+        stopped.remove(id)
+        Task {
+            let data = await Task.detached(priority: .userInitiated) {
+                try? Data(contentsOf: URL(fileURLWithPath: path))
+            }.value
+            guard stopped.remove(id) == nil else { return }
+            guard let data else { return task.didFailWithError(URLError(.fileDoesNotExist)) }
+            task.didReceive(URLResponse(
+                url: url, mimeType: Self.mimeType(for: path), expectedContentLength: data.count,
+                textEncodingName: nil
+            ))
+            task.didReceive(data)
+            task.didFinish()
         }
     }
 
-    func webView(_: WKWebView, stop _: WKURLSchemeTask) {}
+    func webView(_: WKWebView, stop task: WKURLSchemeTask) {
+        stopped.insert(ObjectIdentifier(task))
+    }
 
     private nonisolated static func mimeType(for path: String) -> String {
         let ext = (path as NSString).pathExtension.lowercased()
@@ -316,6 +336,8 @@ private final class HeedVaultSchemeHandler: NSObject, WKURLSchemeHandler {
         case "gif": return "image/gif"
         case "webp": return "image/webp"
         case "svg": return "image/svg+xml"
+        case "bmp": return "image/bmp"
+        case "avif": return "image/avif"
         case "pdf": return "application/pdf"
         default: return "application/octet-stream"
         }

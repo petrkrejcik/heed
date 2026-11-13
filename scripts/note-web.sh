@@ -12,6 +12,8 @@ if ! command -v npm >/dev/null; then
 fi
 npm ci --no-audit --no-fund
 npm run build
+# Mermaid ships its own minified build; the page loads it only for notes with a diagram.
+cp node_modules/mermaid/dist/mermaid.min.js "$root/Resources/note/mermaid.js"
 # Generate LICENSES.txt for bundled packages.
 node -e '
 const fs = require("fs"), path = require("path");
@@ -28,6 +30,6 @@ function walk(name) {
 }
 Object.keys(require("./package.json").dependencies).forEach(walk);
 out.sort();
-fs.writeFileSync("../../Resources/note/LICENSES.txt", "Bundled into note.js:\n\n" + out.join("\n\n" + "-".repeat(78) + "\n\n") + "\n");
+fs.writeFileSync("../../Resources/note/LICENSES.txt", "Bundled into note.js and mermaid.js:\n\n" + out.join("\n\n" + "-".repeat(78) + "\n\n") + "\n");
 '
 echo "note-web: $(wc -c <"$root/Resources/note/note.js" | tr -d ' ') bytes in Resources/note/note.js"

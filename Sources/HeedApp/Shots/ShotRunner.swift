@@ -127,9 +127,10 @@ enum ShotRunner {
         }
 
         var drawn = renderer().cgImage
-        // A Diff tab asks for its web view's still while it is drawn; once they are taken, draw it again.
-        if DiffStills.shared.busy {
+        // A Diff or Note tab asks for its web view's still while it is drawn; once they are taken, draw it again.
+        if DiffStills.shared.busy || NoteStills.shared.busy {
             await DiffStills.shared.settle()
+            await NoteStills.shared.settle()
             drawn = renderer().cgImage
         }
         guard var image = drawn else { throw Failure(description: "nothing rendered") }

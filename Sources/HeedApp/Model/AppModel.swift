@@ -306,9 +306,15 @@ final class AppModel {
     /// Vault file events from the watcher: update the note index and live-reload any affected open note tabs.
     private func vaultChanged(_ events: [FileEvent]) {
         guard let vault = pkPaths?.vault else { return }
-        noteIndex = NoteIndex.applying(events, to: noteIndex, vault: vault)
-        for event in events where !event.isDirectory && event.path.hasSuffix(".md") {
-            noteFileChanged(event.path)
+        let before = noteIndex
+        Task {
+            let after = await Task.detached(priority: .utility) {
+                NoteIndex.applying(events, to: before, vault: vault)
+            }.value
+            noteIndex = after
+            for event in events where !event.isDirectory && event.path.hasSuffix(".md") {
+                noteFileChanged(event.path)
+            }
         }
     }
 
@@ -1164,7 +1170,8 @@ final class AppModel {
         case "note.pick":
             openNotePicker(query: command.arguments.joined(separator: " "))
         case "note.obsidian", "note.copy", "note.reload",
-             "note.scroll.down", "note.scroll.up", "note.scroll.top", "note.scroll.bottom":
+             "note.scroll.down", "note.scroll.up", "note.scroll.top", "note.scroll.bottom",
+             "note.line.down", "note.line.up":
             noteCommand(command.name)
         case "overlay.close": closeTopmost()
         case "inspector.toggle": inspectorVisible.toggle()
@@ -2630,6 +2637,8 @@ final class AppModel {
         case "note.reload": reloadNote(paneID)
         case "note.scroll.down": noteScroll(0.5, paneID: paneID)
         case "note.scroll.up": noteScroll(-0.5, paneID: paneID)
+        case "note.line.down": noteScroll(0.08, paneID: paneID)
+        case "note.line.up": noteScroll(-0.08, paneID: paneID)
         case "note.scroll.top": noteScrollEdge(top: true, paneID: paneID)
         case "note.scroll.bottom": noteScrollEdge(top: false, paneID: paneID)
         default: break
@@ -2678,20 +2687,16 @@ final class AppModel {
         let entries = noteIndex
         noteLoads[paneID]?.cancel()
         noteLoads[paneID] = Task {
-            let result = await Task.detached(priority: .userInitiated) { () -> NotePayload in
-                let markdown = (try? String(contentsOfFile: path, encoding: .utf8)) ?? ""
-                var linksResolved: [String: String?] = [:]
-                if let vault {
-                    let resolved = WikilinkResolver.resolveAll(in: markdown, entries: entries)
-                    for (k, v) in resolved {
-                        linksResolved[k] = v
-                    }
-                }
-                return NotePayload(markdown: markdown, path: path, links: linksResolved, embeds: [:])
+            let document = await Task.detached(priority: .userInitiated) {
+                NoteDocument.load(
+                    path: path, entries: entries,
+                    read: { try? String(contentsOfFile: $0, encoding: .utf8) },
+                    findFile: { name in vault.flatMap { NoteIndex.findFile(name, notePath: path, vault: $0) } }
+                )
             }.value
             guard !Task.isCancelled else { return }
             noteLoads.removeValue(forKey: paneID)
-            NoteSurfaces.shared.show(result, paneID: paneID)
+            NoteSurfaces.shared.show(NotePayload(document), paneID: paneID)
         }
     }
 

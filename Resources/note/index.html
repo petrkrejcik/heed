@@ -129,12 +129,20 @@
   .heed-callout-title {
     font-weight: 600;
     font-size: 13px;
-    margin-bottom: 6px;
     display: flex;
     align-items: center;
     gap: 6px;
-    color: var(--heed-fg2);
+    color: var(--heed-fg);
+    list-style: none;
   }
+  summary.heed-callout-title { cursor: pointer; }
+  summary.heed-callout-title::-webkit-details-marker { display: none; }
+  summary.heed-callout-title::after { content: "›"; margin-left: 4px; color: var(--heed-fg3); transition: transform 0.1s; }
+  details[open] > summary.heed-callout-title::after { transform: rotate(90deg); }
+  .heed-callout-content { color: var(--heed-fg2); }
+  .heed-callout-content:not(:empty) { margin-top: 6px; }
+  .heed-callout-content > :first-child { margin-top: 0; }
+  .heed-callout-content > :last-child { margin-bottom: 0; }
   .heed-callout-note   { border-left: 3px solid #6b9bd2; }
   .heed-callout-info   { border-left: 3px solid #6b9bd2; }
   .heed-callout-tip    { border-left: 3px solid #4caf7a; }
@@ -145,12 +153,10 @@
   .heed-callout-example { border-left: 3px solid #82aaff; }
   .heed-callout-quote   { border-left: 3px solid #80cbc4; }
   .heed-callout-todo    { border-left: 3px solid #f78c6c; }
-  /* Remove blockquote > p margin inside callouts */
-  .heed-callout > p { margin: 0.3em 0; }
 
   /* ── Wikilinks ── */
   .heed-wikilink { color: var(--heed-link); cursor: pointer; }
-  .heed-wikilink-unresolved { color: var(--heed-muted); text-decoration: line-through; }
+  .heed-wikilink-unresolved { color: var(--heed-link); opacity: 0.55; cursor: default; }
 
   /* ── Tags ── */
   .heed-tag {
@@ -187,8 +193,12 @@
   }
   .heed-property-value { color: var(--heed-fg); flex: 1; }
 
-  /* ── Task checkboxes ── */
-  .heed-task-checkbox { margin-right: 4px; vertical-align: middle; }
+  /* ── Task lists ── */
+  ul.heed-task-list { list-style: none; padding-left: 0.4em; }
+  li.heed-task { list-style: none; }
+  ul.heed-task-list ul.heed-task-list { padding-left: 1.4em; }
+  .heed-task-checkbox { margin: 0 0.5em 0 0; vertical-align: -1px; }
+  li.heed-task-done { color: var(--heed-fg3); }
 
   /* ── Highlight ── */
   mark { background: rgba(255, 213, 79, 0.25); color: inherit; padding: 0 2px; border-radius: 2px; }
@@ -196,14 +206,21 @@
   /* ── Image embeds ── */
   .heed-embed-image { max-width: 100%; border-radius: 4px; margin: 0.5em 0; }
   .heed-embed {
+    display: block;
     border-left: 2px solid var(--heed-line);
     padding-left: 1em;
     margin: 0.6em 0;
     color: var(--heed-fg2);
   }
+  .heed-embed h1 { font-size: 1.3em; border: none; }
 
   /* ── Mermaid ── */
-  .heed-mermaid { margin: 0.8em 0; }
+  .heed-mermaid { margin: 0.8em 0; text-align: center; }
+  .heed-mermaid svg { max-width: 100%; height: auto; }
+  pre.heed-mermaid-source {
+    font-family: var(--heed-font); font-size: var(--heed-font-size); color: var(--heed-fg3);
+    background: var(--heed-bg2); border: 1px dashed var(--heed-line); border-radius: 6px; padding: 1em; overflow-x: auto;
+  }
 
   /* ── Footnotes ── */
   .footnotes { font-size: 13px; color: var(--heed-fg2); border-top: 1px solid var(--heed-line); margin-top: 2em; padding-top: 1em; }
