@@ -16,6 +16,7 @@ public enum CommandAliases {
         case "help": return CommandInvocation(name: "overlay.help")
         case "diff": return CommandInvocation(name: "tab.diff")
         case "note": return CommandInvocation(name: "note.pick", arguments: args)
+        case "files", "file": return CommandInvocation(name: "tab.files", arguments: args)
         case "q", "quit": return CommandInvocation(name: "app.quit")
         default:
             if let view = ["tasks", "inbox", "issues", "prs"].first(where: { $0 == typed.name }) {

@@ -58,6 +58,8 @@ This page is generated from the code (`mise run shots`).
 | `tab.agent` | `gc` | the task's agent: its tab, else the agent closed last (resumed), else a new one |
 | `tab.go` `<n>` |  | go to tab n of this pane |
 | `tab.diff` | `gd` | the task's Diff tab: its changes file by file, opened in its work pane |
+| `tab.files` `[path[:line]]` |  | the task's Files tab; with a path, that file (at :line) |
+| `files.pick` `[words]` | `gf`, `p` (files) | find a file of the task by name and open it in its Files tab |
 | `note.pick` `[words]` | `gN` | pick a note from the vault and open it in a tab (gN) |
 | `note.obsidian` | `e` (note) | note tab: open the note in Obsidian |
 | `note.copy` | `y` (note) | note tab: copy the note's absolute path |
@@ -145,5 +147,20 @@ This page is generated from the code (`mise run shots`).
 | `diff.split` | `t` (diff) | Diff tab: side by side / unified |
 | `diff.ask` | `a` (diff) | Diff tab: ask the agent about this line (typed into its pane, unsent) |
 | `diff.copy` | `y` (diff) | Diff tab: copy path:line |
-| `diff.edit` | `e` (diff) | Diff tab: open the file in the editor |
+| `diff.edit` | `e` (diff) | Diff tab: open the file in the Files tab, at that line |
 | `diff.refresh` | `r` (diff) | Diff tab: read the diff again |
+| `files.down` | `j` (files), `<Down>` (files) | Files tab: next row of the tree or the results |
+| `files.up` | `k` (files), `<Up>` (files) | Files tab: previous row of the tree or the results |
+| `files.open` | `l` (files), `<CR>` (files) | Files tab: open the file or match, or unfold the folder |
+| `files.fold` | `h` (files) | Files tab: fold the folder, or go up to the one you are in |
+| `files.page.down` | `<C-d>` (files) | Files tab: scroll the file half a page down |
+| `files.page.up` | `<C-u>` (files) | Files tab: scroll the file half a page up |
+| `files.top` | `gg` (files) | Files tab: the top of the file |
+| `files.bottom` | `G` (files) | Files tab: the end of the file |
+| `files.search` | `/` (files) | Files tab: find in files (type the words; ripgrep, literal) |
+| `files.mode` | `<Tab>` (files) | Files tab: switch the left side between the tree and the search results |
+| `files.match.next` | `n` (files) | Files tab: next search match, across files |
+| `files.match.prev` | `N` (files) | Files tab: previous search match |
+| `files.ask` | `a` (files) | Files tab: ask the agent about this line (typed into its pane, unsent) |
+| `files.copy` | `y` (files) | Files tab: copy path:line |
+| `files.refresh` | `r` (files) | Files tab: read the file list and the file again |

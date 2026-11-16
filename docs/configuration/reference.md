@@ -41,8 +41,15 @@ dock_state = true
 # (Homebrew, mise, nix, ~/.local/bin), then /usr/bin. Set a path when detection picks the wrong one.
 git = ""                           # e.g. "/opt/homebrew/bin/git"
 gh = ""
+# ripgrep, for find in files in the Files tab (brew install ripgrep).
+rg = ""
 # Directories searched first, for git, gh and agent commands alike.
 path = []
+
+[files]
+# The Files tab lists every file of the task's checkout, also what git ignores (greyed), except what matches one
+# of these: glob patterns on one part of a path, as "node_modules" or "*.log". .git is never listed.
+exclude = ["node_modules"]
 
 [pk]
 # The python of pk's virtualenv. Tasks are pk's notes: Heed reads and changes them through `python -m pk.bridge`.
@@ -69,7 +76,8 @@ global_activate = "<C-M-h>"
 # Shift+Escape leaves INSERT too; a plain Escape always goes to the terminal. [keys.insert] "<S-Esc>" = "" unbinds.
 
 # Bindings per mode ([keys.normal], [keys.visual], ...) or per view ([keys.tasks], [keys.inbox], [keys.issues],
-# [keys.diff], [keys.pr]), in vim notation, each naming a command (the same names : completes). "" unbinds.
+# [keys.diff], [keys.files], [keys.pr]), in vim notation, each naming a command (the same names : completes).
+# "" unbinds.
 # [keys.browser] is for a focused web page: single ⌘ or ⌃ chords, which work while you type in the page too.
 # [keys.normal]
 # "gB" = ""

@@ -17,6 +17,8 @@ public struct HeedConfig: Equatable, Sendable {
     public var scopedKeys: [String: [(String, String)]]
     public var githubPollSeconds: Int
     public var tools = ToolSettings()
+    /// `[files] exclude`: what the Files tab never lists.
+    public var fileExclusion = FileExclusion()
     /// `[pk] python`: the python of pk's virtualenv; Heed runs `<python> -m pk.bridge` with it.
     public var pkPython = HeedConfig.defaultPkPython
 
@@ -44,6 +46,7 @@ public struct HeedConfig: Equatable, Sendable {
             flat(lhs.scopedKeys) == flat(rhs.scopedKeys),
             lhs.githubPollSeconds == rhs.githubPollSeconds,
             lhs.tools == rhs.tools,
+            lhs.fileExclusion == rhs.fileExclusion,
             lhs.pkPython == rhs.pkPython,
         ]
         return !same.contains(false)
@@ -162,7 +165,10 @@ public enum ConfigLoader {
         if let git = string(["tools", "git"]) { config.tools.git = git }
         if let gh = string(["tools", "gh"]) { config.tools.gh = gh }
         if let zmx = string(["tools", "zmx"]) { config.tools.zmx = zmx }
+        if let rg = string(["tools", "rg"]) { config.tools.rg = rg }
         if let path = strings(["tools", "path"]) { config.tools.path = path }
+        // [files]
+        if let exclude = strings(["files", "exclude"]) { config.fileExclusion = FileExclusion(exclude) }
         // [pk]
         if let python = string(["pk", "python"]) {
             if python.isEmpty {
@@ -259,8 +265,15 @@ public enum ConfigLoader {
     # (Homebrew, mise, nix, ~/.local/bin), then /usr/bin. Set a path when detection picks the wrong one.
     git = ""                           # e.g. "/opt/homebrew/bin/git"
     gh = ""
+    # ripgrep, for find in files in the Files tab (brew install ripgrep).
+    rg = ""
     # Directories searched first, for git, gh and agent commands alike.
     path = []
+
+    [files]
+    # The Files tab lists every file of the task's checkout, also what git ignores (greyed), except what matches one
+    # of these: glob patterns on one part of a path, as "node_modules" or "*.log". .git is never listed.
+    exclude = ["node_modules"]
 
     [pk]
     # The python of pk's virtualenv. Tasks are pk's notes: Heed reads and changes them through `python -m pk.bridge`.
@@ -287,7 +300,8 @@ public enum ConfigLoader {
     # Shift+Escape leaves INSERT too; a plain Escape always goes to the terminal. [keys.insert] "<S-Esc>" = "" unbinds.
 
     # Bindings per mode ([keys.normal], [keys.visual], ...) or per view ([keys.tasks], [keys.inbox], [keys.issues],
-    # [keys.diff], [keys.pr]), in vim notation, each naming a command (the same names : completes). "" unbinds.
+    # [keys.diff], [keys.files], [keys.pr]), in vim notation, each naming a command (the same names : completes).
+    # "" unbinds.
     # [keys.browser] is for a focused web page: single ⌘ or ⌃ chords, which work while you type in the page too.
     # [keys.normal]
     # "gB" = ""

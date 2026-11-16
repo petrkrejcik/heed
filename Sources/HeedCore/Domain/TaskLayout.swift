@@ -131,6 +131,28 @@ public struct TaskLayout: Hashable, Sendable {
         return pane
     }
 
+    /// The task's Files tab, if it has one.
+    public var filesPane: PaneSpec? { panes.first { $0.role == .files } }
+
+    /// `gf`, `:files`, a file link: the task's Files tab, opened in its work pane (beside the agent) when the task
+    /// has none, else the one it has. `show` focuses it; without, it opens in the background. Returns it.
+    @discardableResult
+    public mutating func showFiles(directory: String, show: Bool = true) -> PaneSpec {
+        if let existing = filesPane {
+            if show { focus(pane: existing.id) }
+            return existing
+        }
+        let pane = PaneSpec(role: .files, title: "files", directory: directory)
+        add(PaneTab(title: "files", pane: pane), show: show)
+        return pane
+    }
+
+    /// The file a Files tab shows, relative to its checkout: saved with the layout.
+    public mutating func setFile(_ path: String?, paneID: String) {
+        guard pane(paneID)?.path != path else { return }
+        update(pane: paneID) { $0.path = path }
+    }
+
     /// The task's note tab at `notePath`, if it has one open.
     public func notePane(path: String) -> PaneSpec? { panes.first { $0.role == .note && $0.path == path } }
 

@@ -7,6 +7,8 @@ public struct ToolSettings: Equatable, Sendable {
     public var gh = ""
     /// zmx, for persistent panes; empty: found on the search path.
     public var zmx = ""
+    /// ripgrep, for find in files; empty: detected. Optional: without it only search is missing.
+    public var rg = ""
     /// Directories searched before anything detected, for git, gh and agent commands alike.
     public var path: [String] = []
 
@@ -20,6 +22,7 @@ public struct ToolSettings: Equatable, Sendable {
         switch tool {
         case "git": git
         case "gh": gh
+        case "rg": rg
         default: ""
         }
     }
@@ -78,7 +81,9 @@ public struct ToolReport: Equatable, Sendable {
 /// nothing installed by Homebrew, mise or nix is on it. The search path is, in order: `[tools] path`, the login
 /// shell's PATH (fish, zsh, bash, nu), the usual install locations, then whatever PATH the app was given.
 public enum ToolDetection {
-    public static let tools = ["git", "gh"]
+    public static let tools = ["git", "gh", "rg"]
+    /// Tools Heed works without: not finding one is not a problem to report (the feature that needs it says so).
+    public static let optional: Set<String> = ["rg"]
 
     /// Install locations worth trying when the login shell does not answer. `~` is expanded.
     public static let knownDirectories = [
@@ -105,12 +110,19 @@ public enum ToolDetection {
         let developerDirectory = await developerDirectory()
         var resolved: [ResolvedTool] = []
         for tool in tools {
-            await resolved.append(resolve(
+            let found = await resolve(
                 tool, configured: settings.configured(tool), directories: search,
                 check: { path in await version(of: path, developerDirectory: developerDirectory) }
-            ))
+            )
+            resolved.append(excusing(found, configured: settings.configured(tool)))
         }
         return ToolReport(shell: shell, shellPath: shellPath, searchPath: search.map(\.0), tools: resolved)
+    }
+
+    /// An optional tool that is simply not installed is no problem; one configured that does not work still is.
+    static func excusing(_ tool: ResolvedTool, configured: String) -> ResolvedTool {
+        guard optional.contains(tool.name), tool.path == nil, configured.isEmpty else { return tool }
+        return ResolvedTool(name: tool.name, path: nil, version: nil, source: nil, problem: nil)
     }
 
     /// Existing directories, first occurrence wins.
@@ -161,7 +173,11 @@ public enum ToolDetection {
             }
             skipped = skipped ?? path
         }
-        let hint = tool == "gh" ? "brew install gh" : "brew install git, or xcode-select --install"
+        let hint = switch tool {
+        case "gh": "brew install gh"
+        case "rg": "brew install ripgrep"
+        default: "brew install git, or xcode-select --install"
+        }
         let reason = skipped.map { "\(tool) at \($0) does not run" } ?? "\(tool) not found"
         return ResolvedTool(
             name: tool, path: nil, version: nil, source: nil,

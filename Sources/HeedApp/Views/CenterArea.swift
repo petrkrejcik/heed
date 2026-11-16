@@ -233,6 +233,8 @@ private struct TabStrip: View {
             Image(systemName: "plusminus").font(.system(size: 10, weight: .semibold))
         case .note:
             Image(systemName: "doc.text").font(.system(size: 10))
+        case .files:
+            Image(systemName: "folder").font(.system(size: 10))
         case .shell:
             EmptyView()
         }

@@ -1183,6 +1183,10 @@ final class AppModel {
              "diff.page.up", "diff.scope.next", "diff.scope.prev", "diff.commit", "diff.split", "diff.ask",
              "diff.copy", "diff.edit", "diff.refresh":
             diffCommand(command.name)
+        case "tab.files", "files.pick", "files.down", "files.up", "files.open", "files.fold", "files.page.down",
+             "files.page.up", "files.top", "files.bottom", "files.search", "files.mode", "files.match.next",
+             "files.match.prev", "files.ask", "files.copy", "files.refresh":
+            flash = "\(command.name): the Files tab comes in the next commit"
         case "note.pick":
             openNotePicker(query: command.arguments.joined(separator: " "))
         case "note.obsidian", "note.copy", "note.reload",

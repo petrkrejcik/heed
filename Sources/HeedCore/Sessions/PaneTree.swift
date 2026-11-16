@@ -15,12 +15,15 @@ public struct PaneSpec: Hashable, Sendable, Codable, Identifiable {
         case diff
         /// A note from the vault (`path` is the absolute path), not a terminal: read only, keys stay Heed's.
         case note
+        /// The task's files (`directory` is the checkout, `path` the open file relative to it), not a terminal: read
+        /// only, keys stay Heed's.
+        case files
 
         /// A tab that shows a terminal and takes keys in INSERT.
         public var isTerminal: Bool {
             switch self {
             case .agent, .shell, .command: true
-            case .browser, .diff, .note: false
+            case .browser, .diff, .note, .files: false
             }
         }
 
@@ -38,7 +41,7 @@ public struct PaneSpec: Hashable, Sendable, Codable, Identifiable {
     public var command: String?
     /// The address a page shows, as last navigated; nil for terminals and for a page not given one yet.
     public var url: String?
-    /// The absolute path of the note file shown; nil for non-note roles.
+    /// The file shown: a note's absolute path, or a Files tab's file relative to `directory`; nil for other roles.
     public var path: String?
 
     public init(

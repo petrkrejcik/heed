@@ -128,6 +128,87 @@ public enum ProcessRunner {
     }
 }
 
+public extension ProcessRunner {
+    /// Runs a command and hands over its output as it comes, chunk by chunk, off the calling actor. Ending the stream
+    /// early (the consumer stops, or its task is cancelled) terminates the command. Finishes when the command exits;
+    /// an exit status not in `success` is thrown.
+    static func stream(
+        _ executable: String, _ arguments: [String], in directory: String? = nil, success: Set<Int32> = [0]
+    ) -> AsyncThrowingStream<Data, Error> {
+        AsyncThrowingStream { continuation in
+            let starting = Task.detached {
+                let command = ([executable] + arguments).joined(separator: " ")
+                var path = executable
+                var environment = ProcessInfo.processInfo.environment
+                if !executable.contains("/") {
+                    let found = await ToolLocator.shared.executable(executable)
+                    guard let resolved = found.path else {
+                        continuation.finish(throwing: ProcessError(
+                            command: command, result: nil,
+                            reason: "\(executable) not found (set [tools] \(executable) in config.toml)"
+                        ))
+                        return
+                    }
+                    path = resolved
+                    environment["PATH"] = found.pathVariable
+                }
+                let process = Process()
+                process.executableURL = URL(fileURLWithPath: path)
+                process.arguments = arguments
+                process.environment = environment
+                if let directory { process.currentDirectoryURL = URL(fileURLWithPath: directory) }
+                let stdout = Pipe()
+                process.standardOutput = stdout
+                process.standardError = FileHandle.nullDevice
+                process.standardInput = FileHandle.nullDevice
+                let reading = stdout.fileHandleForReading
+                // The last chunk is read before the stream finishes, so nothing printed just before exit is lost.
+                let drained = Flag()
+                reading.readabilityHandler = { handle in
+                    let data = handle.availableData
+                    if data.isEmpty {
+                        handle.readabilityHandler = nil
+                        drained.set()
+                    } else {
+                        continuation.yield(data)
+                    }
+                }
+                process.terminationHandler = { finished in
+                    // A child that kept the pipe open would never send its end: give up after two seconds.
+                    for _ in 0 ..< 1000 where !drained.isSet {
+                        usleep(2000)
+                    }
+                    let status = finished.terminationStatus
+                    if success.contains(status) || finished.terminationReason == .uncaughtSignal {
+                        continuation.finish()
+                    } else {
+                        continuation.finish(throwing: ProcessError(
+                            command: command, result: nil, reason: "exit \(status)"
+                        ))
+                    }
+                }
+                continuation.onTermination = { _ in
+                    if process.isRunning { process.terminate() }
+                }
+                guard !Task.isCancelled else {
+                    reading.readabilityHandler = nil
+                    continuation.finish()
+                    return
+                }
+                do {
+                    try process.run()
+                } catch {
+                    reading.readabilityHandler = nil
+                    continuation.finish(throwing: ProcessError(
+                        command: command, result: nil, reason: "could not start (\(error.localizedDescription))"
+                    ))
+                }
+            }
+            continuation.onTermination = { _ in starting.cancel() }
+        }
+    }
+}
+
 /// A one-way flag shared with the watchdog task.
 private final class Flag: @unchecked Sendable {
     private let lock = NSLock()

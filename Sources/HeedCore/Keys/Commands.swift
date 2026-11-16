@@ -81,6 +81,12 @@ public enum Commands {
         ),
         .init("tab.go", "go to tab n of this pane", .panes, arguments: "<n>"),
         .init("tab.diff", "the task's Diff tab: its changes file by file, opened in its work pane", .panes),
+        .init(
+            "tab.files", "the task's Files tab; with a path, that file (at :line)", .panes, arguments: "[path[:line]]"
+        ),
+        .init(
+            "files.pick", "find a file of the task by name and open it in its Files tab", .panes, arguments: "[words]"
+        ),
         .init("note.pick", "pick a note from the vault and open it in a tab (gN)", .panes, arguments: "[words]"),
         .init("note.obsidian", "note tab: open the note in Obsidian", .panes),
         .init("note.copy", "note tab: copy the note's absolute path", .panes),
@@ -165,8 +171,23 @@ public enum Commands {
         .init("diff.split", "Diff tab: side by side / unified", .selection),
         .init("diff.ask", "Diff tab: ask the agent about this line (typed into its pane, unsent)", .selection),
         .init("diff.copy", "Diff tab: copy path:line", .selection),
-        .init("diff.edit", "Diff tab: open the file in the editor", .selection),
+        .init("diff.edit", "Diff tab: open the file in the Files tab, at that line", .selection),
         .init("diff.refresh", "Diff tab: read the diff again", .selection),
+        .init("files.down", "Files tab: next row of the tree or the results", .selection),
+        .init("files.up", "Files tab: previous row of the tree or the results", .selection),
+        .init("files.open", "Files tab: open the file or match, or unfold the folder", .selection),
+        .init("files.fold", "Files tab: fold the folder, or go up to the one you are in", .selection),
+        .init("files.page.down", "Files tab: scroll the file half a page down", .selection),
+        .init("files.page.up", "Files tab: scroll the file half a page up", .selection),
+        .init("files.top", "Files tab: the top of the file", .selection),
+        .init("files.bottom", "Files tab: the end of the file", .selection),
+        .init("files.search", "Files tab: find in files (type the words; ripgrep, literal)", .selection),
+        .init("files.mode", "Files tab: switch the left side between the tree and the search results", .selection),
+        .init("files.match.next", "Files tab: next search match, across files", .selection),
+        .init("files.match.prev", "Files tab: previous search match", .selection),
+        .init("files.ask", "Files tab: ask the agent about this line (typed into its pane, unsent)", .selection),
+        .init("files.copy", "Files tab: copy path:line", .selection),
+        .init("files.refresh", "Files tab: read the file list and the file again", .selection),
     ]
 
     public static let byName: [String: CommandSpec] = Dictionary(uniqueKeysWithValues: all.map { ($0.name, $0) })

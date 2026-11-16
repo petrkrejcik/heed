@@ -21,7 +21,7 @@ public enum DefaultKeys {
         ("gt", "tab.next"), ("gT", "tab.prev"), ("<D-}>", "tab.next"), ("<D-{>", "tab.prev"), ("gn", "tab.new"),
         ("gc", "tab.agent"), ("<D-t>", "tab.open"),
         ("gs", "view.tasks"), ("gm", "view.inbox"), ("gi", "view.issues"), ("gp", "view.prs"),
-        ("go", "overlay.item"), ("gd", "tab.diff"), ("gN", "note.pick"), ("gS", "pr.task"),
+        ("go", "overlay.item"), ("gd", "tab.diff"), ("gf", "files.pick"), ("gN", "note.pick"), ("gS", "pr.task"),
         ("<C-o>", "jump.back"), ("gB", "open.browser"), ("gR", "open.repo"),
         ("zi", "inspector.toggle"), ("zs", "sidebar.toggle"), ("za", "section.toggle"), ("<CR>", "open.reader"),
         ("i", "mode.insert"), ("v", "mode.visual"), ("V", "mode.visual"), (":", "mode.command"),
@@ -82,6 +82,16 @@ public enum DefaultKeys {
             ("<C-d>", "diff.page.down"), ("<C-u>", "diff.page.up"),
             ("<Tab>", "diff.scope.next"), ("<S-Tab>", "diff.scope.prev"), ("c", "diff.commit"), ("t", "diff.split"),
             ("a", "diff.ask"), ("y", "diff.copy"), ("e", "diff.edit"), ("r", "diff.refresh"),
+        ],
+        /// A focused Files tab (NORMAL only: files are read only). `h` / `l` fold and open here; `⌃w h` / `⌃w l` still
+        /// move between panes.
+        "files": [
+            ("j", "files.down"), ("k", "files.up"), ("<Down>", "files.down"), ("<Up>", "files.up"),
+            ("l", "files.open"), ("<CR>", "files.open"), ("h", "files.fold"),
+            ("<C-d>", "files.page.down"), ("<C-u>", "files.page.up"), ("gg", "files.top"), ("G", "files.bottom"),
+            ("p", "files.pick"), ("/", "files.search"), ("<Tab>", "files.mode"),
+            ("n", "files.match.next"), ("N", "files.match.prev"),
+            ("a", "files.ask"), ("y", "files.copy"), ("r", "files.refresh"),
         ],
         /// A focused Note tab (NORMAL only: notes are read only).
         "note": [
