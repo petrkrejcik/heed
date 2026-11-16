@@ -39,6 +39,44 @@ struct DiffPayload: Hashable {
     }
 }
 
+/// What a Files tab's web view draws: one file, the line asked for marked, find in files' query highlighted.
+struct FilePayload: Hashable {
+    var path: String
+    var text: String
+    var line: Int?
+    /// `FilesBrowser.visit`: a new one scrolls to `line`; the same one (the file read again) keeps the scroll.
+    var visit: Int
+    var query: String?
+
+    func arguments() -> [String: Any] {
+        [
+            "path": path, "language": DiffLanguage.of(path) ?? NSNull(), "text": text, "line": line ?? NSNull(),
+            "visit": visit, "query": query ?? NSNull(),
+        ]
+    }
+}
+
+/// What the page shows: a diff, or a file.
+enum DiffDrawing: Hashable {
+    case diff(DiffPayload)
+    case file(FilePayload)
+
+    var path: String {
+        switch self {
+        case let .diff(payload): payload.path
+        case let .file(payload): payload.path
+        }
+    }
+
+    /// The call that draws it, and its argument (`payload`).
+    func call(keepScroll: Bool) -> (script: String, payload: [String: Any]) {
+        switch self {
+        case let .diff(payload): ("window.heedDiff.show(payload)", payload.arguments(keepScroll: keepScroll))
+        case let .file(payload): ("window.heedDiff.file(payload)", payload.arguments())
+        }
+    }
+}
+
 /// The Diff tab's colours and font, as the CSS variables `Resources/diff` reads: Heed's tokens, so a light theme only
 /// changes them here.
 enum DiffWebTheme {
@@ -51,6 +89,7 @@ enum DiffWebTheme {
             ("--heed-added-line", css(Theme.done, 0.1)), ("--heed-deleted-line", css(Theme.err, 0.1)),
             ("--heed-added-text", css(Theme.done, 0.3)), ("--heed-deleted-text", css(Theme.err, 0.3)),
             ("--heed-selection", css(Theme.busy, 0.3)), ("--heed-current", css(Theme.block)),
+            ("--heed-target-line", css(Theme.block, 0.12)), ("--heed-match", css(Theme.block, 0.35)),
             ("--heed-syntax-keyword", css(Theme.busy)), ("--heed-syntax-string", css(OrgPalette.lime.foreground)),
             ("--heed-syntax-number", css(OrgPalette.orange.foreground)), ("--heed-syntax-comment", css(Theme.dim)),
             ("--heed-syntax-type", css(OrgPalette.periwinkle.foreground)),
@@ -83,8 +122,8 @@ enum DiffWebTheme {
     }
 }
 
-/// Owns every Diff tab's web view, keyed by pane id, as `BrowserSurfaces` does pages: made when the tab is first
-/// drawn, kept across re-layout, gone with the tab. The page is the bundled `Resources/diff`, loaded from the app
+/// Owns every Diff and Files tab's web view, keyed by pane id, as `BrowserSurfaces` does pages: made when the tab is
+/// first drawn, kept across re-layout, gone with the tab. The page is the bundled `Resources/diff`, loaded from the app
 /// bundle; nothing it does reaches the network.
 @MainActor
 final class DiffSurfaces {
@@ -92,11 +131,13 @@ final class DiffSurfaces {
     private var views: [String: DiffWebView] = [:]
     private var ready: Set<String> = []
     /// What each tab should show, and what its page shows now.
-    private var wanted: [String: DiffPayload] = [:]
-    private var drawn: [String: DiffPayload] = [:]
+    private var wanted: [String: DiffDrawing] = [:]
+    private var drawn: [String: DiffDrawing] = [:]
 
     /// The web view reported the hunk or line you are on.
     var onCursor: ((String, DiffCursor) -> Void)?
+    /// A Files tab's web view reported the line you are on (pane, path, line).
+    var onFileCursor: ((String, String, Int) -> Void)?
     /// A click in the diff: its pane takes the keys (NORMAL stays).
     var onClick: ((String) -> Void)?
 
@@ -135,8 +176,21 @@ final class DiffSurfaces {
 
     /// Draws `payload` in the tab (nil: nothing). A page not loaded yet draws it once it is.
     func show(_ payload: DiffPayload?, paneID: String) {
-        wanted[paneID] = payload
+        wanted[paneID] = payload.map(DiffDrawing.diff)
         flush(paneID)
+    }
+
+    /// Draws one file in a Files tab (nil: nothing).
+    func showFile(_ payload: FilePayload?, paneID: String) {
+        wanted[paneID] = payload.map(DiffDrawing.file)
+        flush(paneID)
+    }
+
+    /// `gg` / `G`: the top or the end.
+    func edge(top: Bool, paneID: String) {
+        views[paneID]?.callAsyncJavaScript(
+            "window.heedDiff.edge(top)", arguments: ["top": top], in: nil, in: .page, completionHandler: nil
+        )
     }
 
     /// `n` / `N`: false when there is no next (previous) hunk in this file.
@@ -150,12 +204,12 @@ final class DiffSurfaces {
 
     /// `t`: the same file side by side or unified, on the same hunk.
     func setSplit(_ split: Bool, paneID: String) {
-        guard var payload = wanted[paneID], payload.split != split else { return }
+        guard case var .diff(payload) = wanted[paneID], payload.split != split else { return }
         payload.split = split
         payload.focus = nil
-        wanted[paneID] = payload
+        wanted[paneID] = .diff(payload)
         guard let view = views[paneID], ready.contains(paneID) else { return }
-        drawn[paneID] = payload
+        drawn[paneID] = .diff(payload)
         view.callAsyncJavaScript(
             "window.heedDiff.setMode(mode)", arguments: ["mode": split ? "split" : "unified"], in: nil,
             in: .page, completionHandler: nil
@@ -181,19 +235,20 @@ final class DiffSurfaces {
 
     private func flush(_ paneID: String) {
         guard let view = views[paneID], ready.contains(paneID) else { return }
-        guard let payload = wanted[paneID] else {
+        guard let drawing = wanted[paneID] else {
             if drawn.removeValue(forKey: paneID) != nil {
                 view.callAsyncJavaScript("window.heedDiff.clear()", arguments: [:], in: nil, in: .page) { _ in }
             }
             return
         }
-        guard !payload.draws(like: drawn[paneID]) else { return }
-        let keepScroll = drawn[paneID]?.path == payload.path
-        drawn[paneID] = payload
-        view.callAsyncJavaScript(
-            "window.heedDiff.show(payload)", arguments: ["payload": payload.arguments(keepScroll: keepScroll)],
-            in: nil, in: .page
-        ) { result in
+        switch (drawing, drawn[paneID]) {
+        case let (.diff(payload), .diff(shown)) where payload.draws(like: shown): return
+        case let (.file(payload), .file(shown)) where payload == shown: return
+        default: break
+        }
+        let call = drawing.call(keepScroll: drawn[paneID]?.path == drawing.path)
+        drawn[paneID] = drawing
+        view.callAsyncJavaScript(call.script, arguments: ["payload": call.payload], in: nil, in: .page) { result in
             if case let .failure(error) = result { NSLog("heed: diff view: \(error)") }
         }
     }
@@ -207,6 +262,10 @@ final class DiffSurfaces {
             flush(paneID)
         case "cursor":
             if let cursor = DiffCursor(message: message) { onCursor?(paneID, cursor) }
+        case "file-cursor":
+            if let path = message["path"] as? String, let line = (message["line"] as? NSNumber)?.intValue {
+                onFileCursor?(paneID, path, line)
+            }
         default:
             break
         }

@@ -14,6 +14,16 @@ public struct FileContents: Hashable, Sendable {
             if case let .text(text) = self { return text }
             return nil
         }
+
+        /// Why it is not drawn, or nil when it is text.
+        public var unshown: String? {
+            switch self {
+            case .text: nil
+            case .missing: "No such file"
+            case .binary: "Binary file"
+            case let .tooLarge(bytes): "Too large to show (\(FileContents.size(bytes)))"
+            }
+        }
     }
 
     public var path: String
@@ -32,14 +42,20 @@ public struct FileContents: Hashable, Sendable {
 
     /// Why the diff is not drawn, or nil when both sides are text (or missing).
     public var unshown: String? {
-        for side in [old, new] {
-            switch side {
-            case .binary: return "Binary file"
-            case let .tooLarge(bytes): return "Too large to show (\(Self.size(bytes)))"
-            case .text, .missing: continue
-            }
-        }
-        return nil
+        [old, new].lazy.filter { $0 != .missing }.compactMap(\.unshown).first
+    }
+
+    /// A file of the working tree as the Files tab shows it, read from disk off the main actor.
+    @concurrent public static func read(_ path: String, in root: String) async -> Side {
+        disk(URL(fileURLWithPath: root).appendingPathComponent(path))
+    }
+
+    static func disk(_ url: URL) -> Side {
+        guard let size = try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize else { return .missing }
+        if size > maxBytes { return .tooLarge(bytes: size) }
+        guard let data = try? Data(contentsOf: url) else { return .missing }
+        if data.contains(0) { return .binary }
+        return side(String(decoding: data, as: UTF8.self), bytes: data.count)
     }
 
     static func size(_ bytes: Int) -> String {
@@ -98,12 +114,7 @@ public extension Git {
     ) async -> FileContents.Side {
         if binary { return .binary }
         guard let object = source.object(path) else {
-            let url = URL(fileURLWithPath: root).appendingPathComponent(path)
-            guard let size = try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize else { return .missing }
-            if size > FileContents.maxBytes { return .tooLarge(bytes: size) }
-            guard let data = try? Data(contentsOf: url) else { return .missing }
-            if data.contains(0) { return .binary }
-            return FileContents.side(String(decoding: data, as: UTF8.self), bytes: data.count)
+            return FileContents.disk(URL(fileURLWithPath: root).appendingPathComponent(path))
         }
         guard let sizeText = try? await ProcessRunner.output(
             "git", ["-C", root, "cat-file", "-s", object], timeout: .seconds(10)

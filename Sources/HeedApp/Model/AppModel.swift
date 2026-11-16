@@ -180,7 +180,8 @@ final class AppModel {
     /// Scoped key bindings follow what has focus: the PR overlay or reader, a Diff tab, a Note tab, else the view.
     private func updateScope() {
         let scope = issueReader != nil ? "issue" : (overlay == .pr || reader != nil) ? "pr"
-            : focusedDiffPane != nil ? "diff" : focusedNotePane != nil ? "note" : view.rawValue
+            : focusedDiffPane != nil ? "diff" : focusedFilesPane != nil ? "files"
+            : focusedNotePane != nil ? "note" : view.rawValue
         if engine.scope != scope { engine.scope = scope }
     }
 
@@ -188,6 +189,22 @@ final class AppModel {
     /// Each Diff tab's review, by pane id. Not persisted: a relaunch reads the diff again when the tab is shown.
     private(set) var diffReviews: [String: DiffReview] = [:]
     private var diffLoads: [String: Task<Void, Never>] = [:]
+
+    // Files tabs
+    /// Each Files tab's browser (its tree, search and open file), by pane id. Only the open file is saved, as the
+    /// pane's `path`; the rest starts over after a relaunch.
+    private(set) var filesBrowsers: [String: FilesBrowser] = [:]
+    /// Each checkout's file list, by directory, shared by its Files tab and the finder. In memory only: listing takes
+    /// half a second on Kibana, and a relaunch lists again when a tab or the finder first needs it.
+    private(set) var fileLists: [String: FileList] = [:]
+    private var fileListReadAt: [String: Date] = [:]
+    private var fileListLoads: [String: Task<Void, Never>] = [:]
+    private var fileTextLoads: [String: Task<Void, Never>] = [:]
+    /// The line each Files tab's viewer says you are on, for `a` and `y`.
+    @ObservationIgnored private var fileCursors: [String: (path: String, line: Int)] = [:]
+    /// Each Files tab's tree rows, kept while its list and its open folders stay the same.
+    @ObservationIgnored private var fileRowCache: [String: (revision: UUID, open: Set<String>, rows: [FileTree.Row])] =
+        [:]
 
     // Note tabs
     /// In-flight note load tasks, by pane id.
@@ -1183,10 +1200,12 @@ final class AppModel {
              "diff.page.up", "diff.scope.next", "diff.scope.prev", "diff.commit", "diff.split", "diff.ask",
              "diff.copy", "diff.edit", "diff.refresh":
             diffCommand(command.name)
-        case "tab.files", "files.pick", "files.down", "files.up", "files.open", "files.fold", "files.page.down",
-             "files.page.up", "files.top", "files.bottom", "files.search", "files.mode", "files.match.next",
-             "files.match.prev", "files.ask", "files.copy", "files.refresh":
-            flash = "\(command.name): the Files tab comes in the next commit"
+        case "tab.files": showFilesTab(command.arguments.joined(separator: " "))
+        case "files.pick", "files.search", "files.match.next", "files.match.prev":
+            flash = "\(command.name): the finder and find in files come in the next commit"
+        case "files.down", "files.up", "files.open", "files.fold", "files.page.down", "files.page.up", "files.top",
+             "files.bottom", "files.mode", "files.ask", "files.copy", "files.refresh":
+            filesCommand(command.name)
         case "note.pick":
             openNotePicker(query: command.arguments.joined(separator: " "))
         case "note.obsidian", "note.copy", "note.reload",
@@ -1200,7 +1219,7 @@ final class AppModel {
         case "mode.normal", "mode.insert", "mode.visual", "mode.command", "mode.hint":
             if command.name == "mode.insert",
                view != .tasks || currentPane == nil
-               || currentPane?.role == .diff || currentPane?.role == .note
+               || currentPane?.role == .diff || currentPane?.role == .note || currentPane?.role == .files
             {
                 engine.enter(.normal)
             }
@@ -1994,9 +2013,42 @@ final class AppModel {
     /// inspector); none in the other views, so their links go to Kibana main.
     var linkSource: String? { view == .tasks ? currentTask?.id : nil }
 
-    /// A URL ⌘-clicked in a terminal: a page in that terminal's task, next to its tab.
+    /// A URL ⌘-clicked in a terminal: a page in that terminal's task, next to its tab; a file of the task's checkout
+    /// in its Files tab, at the line.
     func openLink(_ url: String, fromPane paneID: String) {
-        openLink(url, from: currentDomain.task(ofPane: paneID), nextTo: paneID)
+        let taskID = currentDomain.task(ofPane: paneID)
+        if !LinkTarget.opensAsPage(url), let task = taskID.flatMap({ self.task($0) }) {
+            return openFileLink(url, in: task, nextTo: paneID)
+        }
+        openLink(url, from: taskID, nextTo: paneID)
+    }
+
+    /// A path from a terminal (`src/a.ts:12`, `./a.ts`, `~/x`, `file:`; relative ones from the task's checkout): a
+    /// file inside the checkout opens in the task's Files tab, anything else goes to macOS as before. Whether it is a
+    /// file is asked of the disk, off the main actor.
+    private func openFileLink(_ url: String, in task: WorkTask, nextTo paneID: String) {
+        guard let location = FileLocation.parse(url, root: task.directory),
+              let path = location.relative(to: task.directory)
+        else { return openLink(url, from: task.id, nextTo: paneID) }
+        if isFixture {
+            guard fileLists[task.directory]?.contains(file: path) ?? Fixtures.fileList.contains(file: path) else {
+                return
+            }
+            return openFiles(in: task, file: path, line: location.line, column: location.column)
+        }
+        let absolute = location.path
+        Task {
+            let isFile = await Task.detached {
+                var folder: ObjCBool = false
+                return FileManager.default.fileExists(atPath: absolute, isDirectory: &folder) && !folder.boolValue
+            }.value
+            guard let task = self.task(task.id) else { return }
+            if isFile {
+                openFiles(in: task, file: path, line: location.line, column: location.column)
+            } else {
+                openLink(url, from: task.id, nextTo: paneID)
+            }
+        }
     }
 
     /// Every link opened in Heed. A web link becomes a page in the task it came from, else in Kibana main, and Heed
@@ -2156,6 +2208,7 @@ final class AppModel {
         case .terminal: newTab()
         case .page: newPageTab("")
         case .note: perform(CommandInvocation(name: "note.pick"))
+        case .files: perform(CommandInvocation(name: "tab.files"))
         }
     }
 
@@ -2398,7 +2451,7 @@ final class AppModel {
 
     /// Reads the tab's scope again, off the main actor; the file you were on stays (and where you were in it).
     private func loadDiffTab(_ paneID: String) {
-        guard let directory = diffDirectory(paneID) else { return }
+        guard let directory = checkout(ofPane: paneID) else { return }
         var review = diffReviews[paneID] ?? DiffReview()
         let scope = review.scope
         if isFixture {
@@ -2430,7 +2483,7 @@ final class AppModel {
     /// The selected file's two sides, off the main actor.
     private func loadDiffContents(_ paneID: String) {
         guard let review = diffReviews[paneID], let file = review.selectedFile,
-              let directory = diffDirectory(paneID)
+              let directory = checkout(ofPane: paneID)
         else { return }
         if isFixture {
             diffReviews[paneID]?.contents = Fixtures.contents(of: file.path)
@@ -2546,45 +2599,59 @@ final class AppModel {
         flash = "copied \(location.path):\(location.line)"
     }
 
-    /// `e`: the file in the app that opens it.
+    /// `e`: the file in the task's Files tab, at the line you are on (on the new side; an old side's line is not the
+    /// working file's).
     private func openDiffFile(_ paneID: String) {
-        guard let path = diffReviews[paneID]?.selectedFile?.path, let root = diffDirectory(paneID) else { return }
-        NSWorkspace.shared.open(URL(fileURLWithPath: root).appendingPathComponent(path))
+        guard let review = diffReviews[paneID], let path = review.selectedFile?.path, let task = currentTask else {
+            return
+        }
+        let onOld = review.cursor?.path == path && review.cursor?.side == .old
+        openFiles(in: task, file: path, line: onOld ? nil : review.location?.line)
     }
 
     /// `a`: a question about the line you are on, typed into the task's agent pane unsent; INSERT there to finish it.
     private func askAboutDiff(_ paneID: String) {
-        guard let location = diffReviews[paneID]?.location, let task = currentTask, let layout = layouts[task.id]
-        else { return }
+        guard let location = diffReviews[paneID]?.location else { return }
+        askAgent("About \(location.path) around line \(location.line) (the hunk in my diff): ")
+    }
+
+    /// `prompt` typed into the current task's agent pane (else a terminal of it), unsent, in INSERT there.
+    private func askAgent(_ prompt: String) {
+        guard let task = currentTask, let layout = layouts[task.id] else { return }
         let panes = layout.panes
         guard let target = (panes.first { $0.role == .agent } ?? panes.first { $0.role.isTerminal })?.id else {
             return flash = "no agent or terminal in \(task.title) (\(keyText(for: "tab.agent")) starts one)"
         }
-        TerminalSurfaces.shared.typeText(
-            "About \(location.path) around line \(location.line) (the hunk in my diff): ", paneID: target
-        )
+        TerminalSurfaces.shared.typeText(prompt, paneID: target)
         focusPane(target)
         engine.enter(.insert)
         terminalFocusRequest += 1
     }
 
-    /// An agent in the task finished a turn: its Diff tab reads the diff again, now when it is on screen, else when
-    /// it is next shown.
+    /// An agent in the task finished a turn: its Diff tab reads the diff again, and its Files tab the list and the
+    /// open file, now when on screen, else when next shown.
     private func agentTurnEnded(in taskID: String) {
         guard let layout = layouts[taskID] else { return }
-        for pane in layout.panes where pane.role == .diff && diffReviews[pane.id] != nil {
-            let shown = view == .tasks && currentTask?.id == taskID
+        let onScreen = { (pane: PaneSpec) in
+            self.view == .tasks && self.currentTask?.id == taskID
                 && layout.groups.contains { $0.active?.pane.id == pane.id }
-            if shown {
+        }
+        for pane in layout.panes where pane.role == .diff && diffReviews[pane.id] != nil {
+            if onScreen(pane) {
                 loadDiffTab(pane.id)
             } else {
                 diffReviews[pane.id]?.loadedAt = nil
             }
         }
+        for pane in layout.panes where pane.role == .files && filesBrowsers[pane.id] != nil {
+            if let directory = task(taskID)?.directory { fileListReadAt[directory] = nil }
+            filesBrowsers[pane.id]?.readAt = nil
+            if onScreen(pane) { filesTabShown(pane.id) }
+        }
     }
 
-    /// The checkout a Diff tab reads: its task's, wherever that works now.
-    private func diffDirectory(_ paneID: String) -> String? {
+    /// The checkout a Diff or Files tab reads: its task's, wherever that works now.
+    private func checkout(ofPane paneID: String) -> String? {
         guard let taskID = layouts.first(where: { $0.value.panes.contains { $0.id == paneID } })?.key else {
             return nil
         }
@@ -2596,6 +2663,260 @@ final class AppModel {
         diffLoads.removeValue(forKey: paneID)?.cancel()
         diffReviews.removeValue(forKey: paneID)
         diffFocus.removeValue(forKey: paneID)
+    }
+
+    // MARK: Files tab
+
+    /// The focused pane's tab when it is a Files tab on screen: what the files keys act on.
+    var focusedFilesPane: String? {
+        guard view == .tasks, overlay == nil, reader == nil, issueReader == nil, let pane = currentPane,
+              pane.role == .files
+        else { return nil }
+        return pane.id
+    }
+
+    /// `:files [path[:line]]`, `⌘T f`: the current task's Files tab; with a path (relative to the checkout, or
+    /// absolute inside it), that file at that line.
+    private func showFilesTab(_ argument: String) {
+        guard let task = currentTask else { return flash = "no task here" }
+        let text = argument.trimmingCharacters(in: .whitespaces)
+        guard !text.isEmpty else { return openFiles(in: task) }
+        guard let location = FileLocation.parse(text, root: task.directory, bare: true),
+              let path = location.relative(to: task.directory)
+        else { return flash = "\(text) is not in \((task.directory as NSString).lastPathComponent)" }
+        openFiles(in: task, file: path, line: location.line, column: location.column)
+    }
+
+    /// `task`'s Files tab, opened in its work pane or gone to, showing `path` at `line` when given. Heed shows it:
+    /// you asked for it (a key, a link, `e`).
+    private func openFiles(in task: WorkTask, file path: String? = nil, line: Int? = nil, column: Int? = nil) {
+        var layout = layouts[task.id] ?? TaskLayout()
+        let pane = layout.showFiles(directory: task.directory)
+        commit(.layoutChanged(task: task.id, layout))
+        if filesBrowsers[pane.id] == nil { filesBrowsers[pane.id] = FilesBrowser(file: pane.path) }
+        linkPicker = nil
+        overlay = nil
+        reader = nil
+        issueReader = nil
+        view = .tasks
+        select(taskID: task.id)
+        if mode == .insert {
+            let before = engine.mode
+            engine.enter(.normal)
+            modeChanged(from: before)
+        }
+        if let path { showFile(path, line: line, column: column, paneID: pane.id) }
+        filesTabShown(pane.id)
+    }
+
+    /// A Files tab came on screen: its browser (the saved file again after a relaunch), and the list and the open
+    /// file read when they never were or the last read is a few seconds old.
+    func filesTabShown(_ paneID: String) {
+        guard let directory = checkout(ofPane: paneID) else { return }
+        if filesBrowsers[paneID] == nil {
+            filesBrowsers[paneID] = FilesBrowser(file: layouts.values.lazy.compactMap { $0.pane(paneID) }.first?.path)
+        }
+        loadFileList(directory)
+        guard let browser = filesBrowsers[paneID], browser.file != nil else { return }
+        if browser.text == nil || browser.readAt.map({ Date().timeIntervalSince($0) >= 2 }) ?? true {
+            loadFileText(paneID)
+        }
+    }
+
+    /// `path` in the tab at `line`: its folders open, the tree on it, saved as the tab's file.
+    private func showFile(_ path: String, line: Int? = nil, column: Int? = nil, paneID: String) {
+        guard var browser = filesBrowsers[paneID] else { return }
+        browser.show(path, line: line, column: column)
+        filesBrowsers[paneID] = browser
+        if let taskID = currentDomain.task(ofPane: paneID), var layout = layouts[taskID],
+           layout.pane(paneID)?.path != path
+        {
+            layout.setFile(path, paneID: paneID)
+            commit(.layoutChanged(task: taskID, layout))
+        }
+        if browser.text == nil || browser.readAt.map({ Date().timeIntervalSince($0) >= 2 }) ?? true {
+            loadFileText(paneID)
+        }
+    }
+
+    /// Lists `directory`'s files, unless a listing is under way or the last one is under two seconds old: git's
+    /// tracked files first (the tree draws), then everything with the ignored files and the marks.
+    private func loadFileList(_ directory: String, force: Bool = false) {
+        if isFixture {
+            if fileLists[directory] == nil { fileLists[directory] = Fixtures.fileList }
+            return
+        }
+        guard fileListLoads[directory] == nil else { return }
+        if !force, let readAt = fileListReadAt[directory], Date().timeIntervalSince(readAt) < 2 { return }
+        fileListReadAt[directory] = Date()
+        let exclude = config.fileExclusion
+        let known = fileLists[directory]
+        fileListLoads[directory] = Task {
+            if known == nil, let tracked = try? await FileListing.tracked(at: directory, exclude: exclude),
+               fileLists[directory] == nil
+            {
+                fileLists[directory] = tracked
+            }
+            do {
+                fileLists[directory] = try await FileListing.full(
+                    at: directory, exclude: exclude, reading: fileLists[directory]?.readFolders ?? []
+                )
+            } catch {
+                flash = "couldn't list the files in \((directory as NSString).lastPathComponent)"
+            }
+            fileListLoads[directory] = nil
+            fileListReadAt[directory] = Date()
+            readOpenFolders(in: directory)
+        }
+    }
+
+    /// Ignored folders open in a tab but not read in the current list (opened while it was listed again).
+    private func readOpenFolders(in directory: String) {
+        guard let list = fileLists[directory] else { return }
+        for (paneID, browser) in filesBrowsers where checkout(ofPane: paneID) == directory {
+            for folder in browser.open where list.isUnread(folder) {
+                readFolder(folder, in: directory)
+            }
+        }
+    }
+
+    /// An ignored folder opened in the tree: its entries from disk, off the main actor.
+    private func readFolder(_ folder: String, in directory: String) {
+        guard let list = fileLists[directory], list.isUnread(folder) else { return }
+        if isFixture {
+            fileLists[directory] = list.readingFolder(folder, entries: Fixtures.ignoredEntries(of: folder))
+            return
+        }
+        let exclude = config.fileExclusion
+        Task {
+            let read = await FileListing.reading(folder, in: directory, into: list, exclude: exclude)
+            // A list listed meanwhile reads its open folders itself.
+            guard fileLists[directory]?.revision == list.revision else { return }
+            fileLists[directory] = read
+        }
+    }
+
+    /// The open file's text, off the main actor.
+    private func loadFileText(_ paneID: String) {
+        guard let path = filesBrowsers[paneID]?.file, let directory = checkout(ofPane: paneID) else { return }
+        if isFixture {
+            filesBrowsers[paneID]?.text = Fixtures.fileText(path)
+            filesBrowsers[paneID]?.readAt = Date()
+            return
+        }
+        fileTextLoads[paneID]?.cancel()
+        fileTextLoads[paneID] = Task {
+            let text = await FileContents.read(path, in: directory)
+            guard !Task.isCancelled, filesBrowsers[paneID]?.file == path else { return }
+            if filesBrowsers[paneID]?.text != text { filesBrowsers[paneID]?.text = text }
+            filesBrowsers[paneID]?.readAt = Date()
+        }
+    }
+
+    /// A Files tab's list: its checkout's.
+    func fileList(_ paneID: String) -> FileList? {
+        checkout(ofPane: paneID).flatMap { fileLists[$0] }
+    }
+
+    /// The tree's rows for a Files tab, built again only when its list or its open folders changed.
+    func fileRows(_ paneID: String) -> [FileTree.Row] {
+        guard let browser = filesBrowsers[paneID], let list = fileList(paneID) else { return [] }
+        if let cached = fileRowCache[paneID], cached.revision == list.revision, cached.open == browser.open {
+            return cached.rows
+        }
+        let rows = FileTree.rows(list, open: browser.open)
+        fileRowCache[paneID] = (list.revision, browser.open, rows)
+        return rows
+    }
+
+    /// A click on a row of the tree: a folder folds or unfolds, a file opens.
+    func clickedFileRow(_ row: FileTree.Row, paneID: String) {
+        clickedFiles(paneID)
+        guard var browser = filesBrowsers[paneID] else { return }
+        if row.isFolder {
+            let unread = browser.toggle(row)
+            filesBrowsers[paneID] = browser
+            if let unread, let directory = checkout(ofPane: paneID) { readFolder(unread, in: directory) }
+        } else {
+            showFile(row.path, paneID: paneID)
+        }
+    }
+
+    /// A segment clicked: the tree, or find in files.
+    func setFilesMode(_ mode: FilesBrowser.Mode, paneID: String) {
+        clickedFiles(paneID)
+        guard filesBrowsers[paneID]?.mode != mode else { return }
+        filesBrowsers[paneID]?.mode = mode
+    }
+
+    /// A click in a Files tab: it takes the keys, in NORMAL (files are read only).
+    func clickedFiles(_ paneID: String) {
+        clickedOutsideTerminal()
+        if currentPane?.id != paneID { focusPane(paneID) }
+    }
+
+    /// The web view reported the line you are on.
+    func fileCursorMoved(path: String, line: Int, paneID: String) {
+        fileCursors[paneID] = (path, line)
+    }
+
+    /// `path:line` for `a` and `y`: the line the viewer is on, else the one asked for.
+    private func fileLocation(_ paneID: String) -> (path: String, line: Int)? {
+        guard let location = filesBrowsers[paneID]?.location else { return nil }
+        if let cursor = fileCursors[paneID], cursor.path == location.path { return cursor }
+        return location
+    }
+
+    /// The keys of a focused Files tab (`[keys.files]`).
+    private func filesCommand(_ name: String) {
+        guard let paneID = focusedFilesPane, var browser = filesBrowsers[paneID] else {
+            return flash = "not on a Files tab (\(keyText(for: "files.pick")) finds a file)"
+        }
+        let rows = fileRows(paneID)
+        switch name {
+        case "files.down":
+            browser.moveCursor(by: 1, rows: rows)
+            filesBrowsers[paneID] = browser
+        case "files.up":
+            browser.moveCursor(by: -1, rows: rows)
+            filesBrowsers[paneID] = browser
+        case "files.fold":
+            browser.fold(rows: rows)
+            filesBrowsers[paneID] = browser
+        case "files.mode":
+            browser.mode = browser.mode.other
+            filesBrowsers[paneID] = browser
+        case "files.open":
+            guard let row = browser.cursorRow(rows) else { return }
+            guard row.isFolder else { return showFile(row.path, paneID: paneID) }
+            let unread = browser.unfold(row, rows: rows)
+            filesBrowsers[paneID] = browser
+            if let unread, let directory = checkout(ofPane: paneID) { readFolder(unread, in: directory) }
+        case "files.page.down": DiffSurfaces.shared.scrollPage(0.5, paneID: paneID)
+        case "files.page.up": DiffSurfaces.shared.scrollPage(-0.5, paneID: paneID)
+        case "files.top": DiffSurfaces.shared.edge(top: true, paneID: paneID)
+        case "files.bottom": DiffSurfaces.shared.edge(top: false, paneID: paneID)
+        case "files.copy":
+            guard let location = fileLocation(paneID) else { return flash = "no file open" }
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString("\(location.path):\(location.line)", forType: .string)
+            flash = "copied \(location.path):\(location.line)"
+        case "files.ask":
+            guard let location = fileLocation(paneID) else { return flash = "no file open" }
+            askAgent("About \(location.path) around line \(location.line): ")
+        case "files.refresh":
+            if let directory = checkout(ofPane: paneID) { loadFileList(directory, force: true) }
+            loadFileText(paneID)
+        default: break
+        }
+    }
+
+    /// A Files tab closed: its browser goes with it (the checkout's list stays for the finder).
+    private func filesTabClosed(_ paneID: String) {
+        fileTextLoads.removeValue(forKey: paneID)?.cancel()
+        filesBrowsers.removeValue(forKey: paneID)
+        fileCursors.removeValue(forKey: paneID)
+        fileRowCache.removeValue(forKey: paneID)
     }
 
     /// A Note tab closed: cancel any in-flight load, close the web view.
@@ -2932,6 +3253,7 @@ final class AppModel {
         PaneSurfaces.close(paneID: paneID)
         diffTabClosed(paneID)
         noteTabClosed(paneID)
+        filesTabClosed(paneID)
         if layout.isEmpty { taskEmptied(taskID) }
     }
 

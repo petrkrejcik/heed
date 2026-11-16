@@ -1,7 +1,8 @@
-// The Diff tab's web view. Swift hands it a file's old and new contents (`heedDiff.show`) and drives it with commands
-// (`hunk`, `setMode`, `scrollPage`); it reports the hunk or line you are on back through the `heed` message handler,
-// so Swift's `a`, `y` and `e` know the line. Read-only: nothing here edits a document. The colours and the font are
-// CSS variables Swift sets before this runs (`--heed-*`), so a light theme only swaps their values.
+// The Diff tab's web view, and the Files tab's. Swift hands it a file's old and new contents (`heedDiff.show`) or one
+// file (`heedDiff.file`) and drives it with commands (`hunk`, `setMode`, `scrollPage`, `edge`); it reports the hunk or
+// line you are on back through the `heed` message handler, so Swift's `a`, `y` and `e` know the line. Read-only:
+// nothing here edits a document. The colours and the font are CSS variables Swift sets before this runs
+// (`--heed-*`), so a light theme only swaps their values.
 import { css } from "@codemirror/lang-css";
 import { html } from "@codemirror/lang-html";
 import { javascript } from "@codemirror/lang-javascript";
@@ -11,7 +12,7 @@ import { sass } from "@codemirror/lang-sass";
 import { yaml } from "@codemirror/lang-yaml";
 import { HighlightStyle, type LanguageSupport, syntaxHighlighting } from "@codemirror/language";
 import { type Chunk, getChunks, MergeView, unifiedMergeView } from "@codemirror/merge";
-import { EditorState, type Extension, StateEffect, StateField } from "@codemirror/state";
+import { EditorState, type Extension, type Range, StateEffect, StateField } from "@codemirror/state";
 import { Decoration, type DecorationSet, EditorView, highlightSpecialChars, lineNumbers } from "@codemirror/view";
 import { tags as t } from "@lezer/highlight";
 
@@ -28,6 +29,20 @@ interface Payload {
   keepScroll?: boolean;
   /** Go to the first or last hunk once drawn (`n` past a file's last hunk lands on the next file's first). */
   focus?: "first" | "last" | null;
+}
+
+/** One file for the Files tab. */
+interface FilePayload {
+  path: string;
+  language: string | null;
+  text: string;
+  /** The line asked for (1-based), marked; nil: none. */
+  line: number | null;
+  /** Bumped by every "go to" in Swift: a new one scrolls `line` to the middle, the same one (a re-read) keeps the
+   * scroll. */
+  visit: number;
+  /** Find in files' query, highlighted where it occurs: literal, case-insensitive unless it has a capital. */
+  query: string | null;
 }
 
 interface Target {
@@ -123,6 +138,8 @@ const theme = EditorView.theme(
     },
     ".cm-collapsedLines:hover": { color: "var(--heed-fg)", background: "var(--heed-bg3)" },
     ".cm-heed-current": { boxShadow: "inset 2px 0 0 var(--heed-current)" },
+    ".cm-heed-target": { backgroundColor: "var(--heed-target-line)" },
+    ".cm-heed-match": { backgroundColor: "var(--heed-match)", borderRadius: "2px" },
     ".cm-deletedChunk": { paddingLeft: "0" },
   },
   { dark: true },
@@ -153,11 +170,26 @@ const currentField = StateField.define<DecorationSet>({
   provide: (field) => EditorView.decorations.from(field),
 });
 
+// The Files tab's marks: the line asked for, and the query's matches.
+const setFileMarks = StateEffect.define<DecorationSet>();
+const fileMarks = StateField.define<DecorationSet>({
+  create: () => Decoration.none,
+  update(marks, tr) {
+    for (const effect of tr.effects) if (effect.is(setFileMarks)) return effect.value;
+    return marks.map(tr.changes);
+  },
+  provide: (field) => EditorView.decorations.from(field),
+});
+
 const root = document.getElementById("diff") as HTMLElement;
 let payload: Payload | null = null;
 let merge: MergeView | null = null;
 let unified: EditorView | null = null;
 let target: Target | null = null;
+let filePayload: FilePayload | null = null;
+let single: EditorView | null = null;
+/** The line clicked in the file, while it is what `a` and `y` use. */
+let fileClicked: number | null = null;
 
 const collapse = { margin: 3, minSize: 4 };
 const diffConfig = { scanLimit: 500, timeout: 1000 };
@@ -180,9 +212,9 @@ function editorExtensions(language: string | null, side: "a" | "b"): Extension[]
   ];
 }
 
-/** The scrolling element: the merge view itself, or the unified editor's scroller. */
+/** The scrolling element: the merge view itself, the unified editor's scroller, or the file's. */
 function scroller(): HTMLElement | null {
-  return merge?.dom ?? unified?.scrollDOM ?? null;
+  return merge?.dom ?? unified?.scrollDOM ?? single?.scrollDOM ?? null;
 }
 
 /** The editor that shows the new file (side b), where hunks are counted and lines mean the working file. */
@@ -199,8 +231,11 @@ function chunks(): readonly Chunk[] {
 function destroy(): void {
   merge?.destroy();
   unified?.destroy();
+  single?.destroy();
   merge = null;
   unified = null;
+  single = null;
+  filePayload = null;
   root.textContent = "";
 }
 
@@ -208,6 +243,7 @@ function render(next: Payload): void {
   const keep = next.keepScroll && payload?.path === next.path ? (scroller()?.scrollTop ?? 0) : null;
   const kept = keep !== null ? target : null;
   destroy();
+  fileClicked = null;
   payload = next;
   target = null;
   if (next.mode === "split") {
@@ -361,9 +397,138 @@ function report(): void {
   });
 }
 
+function fileExtensions(language: string | null): Extension[] {
+  const support = language ? languages[language]?.() : undefined;
+  return [
+    lineNumbers(),
+    highlightSpecialChars(),
+    syntaxHighlighting(syntax),
+    theme,
+    EditorState.readOnly.of(true),
+    EditorView.editable.of(false),
+    fileMarks,
+    EditorView.updateListener.of((update) => {
+      if (!update.selectionSet || !update.transactions.some((tr) => tr.isUserEvent("select"))) return;
+      fileClicked = update.state.doc.lineAt(update.state.selection.main.head).number;
+      reportFile();
+    }),
+    support ?? [],
+  ];
+}
+
+const maxMatches = 5000;
+
+/** The line asked for, and every place the query occurs (as ripgrep's smart case: a capital makes it exact). */
+function fileDecorations(view: EditorView, next: FilePayload): DecorationSet {
+  const doc = view.state.doc;
+  const ranges: Range<Decoration>[] = [];
+  if (next.line !== null && next.line >= 1 && next.line <= doc.lines) {
+    ranges.push(Decoration.line({ class: "cm-heed-target cm-heed-current" }).range(doc.line(next.line).from));
+  }
+  const query = next.query ?? "";
+  if (query) {
+    const flags = query === query.toLowerCase() ? "gi" : "g";
+    const pattern = new RegExp(query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), flags);
+    const mark = Decoration.mark({ class: "cm-heed-match" });
+    const text = doc.toString();
+    let found = 0;
+    for (const match of text.matchAll(pattern)) {
+      if (++found > maxMatches || match.index === undefined) break;
+      ranges.push(mark.range(match.index, match.index + match[0].length));
+    }
+  }
+  return Decoration.set(ranges, true);
+}
+
+function renderFile(next: FilePayload): void {
+  const previous = filePayload;
+  const sameFile = single !== null && previous?.path === next.path && previous.language === next.language;
+  if (
+    sameFile &&
+    previous.text === next.text &&
+    previous.query === next.query &&
+    previous.line === next.line &&
+    previous.visit === next.visit
+  ) {
+    return;
+  }
+  let keep: number | null = null;
+  if (!sameFile || previous.text !== next.text) {
+    // Read again (the same visit): stay where it was scrolled to.
+    if (sameFile && previous.visit === next.visit) keep = single?.scrollDOM.scrollTop ?? null;
+    destroy();
+    payload = null;
+    target = null;
+    fileClicked = null;
+    single = new EditorView({
+      parent: root,
+      state: EditorState.create({ doc: next.text, extensions: fileExtensions(next.language) }),
+    });
+    single.scrollDOM.addEventListener("scroll", fileScrolled, { passive: true });
+  }
+  filePayload = next;
+  const view = single as EditorView;
+  const effects: StateEffect<unknown>[] = [setFileMarks.of(fileDecorations(view, next))];
+  const goTo = keep === null && previous?.visit !== next.visit;
+  if (goTo && next.line !== null && next.line >= 1 && next.line <= view.state.doc.lines) {
+    effects.push(EditorView.scrollIntoView(view.state.doc.line(next.line).from, { y: "center" }));
+    fileClicked = null;
+  }
+  view.dispatch({ effects });
+  requestAnimationFrame(() => {
+    if (keep !== null) view.scrollDOM.scrollTop = keep;
+    reportFile();
+    post({ type: "shown", path: next.path });
+  });
+}
+
+/** Whether line `number` of the file is on screen. */
+function lineVisible(view: EditorView, number: number): boolean {
+  if (number < 1 || number > view.state.doc.lines) return false;
+  const block = view.lineBlockAt(view.state.doc.line(number).from);
+  const top = view.scrollDOM.scrollTop;
+  return block.top >= top - 2 && block.bottom <= top + view.scrollDOM.clientHeight + 2;
+}
+
+/** The line `a` and `y` use: the one clicked, else the one asked for while it is on screen, else the topmost. */
+function reportFile(): void {
+  const view = single;
+  if (!view || !filePayload) return;
+  let line = fileClicked;
+  if (line === null && filePayload.line !== null && lineVisible(view, filePayload.line)) line = filePayload.line;
+  if (line === null) {
+    const block = view.lineBlockAtHeight(view.scrollDOM.scrollTop);
+    line = view.state.doc.lineAt(block.from).number;
+  }
+  post({ type: "file-cursor", path: filePayload.path, line });
+}
+
+let fileScrollPending = false;
+function fileScrolled(): void {
+  if (fileScrollPending) return;
+  fileScrollPending = true;
+  requestAnimationFrame(() => {
+    fileScrollPending = false;
+    const view = single;
+    if (view && fileClicked !== null && !lineVisible(view, fileClicked)) fileClicked = null;
+    reportFile();
+  });
+}
+
 const api = {
   show(next: Payload): void {
     render(next);
+  },
+
+  /** The Files tab: one file, read only. */
+  file(next: FilePayload): void {
+    renderFile(next);
+  },
+
+  /** `gg` / `G`: the top or the end. */
+  edge(top: boolean): void {
+    const scrolling = scroller();
+    if (scrolling) scrolling.scrollTo({ top: top ? 0 : scrolling.scrollHeight });
   },
 
   /** Next (`delta` > 0) or previous hunk; false at either end, so Swift can move to the next file. */
@@ -400,6 +565,7 @@ const api = {
     destroy();
     payload = null;
     target = null;
+    fileClicked = null;
   },
 };
 

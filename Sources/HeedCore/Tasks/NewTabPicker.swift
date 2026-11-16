@@ -6,6 +6,7 @@ public struct NewTabPicker: Equatable, Sendable {
         case terminal
         case page
         case note
+        case files
 
         /// The key that picks it in the dialog.
         public var key: String {
@@ -13,6 +14,7 @@ public struct NewTabPicker: Equatable, Sendable {
             case .terminal: "t"
             case .page: "b"
             case .note: "n"
+            case .files: "f"
             }
         }
 
@@ -21,6 +23,7 @@ public struct NewTabPicker: Equatable, Sendable {
             case .terminal: "Terminal"
             case .page: "Web page"
             case .note: "Note"
+            case .files: "Files"
             }
         }
     }

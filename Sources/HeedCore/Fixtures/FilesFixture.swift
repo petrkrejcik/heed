@@ -49,6 +49,15 @@ public extension Fixtures {
         return .text("// \(path)\n")
     }
 
+    /// What an ignored folder holds, as read from disk when it is opened: a build folder's output, else one file.
+    static func ignoredEntries(of folder: String) -> [(name: String, isFolder: Bool)] {
+        switch (folder as NSString).lastPathComponent {
+        case "target": [("types", true), ("index.js", false), ("index.js.map", false)]
+        case ".es": [("cache", true), ("9.3.0", true)]
+        default: [("README.md", false)]
+        }
+    }
+
     /// Find in files over the fixture's texts, as ripgrep would answer: literal, smart case.
     static func search(_ query: String) -> [SearchEvent] {
         guard !query.isEmpty else { return [] }

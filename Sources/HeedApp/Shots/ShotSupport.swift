@@ -16,6 +16,7 @@ enum ShotRegion: String, CaseIterable {
     case chips, list, pickedPanel, issueRepos, syncBanner
     case reader
     case diffTab, diffFiles, diffBody
+    case filesTab, filesTree, filesFinder
 }
 
 struct ShotRegionKey: PreferenceKey {

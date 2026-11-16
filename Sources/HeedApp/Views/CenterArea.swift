@@ -359,6 +359,8 @@ private struct PaneView: View {
             }
             if pane.role == .diff {
                 DiffTabView(pane: pane, active: active)
+            } else if pane.role == .files {
+                FilesTabView(pane: pane, active: active)
             } else if pane.role == .note {
                 NoteTabView(pane: pane, active: active)
             } else if ShotMode.active {
@@ -404,6 +406,7 @@ private struct PaneView: View {
             switch pane.role {
             case .browser: model.focusPane(pane.id)
             case .diff: model.clickedDiff(pane.id)
+            case .files: model.clickedFiles(pane.id)
             case .note: model.clickedNote(pane.id)
             default: model.clickedPane(pane.id)
             }

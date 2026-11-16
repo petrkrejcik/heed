@@ -537,6 +537,43 @@ struct FilesTabTests {
         let found = Fixtures.search("credentials")
         #expect(!found.isEmpty)
         #expect(Fixtures.search("Credentials").isEmpty)
+        let read = list.readingFolder("data", entries: Fixtures.ignoredEntries(of: "data"))
+        #expect(read.contains(file: "data/README.md"))
+    }
+
+    @Test func aRelaunchShowsTheSavedFileAgain() {
+        let browser = FilesBrowser(file: "src/core/a.ts")
+        #expect(browser.file == "src/core/a.ts" && browser.text == nil && browser.recent == ["src/core/a.ts"])
+        #expect(browser.open == ["src", "src/core"] && browser.cursor == "f:src/core/a.ts")
+        #expect(FilesBrowser(file: nil).file == nil)
+    }
+
+    @Test func goingToTheSameFileAgainKeepsItsTextAndScrollsAgain() {
+        var browser = FilesBrowser(file: "a.ts")
+        browser.text = .text("x")
+        let visit = browser.visit
+        browser.show("a.ts", line: 9)
+        #expect(browser.text == .text("x") && browser.visit == visit + 1 && browser.location?.line == 9)
+        browser.show("b.ts")
+        #expect(browser.text == nil && browser.recent == ["b.ts", "a.ts"] && browser.location?.line == 1)
+    }
+
+    @Test func aFileIsReadWithTheDiffTabsLimits() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("heed-read-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try Data("const a = 1;\n".utf8).write(to: root.appendingPathComponent("a.ts"))
+        try Data([0x89, 0x50, 0x4E, 0x47, 0, 1]).write(to: root.appendingPathComponent("logo.png"))
+        try Data(repeating: 0x61, count: FileContents.maxBytes + 1).write(to: root.appendingPathComponent("big.txt"))
+        #expect(await FileContents.read("a.ts", in: root.path) == .text("const a = 1;\n"))
+        #expect(await FileContents.read("logo.png", in: root.path).unshown == "Binary file")
+        #expect(await FileContents.read("big.txt", in: root.path).unshown == "Too large to show (1.0 MB)")
+        #expect(await FileContents.read("gone.ts", in: root.path).unshown == "No such file")
+    }
+
+    @Test func theNewTabDialogOpensTheFilesTab() {
+        #expect(NewTabPicker(last: .terminal).handle(KeyStroke("f")) == .open(.files))
+        #expect(NewTabPicker.Kind.files.label == "Files")
     }
 }
 

@@ -3,8 +3,9 @@ import HeedCore
 import Observation
 import WebKit
 
-/// The Diff tab in screenshots (`HEED_SHOTS`, `HEED_SNAPSHOT`): an offscreen render can't draw a live web view, so the
-/// diff is drawn by a web view in a window off every screen, snapshotted, and the tab shows that image instead.
+/// The Diff and Files tabs in screenshots (`HEED_SHOTS`, `HEED_SNAPSHOT`): an offscreen render can't draw a live web
+/// view, so the diff (or the file) is drawn by a web view in a window off every screen, snapshotted, and the tab shows
+/// that image instead.
 @MainActor
 @Observable
 final class DiffStills {
@@ -16,7 +17,7 @@ final class DiffStills {
     }
 
     struct Key: Hashable {
-        var payload: DiffPayload
+        var drawing: DiffDrawing
         var width: Int
         var height: Int
     }
@@ -27,7 +28,16 @@ final class DiffStills {
     /// The still for `payload` at `size`, or nil while it is drawn (it is asked for here; the view redraws when it
     /// lands).
     func image(_ payload: DiffPayload, size: CGSize) -> NSImage? {
-        let key = Key(payload: payload, width: Int(size.width), height: Int(size.height))
+        image(.diff(payload), size: size)
+    }
+
+    /// A Files tab's file.
+    func image(file payload: FilePayload, size: CGSize) -> NSImage? {
+        image(.file(payload), size: size)
+    }
+
+    private func image(_ drawing: DiffDrawing, size: CGSize) -> NSImage? {
+        let key = Key(drawing: drawing, width: Int(size.width), height: Int(size.height))
         if let image = images[key] { return image }
         guard key.width > 0, key.height > 0, !pending.contains(key) else { return nil }
         pending.insert(key)
@@ -74,9 +84,9 @@ final class DiffStills {
         defer { timeout.cancel() }
         for await type in shown.stream {
             if type == "ready" {
+                let call = key.drawing.call(keepScroll: false)
                 _ = try? await view.callAsyncJavaScript(
-                    "window.heedDiff.show(payload)", arguments: ["payload": key.payload.arguments(keepScroll: false)],
-                    contentWorld: .page
+                    call.script, arguments: ["payload": call.payload], contentWorld: .page
                 )
             } else if type == "shown" {
                 break

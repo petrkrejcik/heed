@@ -88,7 +88,8 @@ private struct DiffToolbar: View {
     }
 }
 
-private struct Segments<Content: View>: View {
+/// A row of segments, one on: the Diff and Files tabs' toolbars.
+struct Segments<Content: View>: View {
     @ViewBuilder let content: Content
 
     var body: some View {
@@ -99,7 +100,7 @@ private struct Segments<Content: View>: View {
     }
 }
 
-private struct Segment: View {
+struct Segment: View {
     let label: String
     let on: Bool
     let action: () -> Void
@@ -272,7 +273,7 @@ private struct DiffFileView: View {
                     if let reason = file.binary ? "Binary file" : contents.unshown {
                         message(
                             reason,
-                            detail: model.keyLabel(for: "diff.edit").map { "\($0) opens it in your editor" }
+                            detail: model.keyLabel(for: "diff.edit").map { "\($0) opens it in the Files tab" }
                         )
                     } else {
                         DiffWebArea(paneID: pane.id, payload: DiffPayload(
@@ -369,7 +370,7 @@ private struct DiffFooter: View {
             hint("diff.file.next", "diff.file.prev", "file")
             hint("diff.ask", nil, "ask the agent")
             hint("diff.copy", nil, "copy path:line")
-            hint("diff.edit", nil, "editor")
+            hint("diff.edit", nil, "open the file")
             hint("diff.refresh", nil, "read again")
             Spacer()
         }
