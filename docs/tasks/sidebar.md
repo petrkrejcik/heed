@@ -29,7 +29,7 @@ tabs, terminals and agents stay as they were.
 
 Click a section's header, or press `za` on a task, to collapse or expand its section. `:section done` (any status name
 `:status` takes, or `pinned`) does it by name. A collapsed section shows its name and how many tasks it has; `j` `k`,
-`gg` `G`, `{` `}`, counts and the line numbers skip its rows. Heed remembers which sections are collapsed across
+`gg` `G`, `{` `}`, counts and the rail's numbers skip its rows. Heed remembers which sections are collapsed across
 relaunches.
 
 ![Done opened with :section done](../images/shots/tasks/sections.png)
@@ -43,18 +43,18 @@ Each row shows:
 
 - The state glyph of the task's most urgent agent.
 - The title, and the pin number if pinned.
-- The worktree's name, or "main checkout".
-- Its tags, when it has any (a task with none has no third line):
-  - A Kibana icon with the port, when Kibana runs for the task.
-  - The PR's number, in the PR's color: grey for a draft, green open, violet merged, red closed. Before it, the
-    PR's mark when there is something to act on: ✕ a check failed, ⇄ a conflict (or behind), ● open threads or
-    changes requested (see [the state of a PR](../github/pr-overlay.md#the-state-of-a-pr)).
+- Its tags, when it has any (a task with none has no second line):
+  - A green K when Kibana runs for the task. Hover it for the port; click it to open Kibana as a new page in the
+    task.
+  - The PR's state, as GitHub labels it: green Open, grey Draft, violet Merged, red Closed. Before it, the PR's mark
+    when there is something to act on: ✕ a check failed, ⇄ a conflict (or behind), ● open threads or changes
+    requested (see [the state of a PR](../github/pr-overlay.md#the-state-of-a-pr)). Hover it for the number; click it
+    to open the PR as a new page in the task.
+  - The task's note: click it to open the note as a tab of the task.
+  - The task's issue, when its note has one: click it to open the issue as a new page in the task.
   - An hourglass with the minutes left on the agent's prompt cache, amber in the last five.
 
 Hover a row for what its agent is doing; with more than one agent tab, how many ("2 agents · running jest").
-
-The numbers on the left are relative to the cursor, as in vim: the number on a row is how many `j` or `k` presses
-away it is.
 
 Click a task to select it; double-click it to type into its agent (INSERT). Rows in the other lists (Inbox, Issues,
 PRs) take clicks the same way: a click moves the cursor there, a double-click opens the row as `↩` does.
@@ -76,7 +76,8 @@ turn ends.
 ## The rail
 
 `zs` collapses the sidebar to a narrow rail: one row per task of the open sections, with its number, state and pin,
-and a short line where a section starts. These are the rows the cursor walks, so moving and jumping work as in the
+and a short line where a section starts. The numbers are relative to the cursor, as in vim: the number on a row is
+how many `j` or `k` presses away it is. These are the rows the cursor walks, so moving and jumping work as in the
 sidebar. `zs` again brings the sidebar back.
 
 ![The collapsed rail](../images/shots/tasks/rail.png)
