@@ -144,16 +144,17 @@ struct PullTagTests {
 }
 
 struct TaskTagTests {
-    @Test func kibanaThenThePullThenTheCache() {
+    @Test func thePullThenKibanaThenTheCache() {
         let task = WorkTask(id: "t", title: "t", port: 5602, running: true)
         let rollup = TaskRollup(agent: nil, kibanaRunning: true, cacheTurns: [ago(15)])
         let pull = PullTag(number: 42, state: .open)
         let tags = TaskTag.of(task, rollup: rollup, pull: pull, now: now)
         let countdown = PromptCache.countdown(from: ago(15), now: now)!
-        #expect(tags == [.kibana(port: 5602), .pull(pull), .cache(countdown)])
+        #expect(tags == [.pull(pull), .kibana(port: 5602), .cache(countdown)])
+        #expect(tags.map(\.isLive) == [false, true, true])
     }
 
-    @Test func theNoteAndTheIssueComeAfterThePull() {
+    @Test func theNoteAndTheIssueComeAfterThePullBeforeTheLiveOnes() {
         let task = WorkTask(
             id: "t", title: "t", issue: "https://github.com/elastic/kibana/issues/7", notePath: "/vault/t.md",
             port: 5602, running: true
@@ -164,10 +165,10 @@ struct TaskTagTests {
         let countdown = PromptCache.countdown(from: ago(15), now: now)!
         let issue = IssueRef(url: "https://github.com/elastic/kibana/issues/7")!
         #expect(tags == [
-            .kibana(port: 5602),
             .pull(pull),
             .note(path: "/vault/t.md"),
             .issue(issue),
+            .kibana(port: 5602),
             .cache(countdown),
         ])
         // An `issue:` that is not a GitHub issue link is no tag.

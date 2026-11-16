@@ -1,21 +1,30 @@
 import Foundation
 
-/// The small tags on a sidebar row's last line, in this order: Kibana running, the PR, the task's note, its issue, the
-/// prompt cache countdown. A task with none has no last line. Each but the countdown opens what it stands for.
+/// The small tags on a sidebar row's last line, in this order: the PR, the task's note, its issue, then the live ones
+/// (Kibana running, the prompt cache countdown). A task with none has no last line. Each but the countdown opens what
+/// it stands for.
 public enum TaskTag: Hashable, Sendable {
-    case kibana(port: Int)
     case pull(PullTag)
     case note(path: String)
     case issue(IssueRef)
+    case kibana(port: Int)
     case cache(PromptCache.Countdown)
+
+    /// What is running for the task, rather than what it links to: kept apart, at the row's trailing edge.
+    public var isLive: Bool {
+        switch self {
+        case .kibana, .cache: true
+        case .pull, .note, .issue: false
+        }
+    }
 
     /// `pull` is the task's PR as the sync and its details see it (nil when the task has none).
     public static func of(_ task: WorkTask, rollup: TaskRollup, pull: PullTag?, now: Date) -> [TaskTag] {
         var tags: [TaskTag] = []
-        if rollup.kibanaRunning, let port = task.port { tags.append(.kibana(port: port)) }
         if let pull { tags.append(.pull(pull)) }
         if let path = task.notePath { tags.append(.note(path: path)) }
         if let issue = task.issueRef { tags.append(.issue(issue)) }
+        if rollup.kibanaRunning, let port = task.port { tags.append(.kibana(port: port)) }
         if let cache = PromptCache.countdown(turns: rollup.cacheTurns, now: now) { tags.append(.cache(cache)) }
         return tags
     }

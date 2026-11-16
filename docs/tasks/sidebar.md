@@ -43,15 +43,18 @@ Each row shows:
 
 - The state glyph of the task's most urgent agent.
 - The title, and the pin number if pinned.
-- Its tags, when it has any (a task with none has no second line):
-  - A green K when Kibana runs for the task. Hover it for the port; click it to open Kibana as a new page in the
-    task.
-  - The PR's state, as GitHub labels it: green Open, grey Draft, violet Merged, red Closed. Before it, the PR's mark
+- Its tags, when it has any (a task with none has no second line). Each keeps its place, so they line up down the
+  list. On the left:
+  - The PR's state, as GitHub labels it: green Open, grey Draft, violet Merged, red Closed. After it, the PR's mark
     when there is something to act on: ✕ a check failed, ⇄ a conflict (or behind), ● open threads or changes
     requested (see [the state of a PR](../github/pr-overlay.md#the-state-of-a-pr)). Hover it for the number; click it
     to open the PR as a new page in the task.
   - The task's note: click it to open the note as a tab of the task.
   - The task's issue, when its note has one: click it to open the issue as a new page in the task.
+
+  On the right, what is running:
+  - A green K when Kibana runs for the task. Hover it for the port; click it to open Kibana as a new page in the
+    task.
   - An hourglass with the minutes left on the agent's prompt cache, amber in the last five.
 
 Hover a row for what its agent is doing; with more than one agent tab, how many ("2 agents · running jest").

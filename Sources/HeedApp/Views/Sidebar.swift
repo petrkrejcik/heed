@@ -157,7 +157,9 @@ struct TaskRow: View {
     }
 }
 
-/// A row's tags, left to right; nothing at all (no line, no gap) when there are none. A click on one opens it.
+/// A row's tags; nothing at all (no line, no gap) when there are none. A click on one opens it. Every tag has a fixed
+/// width, so they line up down the list: the PR pill at the left edge, then the note and the issue; Kibana and the
+/// countdown at the right edge, the countdown's place kept when only Kibana shows.
 struct TaskTagsLine: View {
     let tags: [TaskTag]
     var open: (TaskTag) -> Void = { _ in }
@@ -165,19 +167,31 @@ struct TaskTagsLine: View {
     var body: some View {
         if !tags.isEmpty {
             HStack(spacing: 8) {
-                ForEach(tags, id: \.self) { tag in
+                ForEach(tags.filter { !$0.isLive }, id: \.self) { tag in
                     switch tag {
-                    case let .kibana(port): TagButton { open(tag) } label: { KibanaMark(port: port) }
                     case let .pull(pull): TagButton { open(tag) } label: { PullTagMark(tag: pull) }
                     case .note: TagButton { open(tag) } label: { NoteMark() }
                     case let .issue(ref): TagButton { open(tag) } label: { IssueMark(ref: ref) }
-                    case let .cache(countdown): CacheMark(countdown: countdown)
+                    case .kibana, .cache: EmptyView()
                     }
                 }
+                Spacer(minLength: 8)
+                if let port = kibanaPort {
+                    TagButton { open(.kibana(port: port)) } label: { KibanaMark(port: port) }
+                }
+                if kibanaPort != nil || countdown != nil { CacheMark(countdown: countdown) }
             }
             .lineLimit(1)
             .padding(.top, 5)
         }
+    }
+
+    private var kibanaPort: Int? {
+        tags.lazy.compactMap { if case let .kibana(port) = $0 { port } else { nil } }.first
+    }
+
+    private var countdown: PromptCache.Countdown? {
+        tags.lazy.compactMap { if case let .cache(countdown) = $0 { countdown } else { nil } }.first
     }
 }
 
@@ -193,26 +207,37 @@ struct TagButton<Label: View>: View {
     }
 }
 
-/// A task's PR as GitHub labels its state: a filled pill, green Open, grey Draft, violet Merged, red Closed. Before it,
-/// the CI or review mark when there is something to act on (failing, conflict, threads). The number is in the tooltip.
+/// A task's PR as GitHub labels its state: a filled pill, green Open, grey Draft, violet Merged, red Closed, all as
+/// wide as Merged. After it, the CI or review mark when there is something to act on (failing, conflict, threads), in
+/// a place kept for it either way. The number is in the tooltip.
 struct PullTagMark: View {
     let tag: PullTag
 
     var body: some View {
-        HStack(spacing: 4) {
-            if let alert = tag.alert { PullMark(status: alert, compact: true) }
-            HStack(spacing: 3) {
-                PullGlyph(state: tag.state).frame(width: 9, height: 9)
-                Text(tag.state?.label ?? "PR").font(Theme.ui(10.5, weight: .semibold))
+        HStack(spacing: 3) {
+            ZStack {
+                label("Merged").hidden()
+                label(tag.state?.label ?? "PR")
             }
             .foregroundStyle(tag.state == nil ? Theme.fg2 : Theme.ink)
             .padding(.horizontal, 6)
             .padding(.vertical, 1.5)
             .background(Capsule().fill(color))
             .overlay { if tag.state == nil { Capsule().strokeBorder(Theme.line) } }
+            ZStack {
+                if let alert = tag.alert { PullMark(status: alert, compact: true) }
+            }
+            .frame(width: 10, alignment: .leading)
         }
         .fixedSize()
         .help(help)
+    }
+
+    private func label(_ text: String) -> some View {
+        HStack(spacing: 3) {
+            PullGlyph(state: tag.state).frame(width: 9, height: 9)
+            Text(text).font(Theme.ui(10.5, weight: .semibold))
+        }
     }
 
     private var color: Color {
@@ -304,6 +329,7 @@ struct NoteMark: View {
         Image(systemName: "doc.text")
             .font(.system(size: 10.5))
             .foregroundStyle(Theme.fg3)
+            .frame(width: 14)
             .help("The task's note. Click to open it.")
     }
 }
@@ -316,25 +342,32 @@ struct IssueMark: View {
         Image(systemName: "smallcircle.filled.circle")
             .font(.system(size: 10.5))
             .foregroundStyle(Theme.fg3)
+            .frame(width: 14)
             .help("Issue #\(ref.number). Click to open it.")
     }
 }
 
-/// The prompt cache's minutes left, amber in its last five.
+/// The prompt cache's minutes left, amber in its last five, as wide as `60m` and right-aligned. Without a countdown it
+/// keeps its place empty, so Kibana's K stays in line.
 struct CacheMark: View {
-    let countdown: PromptCache.Countdown
+    let countdown: PromptCache.Countdown?
 
     var body: some View {
         HStack(spacing: 3) {
             Image(systemName: "hourglass").font(.system(size: 9.5))
-            Text(verbatim: "\(countdown.minutesLeft)m").font(Theme.mono(10.5))
+            ZStack(alignment: .trailing) {
+                Text(verbatim: "00m").hidden()
+                Text(verbatim: "\(countdown?.minutesLeft ?? 0)m")
+            }
+            .font(Theme.mono(10.5))
         }
-        .foregroundStyle(countdown.isWarning ? Theme.block : Theme.fg3)
+        .foregroundStyle(countdown?.isWarning == true ? Theme.block : Theme.fg3)
+        .opacity(countdown == nil ? 0 : 1)
         .fixedSize()
-        .help(
-            "Prompt cache: \(countdown.minutesLeft) min left. It lasts an hour from the agent's last turn; "
+        .help(countdown.map {
+            "Prompt cache: \($0.minutesLeft) min left. It lasts an hour from the agent's last turn; "
                 + "a prompt sent before then is cheaper and faster."
-        )
+        } ?? "")
     }
 }
 
