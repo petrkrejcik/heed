@@ -157,7 +157,7 @@ struct TaskTagTests {
     @Test func theNoteAndTheIssueComeAfterThePullBeforeTheLiveOnes() {
         let task = WorkTask(
             id: "t", title: "t", issue: "https://github.com/elastic/kibana/issues/7", notePath: "/vault/t.md",
-            port: 5602, running: true
+            port: 5602, running: true, tags: ["heed-fork"]
         )
         let rollup = TaskRollup(agent: nil, kibanaRunning: true, cacheTurns: [ago(15)])
         let pull = PullTag(number: 42, state: .draft)
@@ -166,7 +166,7 @@ struct TaskTagTests {
         let issue = IssueRef(url: "https://github.com/elastic/kibana/issues/7")!
         #expect(tags == [
             .pull(pull),
-            .note(path: "/vault/t.md"),
+            .note(path: "/vault/t.md", tags: ["heed-fork"]),
             .issue(issue),
             .kibana(port: 5602),
             .cache(countdown),

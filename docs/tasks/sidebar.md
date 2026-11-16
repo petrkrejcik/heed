@@ -49,7 +49,9 @@ Each row shows:
     when there is something to act on: ✕ a check failed, ⇄ a conflict (or behind), ● open threads or changes
     requested (see [the state of a PR](../github/pr-overlay.md#the-state-of-a-pr)). Hover it for the number; click it
     to open the PR as a new page in the task.
-  - The task's note: click it to open the note as a tab of the task.
+  - The task's note, shown as its tags (the note's `tags:`), each a pill in the colour Obsidian's Kanban gives it
+    (the vault's Tag Colors plugin; a tag Obsidian has not coloured yet is grey), or as a note icon when it has no
+    tags. Click it to open the note as a tab of the task. When the row is short of room, the tags are cut first.
   - The task's issue, when its note has one: click it to open the issue as a new page in the task.
 
   On the right, what is running:

@@ -18,7 +18,8 @@ public actor FakePk {
             PkTask(
                 id: task.id, title: task.title, status: task.status.rawValue, pinned: task.pinned, kind: task.kind,
                 issue: task.issue, pr: task.pr, worktree: task.worktree, branch: task.branch, port: task.port,
-                running: task.running, notePath: task.notePath, epic: task.epic, created: task.created
+                running: task.running, kibanaUrl: task.kibanaURL, notePath: task.notePath, epic: task.epic,
+                created: task.created, tags: task.tags
             )
         }
     }

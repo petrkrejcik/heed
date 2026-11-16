@@ -95,6 +95,14 @@ public struct WorkTask: Identifiable, Hashable, Sendable, Codable {
     public var epic: String?
     /// `2026-10-21`, as the note has it.
     public var created: String?
+    /// The note's `tags` property, as written.
+    public var tags: [String] {
+        get { noteTags ?? [] }
+        set { noteTags = newValue }
+    }
+
+    /// Optional so a cache from before tags still loads.
+    private var noteTags: [String]?
     public var lastActivity: Date
     /// What happened, coarsely: started, resumed, ended. Capped.
     public var timeline: [TimelineEvent]
@@ -103,9 +111,10 @@ public struct WorkTask: Identifiable, Hashable, Sendable, Codable {
         id: String = UUID().uuidString.lowercased(), title: String, status: TaskStatus = .inProgress,
         pinned: Bool = false, kind: String? = nil, issue: String? = nil, pr: String? = nil, worktree: String? = nil,
         branch: String? = nil, notePath: String? = nil, port: Int? = nil, running: Bool = false,
-        kibanaURL: String? = nil, epic: String? = nil, created: String? = nil, lastActivity: Date = Date(),
-        timeline: [TimelineEvent] = []
+        kibanaURL: String? = nil, epic: String? = nil, created: String? = nil, tags: [String] = [],
+        lastActivity: Date = Date(), timeline: [TimelineEvent] = []
     ) {
+        noteTags = tags
         self.kibanaURL = kibanaURL
         self.id = id
         self.title = title

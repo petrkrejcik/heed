@@ -47,6 +47,11 @@ public enum Fixtures {
         let review = "\(worktrees)/review-299044-timeline-freeze"
         let undo = "\(worktrees)/298812-chat-input-cmd-z"
         let scroll = "\(worktrees)/298760-keep-scroll"
+        // Kibana main has none (a note icon); `docs` has no colour yet (grey).
+        let tags: [String: [String]] = [
+            "t2": ["chat-attachments"], "t3": ["reviews"], "t4": ["chat-input", "bug-bash"], "t5": ["streaming"],
+            "t6": ["eui-101"], "t7": ["docs"], "t8": ["chat-input"], "t9": ["bug-bash"], "t10": ["streaming"],
+        ]
         let list = [
             WorkTask(
                 id: "t1", title: "Kibana main", status: .inProgress, pinned: true, branch: "main",
@@ -101,6 +106,7 @@ public enum Fixtures {
             ),
         ].map { task in
             var task = task
+            task.tags = tags[task.id] ?? []
             task.record("started · claude in \(Paths.abbreviate(task.directory))", at: ago(60 * 3))
             return task
         }
@@ -169,7 +175,10 @@ public enum Fixtures {
             tasks: tasks, layouts: layouts, agents: agents, github: github,
             pullDetails: Dictionary(([pullDetail] + otherDetails).map { ($0.ref.description, $0) }) { first, _ in
                 first
-            }
+            },
+            tagColors: TagColors(assigned: [
+                "chat-input": 0, "bug-bash": 2, "eui-101": 3, "reviews": 4, "chat-attachments": 5, "streaming": 6,
+            ])
         )
     }()
 

@@ -71,6 +71,8 @@ final class AppModel {
     private(set) var collapsed = TaskGroup.collapsedByDefault { didSet { rebuildList() } }
     private(set) var github = GitHubState()
     private(set) var pullDetails: [String: PullDetail] = [:]
+    /// The vault's tag colours, for the tags on the sidebar rows.
+    private(set) var tagColors = TagColors.none
     private(set) var list = TaskList([])
     private(set) var settings: WorkSettings
     private(set) var config = HeedConfig.default
@@ -301,12 +303,22 @@ final class AppModel {
                 let entries = await NoteIndex.scan(vault: vault)
                 noteIndex = entries
             }
+            readTagColors(vault: vault)
         }
     }
 
     /// Vault file events from the watcher: update the note index and live-reload any affected open note tabs.
+    /// The Tag Colors plugin's file, read off the main actor; only a change redraws the tags.
+    private func readTagColors(vault: String) {
+        Task {
+            let colors = await TagColors.read(vault: vault)
+            if colors != tagColors { commit(.tagColorsRead(colors)) }
+        }
+    }
+
     private func vaultChanged(_ events: [FileEvent]) {
         guard let vault = pkPaths?.vault else { return }
+        if events.contains(where: { TagColors.isFile($0.path, vault: vault) }) { readTagColors(vault: vault) }
         let before = noteIndex
         Task {
             let after = await Task.detached(priority: .utility) {
@@ -843,6 +855,7 @@ final class AppModel {
         agents = domain.agents
         github = domain.github
         pullDetails = domain.pullDetails
+        tagColors = domain.tagColors
         cursor = min(cursor, max(list.ordered.count - 1, 0))
     }
 
@@ -861,6 +874,7 @@ final class AppModel {
         if after.github != before.github { github = after.github }
         if after.github.pulls != before.github.pulls { loadAvatars() }
         if after.pullDetails != before.pullDetails { pullDetails = after.pullDetails }
+        if after.tagColors != before.tagColors { tagColors = after.tagColors }
         if after.tasks != before.tasks { tasks = after.tasks }
         if after.layouts != before.layouts { layouts = after.layouts }
         if after.agents != before.agents { agents = after.agents }
@@ -873,7 +887,7 @@ final class AppModel {
     var currentDomain: Domain {
         Domain(
             tasks: tasks, layouts: layouts, agents: agents, github: github, pullDetails: pullDetails,
-            collapsed: collapsed
+            collapsed: collapsed, tagColors: tagColors
         )
     }
 
@@ -2339,7 +2353,7 @@ final class AppModel {
             if let ref = task.pull { openLink(ref.url, from: taskID) }
         case let .issue(ref):
             openLink(ref.url, from: taskID)
-        case let .note(path):
+        case let .note(path, _):
             var layout = layouts[taskID] ?? TaskLayout()
             layout.showNote(path: path, title: task.title, directory: task.directory, show: true)
             commit(.layoutChanged(task: taskID, layout))

@@ -42,12 +42,16 @@ public struct PkTask: Hashable, Sendable, Codable {
     public var notePath: String?
     public var epic: String?
     public var created: String?
+    /// The note's `tags` property; nil from a pk that does not send it.
+    public var tags: [String]?
 
     public init(
         id: String?, title: String, status: String, pinned: Bool = false, kind: String? = nil, issue: String? = nil,
         pr: String? = nil, worktree: String? = nil, branch: String? = nil, port: Int? = nil, running: Bool = false,
-        kibanaUrl: String? = nil, notePath: String? = nil, epic: String? = nil, created: String? = nil
+        kibanaUrl: String? = nil, notePath: String? = nil, epic: String? = nil, created: String? = nil,
+        tags: [String]? = nil
     ) {
+        self.tags = tags
         self.kibanaUrl = kibanaUrl
         self.id = id
         self.title = title

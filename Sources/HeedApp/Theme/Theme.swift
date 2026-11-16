@@ -99,6 +99,28 @@ extension Color {
             opacity: opacity
         )
     }
+
+    /// CSS's `hsl(hue saturation% lightness%)`, for colours copied from a stylesheet.
+    init(hue: Double, saturation: Double, lightness: Double) {
+        let value = lightness + saturation * min(lightness, 1 - lightness)
+        self.init(
+            hue: hue.truncatingRemainder(dividingBy: 360) / 360,
+            saturation: value == 0 ? 0 : 2 * (1 - lightness / value),
+            brightness: value
+        )
+    }
+}
+
+extension Theme {
+    /// A note tag's pill as the vault's Tag Colors plugin paints it on the Kanban (its light theme, as Petr's Obsidian
+    /// is): `hsl(hue 65% 88%)` behind `hsl(hue 55% 25%)`. A tag it has not coloured yet is grey.
+    static func tagBackground(hue: Int?) -> Color {
+        hue.map { Color(hue: Double($0), saturation: 0.65, lightness: 0.88) } ?? Theme.bg3
+    }
+
+    static func tagText(hue: Int?) -> Color {
+        hue.map { Color(hue: Double($0), saturation: 0.55, lightness: 0.25) } ?? Theme.fg2
+    }
 }
 
 extension Repo {

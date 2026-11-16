@@ -139,10 +139,10 @@ struct TaskRow: View {
     @ViewBuilder private var tags: some View {
         if let cache = PromptCache.countdown(turns: rollup.cacheTurns, now: Clock.now) {
             TimelineView(.periodic(from: cache.turnEndedAt, by: 60)) { _ in
-                TaskTagsLine(tags: tagList(now: Clock.now), open: open)
+                TaskTagsLine(tags: tagList(now: Clock.now), colors: model.tagColors, open: open)
             }
         } else {
-            TaskTagsLine(tags: tagList(now: Clock.now), open: open)
+            TaskTagsLine(tags: tagList(now: Clock.now), colors: model.tagColors, open: open)
         }
     }
 
@@ -162,6 +162,7 @@ struct TaskRow: View {
 /// countdown at the right edge, the countdown's place kept when only Kibana shows.
 struct TaskTagsLine: View {
     let tags: [TaskTag]
+    var colors = TagColors.none
     var open: (TaskTag) -> Void = { _ in }
 
     var body: some View {
@@ -170,6 +171,9 @@ struct TaskTagsLine: View {
                 ForEach(tags.filter { !$0.isLive }, id: \.self) { tag in
                     switch tag {
                     case let .pull(pull): TagButton { open(tag) } label: { PullTagMark(tag: pull) }
+                    case let .note(_, names) where !names.isEmpty:
+                        TagButton { open(tag) } label: { NoteTagsMark(tags: names, colors: colors) }
+                            .layoutPriority(-1)
                     case .note: TagButton { open(tag) } label: { NoteMark() }
                     case let .issue(ref): TagButton { open(tag) } label: { IssueMark(ref: ref) }
                     case .kibana, .cache: EmptyView()
@@ -323,7 +327,31 @@ struct PullGlyph: View {
     }
 }
 
-/// The task's note: a click opens it as a note tab.
+/// The task's note as its tags, each a pill in the colour the Kanban gives it; a click opens the note as a note tab.
+/// When the row is short of room the pills give way first, cut at the end.
+struct NoteTagsMark: View {
+    let tags: [String]
+    let colors: TagColors
+
+    var body: some View {
+        HStack(spacing: 4) {
+            ForEach(tags, id: \.self) { tag in
+                let hue = colors.hue(of: tag)
+                Text(verbatim: tag)
+                    .font(Theme.ui(10.5))
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .foregroundStyle(Theme.tagText(hue: hue))
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 1.5)
+                    .background(Capsule().fill(Theme.tagBackground(hue: hue)))
+            }
+        }
+        .help("The task's note (\(tags.joined(separator: ", "))). Click to open it.")
+    }
+}
+
+/// The task's note when it has no tags: a click opens it as a note tab.
 struct NoteMark: View {
     var body: some View {
         Image(systemName: "doc.text")

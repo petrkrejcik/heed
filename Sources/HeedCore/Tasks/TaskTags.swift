@@ -5,7 +5,8 @@ import Foundation
 /// it stands for.
 public enum TaskTag: Hashable, Sendable {
     case pull(PullTag)
-    case note(path: String)
+    /// The note, shown as its `tags` (as the Kanban colours them), or as a note icon when it has none.
+    case note(path: String, tags: [String])
     case issue(IssueRef)
     case kibana(port: Int)
     case cache(PromptCache.Countdown)
@@ -22,7 +23,7 @@ public enum TaskTag: Hashable, Sendable {
     public static func of(_ task: WorkTask, rollup: TaskRollup, pull: PullTag?, now: Date) -> [TaskTag] {
         var tags: [TaskTag] = []
         if let pull { tags.append(.pull(pull)) }
-        if let path = task.notePath { tags.append(.note(path: path)) }
+        if let path = task.notePath { tags.append(.note(path: path, tags: task.tags)) }
         if let issue = task.issueRef { tags.append(.issue(issue)) }
         if rollup.kibanaRunning, let port = task.port { tags.append(.kibana(port: port)) }
         if let cache = PromptCache.countdown(turns: rollup.cacheTurns, now: now) { tags.append(.cache(cache)) }

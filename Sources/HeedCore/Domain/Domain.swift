@@ -16,11 +16,13 @@ public struct Domain: Hashable, Sendable, Codable {
     public var pullDetails: [String: PullDetail]
     /// The sidebar sections shown closed. UI state, so it lives here and never in the notes.
     public var collapsed: Set<TaskGroup>
+    /// The vault's tag colours (its Tag Colors plugin), cached so the tags draw in colour at launch.
+    public var tagColors: TagColors
 
     public init(
         tasks: [WorkTask] = [], layouts: [String: TaskLayout] = [:], agents: [String: AgentTab] = [:],
         github: GitHubState = GitHubState(), pullDetails: [String: PullDetail] = [:],
-        collapsed: Set<TaskGroup> = TaskGroup.collapsedByDefault
+        collapsed: Set<TaskGroup> = TaskGroup.collapsedByDefault, tagColors: TagColors = .none
     ) {
         self.tasks = tasks
         self.layouts = layouts
@@ -28,16 +30,17 @@ public struct Domain: Hashable, Sendable, Codable {
         self.github = github
         self.pullDetails = pullDetails
         self.collapsed = collapsed
+        self.tagColors = tagColors
     }
 
     public static let empty = Domain()
 
     enum CodingKeys: String, CodingKey {
-        case tasks, layouts, agents, github, pullDetails, collapsed
+        case tasks, layouts, agents, github, pullDetails, collapsed, tagColors
     }
 
     /// A cache from before sections collapsed loads with the defaults; a section name this build does not know is
-    /// skipped, so neither throws the cache away.
+    /// skipped, so neither throws the cache away. One from before tag colours has none until the vault is read.
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         tasks = try container.decode([WorkTask].self, forKey: .tasks)
@@ -47,6 +50,7 @@ public struct Domain: Hashable, Sendable, Codable {
         pullDetails = try container.decode([String: PullDetail].self, forKey: .pullDetails)
         collapsed = try container.decodeIfPresent([String].self, forKey: .collapsed)
             .map { Set($0.compactMap(TaskGroup.init(rawValue:))) } ?? TaskGroup.collapsedByDefault
+        tagColors = try container.decodeIfPresent(TagColors.self, forKey: .tagColors) ?? .none
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -57,6 +61,7 @@ public struct Domain: Hashable, Sendable, Codable {
         try container.encode(github, forKey: .github)
         try container.encode(pullDetails, forKey: .pullDetails)
         try container.encode(collapsed.map(\.rawValue).sorted(), forKey: .collapsed)
+        try container.encode(tagColors, forKey: .tagColors)
     }
 
     public func task(_ id: String) -> WorkTask? { tasks.first { $0.id == id } }
@@ -84,6 +89,8 @@ public enum DomainChange: Hashable, Sendable, Codable {
     case pullDetailFetched(PullDetail)
     /// The sidebar sections shown closed, all of them.
     case collapsedChanged(Set<TaskGroup>)
+    /// The vault's tag colours were read.
+    case tagColorsRead(TagColors)
 }
 
 public extension Domain {
@@ -123,6 +130,8 @@ public extension Domain {
             }
         case let .collapsedChanged(groups):
             collapsed = groups
+        case let .tagColorsRead(colors):
+            tagColors = colors
         }
     }
 
