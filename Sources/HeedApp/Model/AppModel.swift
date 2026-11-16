@@ -2325,6 +2325,29 @@ final class AppModel {
         task.pull.map { PullTag.of($0, pull: github.pull($0), detail: pullDetails[$0.description]) }
     }
 
+    /// A click on a row's tag: Kibana, the PR and the issue open as a new page in that task, the note as its note tab.
+    func clickTag(_ tag: TaskTag, of taskID: String) {
+        guard clicksReachLists, let task = task(taskID) else { return }
+        clickedOutsideTerminal()
+        switch tag {
+        case .kibana:
+            guard let url = task.kibanaURL else { return flash = "pk has no Kibana address for this task yet" }
+            openLink(url, from: taskID)
+        case .pull:
+            if let ref = task.pull { openLink(ref.url, from: taskID) }
+        case let .issue(ref):
+            openLink(ref.url, from: taskID)
+        case let .note(path):
+            var layout = layouts[taskID] ?? TaskLayout()
+            layout.showNote(path: path, title: task.title, directory: task.directory, show: true)
+            commit(.layoutChanged(task: taskID, layout))
+            view = .tasks
+            select(taskID: taskID)
+        case .cache:
+            break
+        }
+    }
+
     // MARK: Diff tab
 
     /// The focused pane's tab when it is a Diff tab on screen: what the diff keys act on.

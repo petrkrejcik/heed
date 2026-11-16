@@ -1,10 +1,12 @@
 import Foundation
 
-/// The small tags on a sidebar row's last line, in this order: Kibana running, the PR, the prompt cache countdown. A
-/// task with none has no last line.
+/// The small tags on a sidebar row's last line, in this order: Kibana running, the PR, the task's note, its issue, the
+/// prompt cache countdown. A task with none has no last line. Each but the countdown opens what it stands for.
 public enum TaskTag: Hashable, Sendable {
     case kibana(port: Int)
     case pull(PullTag)
+    case note(path: String)
+    case issue(IssueRef)
     case cache(PromptCache.Countdown)
 
     /// `pull` is the task's PR as the sync and its details see it (nil when the task has none).
@@ -12,6 +14,8 @@ public enum TaskTag: Hashable, Sendable {
         var tags: [TaskTag] = []
         if rollup.kibanaRunning, let port = task.port { tags.append(.kibana(port: port)) }
         if let pull { tags.append(.pull(pull)) }
+        if let path = task.notePath { tags.append(.note(path: path)) }
+        if let issue = task.issueRef { tags.append(.issue(issue)) }
         if let cache = PromptCache.countdown(turns: rollup.cacheTurns, now: now) { tags.append(.cache(cache)) }
         return tags
     }
@@ -22,6 +26,9 @@ public enum TaskTag: Hashable, Sendable {
 public struct PullTag: Hashable, Sendable {
     public enum State: String, Hashable, Sendable {
         case draft, open, merged, closed
+
+        /// GitHub's word for it on a PR's state label.
+        public var label: String { rawValue.capitalized }
     }
 
     public let number: Int

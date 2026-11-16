@@ -28,7 +28,6 @@ struct Sidebar: View {
                                     TaskRow(
                                         task: task,
                                         rollup: list.rollup(of: task.id),
-                                        number: list.lineNumber(of: index, cursor: model.cursor),
                                         isCursor: index == model.cursor,
                                         pinNumber: list.pins.firstIndex(of: task).map { $0 + 1 },
                                         hint: model.hintLabel(for: .task(task.id)),
@@ -92,12 +91,12 @@ struct Sidebar: View {
     }
 }
 
-/// One task: the most urgent agent's glyph, its title and pin, its worktree folder, then its tags (Kibana when it runs,
-/// its PR, the prompt cache countdown) when it has any. What the agent is doing is in the tooltip.
+/// One task: the most urgent agent's glyph, its title and pin, then its tags (Kibana when it runs, its PR, its note
+/// and issue, the prompt cache countdown) when it has any. What the agent is doing is in the tooltip.
 struct TaskRow: View {
+    @Environment(AppModel.self) private var model
     let task: WorkTask
     let rollup: TaskRollup
-    let number: Int
     let isCursor: Bool
     let pinNumber: Int?
     let hint: String?
@@ -105,11 +104,6 @@ struct TaskRow: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
-            Text("\(number)")
-                .font(Theme.mono(11, weight: isCursor ? .bold : .regular))
-                .foregroundStyle(isCursor ? Theme.fg : Theme.fg3)
-                .frame(width: 22, alignment: .trailing)
-                .padding(.top, 1)
             Group {
                 if let agent = rollup.agent {
                     StateGlyph(state: agent.state, guessed: agent.source == .guessed)
@@ -127,16 +121,10 @@ struct TaskRow: View {
                     Spacer(minLength: 4)
                     if let pinNumber { KeyCap(text: "'\(pinNumber)") }
                 }
-                Text(task.worktreeName ?? "main checkout")
-                    .font(Theme.mono(11))
-                    .foregroundStyle(Theme.fg3)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                    .padding(.top, 4)
                 tags
             }
         }
-        .padding(.leading, 6)
+        .padding(.leading, 16)
         .padding(.trailing, 12)
         .padding(.vertical, 9)
         .background(isCursor ? Theme.bg3 : .clear)
@@ -151,12 +139,14 @@ struct TaskRow: View {
     @ViewBuilder private var tags: some View {
         if let cache = PromptCache.countdown(turns: rollup.cacheTurns, now: Clock.now) {
             TimelineView(.periodic(from: cache.turnEndedAt, by: 60)) { _ in
-                TaskTagsLine(tags: tagList(now: Clock.now))
+                TaskTagsLine(tags: tagList(now: Clock.now), open: open)
             }
         } else {
-            TaskTagsLine(tags: tagList(now: Clock.now))
+            TaskTagsLine(tags: tagList(now: Clock.now), open: open)
         }
     }
+
+    private func open(_ tag: TaskTag) { model.clickTag(tag, of: task.id) }
 
     private func tagList(now: Date) -> [TaskTag] { TaskTag.of(task, rollup: rollup, pull: pull, now: now) }
 
@@ -167,17 +157,20 @@ struct TaskRow: View {
     }
 }
 
-/// A row's tags, left to right; nothing at all (no line, no gap) when there are none.
+/// A row's tags, left to right; nothing at all (no line, no gap) when there are none. A click on one opens it.
 struct TaskTagsLine: View {
     let tags: [TaskTag]
+    var open: (TaskTag) -> Void = { _ in }
 
     var body: some View {
         if !tags.isEmpty {
-            HStack(spacing: 10) {
+            HStack(spacing: 8) {
                 ForEach(tags, id: \.self) { tag in
                     switch tag {
-                    case let .kibana(port): KibanaMark(port: port)
-                    case let .pull(pull): PullTagMark(tag: pull)
+                    case let .kibana(port): TagButton { open(tag) } label: { KibanaMark(port: port) }
+                    case let .pull(pull): TagButton { open(tag) } label: { PullTagMark(tag: pull) }
+                    case .note: TagButton { open(tag) } label: { NoteMark() }
+                    case let .issue(ref): TagButton { open(tag) } label: { IssueMark(ref: ref) }
                     case let .cache(countdown): CacheMark(countdown: countdown)
                     }
                 }
@@ -188,15 +181,35 @@ struct TaskTagsLine: View {
     }
 }
 
-/// A task's PR: `#number` in its state's color (draft grey, open green, merged violet, closed red, as GitHub does),
-/// after the CI or review mark when there is something to act on (failing, conflict, threads).
+/// A tag that opens something: a plain button with the link pointer, so the click is the tag's and not the row's.
+struct TagButton<Label: View>: View {
+    let action: () -> Void
+    @ViewBuilder let label: () -> Label
+
+    var body: some View {
+        Button(action: action, label: label)
+            .buttonStyle(.plain)
+            .pointerStyle(.link)
+    }
+}
+
+/// A task's PR as GitHub labels its state: a filled pill, green Open, grey Draft, violet Merged, red Closed. Before it,
+/// the CI or review mark when there is something to act on (failing, conflict, threads). The number is in the tooltip.
 struct PullTagMark: View {
     let tag: PullTag
 
     var body: some View {
         HStack(spacing: 4) {
             if let alert = tag.alert { PullMark(status: alert, compact: true) }
-            Text(verbatim: "#\(tag.number)").font(Theme.mono(10.5)).foregroundStyle(color)
+            HStack(spacing: 3) {
+                PullGlyph(state: tag.state).frame(width: 9, height: 9)
+                Text(tag.state?.label ?? "PR").font(Theme.ui(10.5, weight: .semibold))
+            }
+            .foregroundStyle(tag.state == nil ? Theme.fg2 : Theme.ink)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 1.5)
+            .background(Capsule().fill(color))
+            .overlay { if tag.state == nil { Capsule().strokeBorder(Theme.line) } }
         }
         .fixedSize()
         .help(help)
@@ -208,13 +221,102 @@ struct PullTagMark: View {
         case .open: Theme.done
         case .merged: Theme.ask
         case .closed: Theme.err
-        case nil: Theme.fg2
+        case nil: .clear
         }
     }
 
     private var help: String {
         let alert = tag.alert.map { " · " + PullMark(status: $0).text } ?? ""
-        return "#\(tag.number) \(tag.state?.rawValue ?? "not synced yet")\(alert)"
+        return "PR #\(tag.number) \(tag.state?.rawValue ?? "not synced yet")\(alert). Click to open it."
+    }
+}
+
+/// GitHub's pull request glyph for a state, drawn on a 16-point grid: two branches with rings at their ends; the right
+/// one ends in an arrow (open), dots (draft) or a cross (closed); merged joins it into the left one.
+struct PullGlyph: View {
+    let state: PullTag.State?
+
+    var body: some View {
+        Canvas { context, size in
+            context.scaleBy(x: size.width / 16, y: size.height / 16)
+            let line = StrokeStyle(lineWidth: 1.8, lineCap: .round, lineJoin: .round)
+            func ring(_ x: CGFloat, _ y: CGFloat) {
+                context.stroke(
+                    Path(ellipseIn: CGRect(x: x - 2, y: y - 2, width: 4, height: 4)),
+                    with: .foreground,
+                    style: line
+                )
+            }
+            func stroke(_ build: (inout Path) -> Void) {
+                var path = Path()
+                build(&path)
+                context.stroke(path, with: .foreground, style: line)
+            }
+            ring(3.5, 3)
+            if state == .merged {
+                ring(12.5, 9)
+                stroke {
+                    $0.move(to: CGPoint(x: 3.5, y: 5))
+                    $0.addLine(to: CGPoint(x: 3.5, y: 15))
+                    $0.move(to: CGPoint(x: 3.5, y: 5.5))
+                    $0.addQuadCurve(to: CGPoint(x: 10.5, y: 9), control: CGPoint(x: 4.5, y: 9))
+                }
+                return
+            }
+            ring(3.5, 13)
+            ring(12.5, 13)
+            stroke {
+                $0.move(to: CGPoint(x: 3.5, y: 5))
+                $0.addLine(to: CGPoint(x: 3.5, y: 11))
+            }
+            switch state {
+            case .draft:
+                for y in [3.0, 7.5] {
+                    context.fill(Path(ellipseIn: CGRect(x: 11.5, y: y - 1, width: 2, height: 2)), with: .foreground)
+                }
+            case .closed:
+                stroke {
+                    $0.move(to: CGPoint(x: 10.5, y: 1.5))
+                    $0.addLine(to: CGPoint(x: 14.5, y: 5.5))
+                    $0.move(to: CGPoint(x: 14.5, y: 1.5))
+                    $0.addLine(to: CGPoint(x: 10.5, y: 5.5))
+                    $0.move(to: CGPoint(x: 12.5, y: 8))
+                    $0.addLine(to: CGPoint(x: 12.5, y: 11))
+                }
+            default:
+                stroke {
+                    $0.move(to: CGPoint(x: 12.5, y: 11))
+                    $0.addLine(to: CGPoint(x: 12.5, y: 5.5))
+                    $0.addQuadCurve(to: CGPoint(x: 10, y: 3), control: CGPoint(x: 12.5, y: 3))
+                    $0.addLine(to: CGPoint(x: 7, y: 3))
+                    $0.move(to: CGPoint(x: 9, y: 1))
+                    $0.addLine(to: CGPoint(x: 7, y: 3))
+                    $0.addLine(to: CGPoint(x: 9, y: 5))
+                }
+            }
+        }
+    }
+}
+
+/// The task's note: a click opens it as a note tab.
+struct NoteMark: View {
+    var body: some View {
+        Image(systemName: "doc.text")
+            .font(.system(size: 10.5))
+            .foregroundStyle(Theme.fg3)
+            .help("The task's note. Click to open it.")
+    }
+}
+
+/// The task's issue (the note's `issue:`): a click opens it on GitHub, in Heed.
+struct IssueMark: View {
+    let ref: IssueRef
+
+    var body: some View {
+        Image(systemName: "smallcircle.filled.circle")
+            .font(.system(size: 10.5))
+            .foregroundStyle(Theme.fg3)
+            .help("Issue #\(ref.number). Click to open it.")
     }
 }
 
@@ -236,17 +338,15 @@ struct CacheMark: View {
     }
 }
 
-/// Kibana running for a task: a K and its port.
+/// Kibana running for a task: a K, its port in the tooltip.
 struct KibanaMark: View {
     let port: Int
 
     var body: some View {
-        HStack(spacing: 3) {
-            Image(systemName: "k.square.fill").font(.system(size: 10))
-            Text(verbatim: "\(port)").font(Theme.mono(10.5))
-        }
-        .foregroundStyle(Theme.done)
-        .help("Kibana running on localhost:\(port)")
+        Image(systemName: "k.square.fill")
+            .font(.system(size: 11))
+            .foregroundStyle(Theme.done)
+            .help("Kibana running on localhost:\(port). Click to open it.")
     }
 }
 

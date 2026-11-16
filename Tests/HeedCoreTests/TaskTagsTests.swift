@@ -153,6 +153,32 @@ struct TaskTagTests {
         #expect(tags == [.kibana(port: 5602), .pull(pull), .cache(countdown)])
     }
 
+    @Test func theNoteAndTheIssueComeAfterThePull() {
+        let task = WorkTask(
+            id: "t", title: "t", issue: "https://github.com/elastic/kibana/issues/7", notePath: "/vault/t.md",
+            port: 5602, running: true
+        )
+        let rollup = TaskRollup(agent: nil, kibanaRunning: true, cacheTurns: [ago(15)])
+        let pull = PullTag(number: 42, state: .draft)
+        let tags = TaskTag.of(task, rollup: rollup, pull: pull, now: now)
+        let countdown = PromptCache.countdown(from: ago(15), now: now)!
+        let issue = IssueRef(url: "https://github.com/elastic/kibana/issues/7")!
+        #expect(tags == [
+            .kibana(port: 5602),
+            .pull(pull),
+            .note(path: "/vault/t.md"),
+            .issue(issue),
+            .cache(countdown),
+        ])
+        // An `issue:` that is not a GitHub issue link is no tag.
+        let odd = WorkTask(id: "t", title: "t", issue: "see Slack")
+        #expect(TaskTag.of(odd, rollup: TaskRollup(agent: nil), pull: nil, now: now).isEmpty)
+    }
+
+    @Test func thePullsLabelIsGitHubs() {
+        #expect([PullTag.State.open, .draft, .merged, .closed].map(\.label) == ["Open", "Draft", "Merged", "Closed"])
+    }
+
     @Test func onlyTheTagsThatApply() {
         let stopped = WorkTask(id: "t", title: "t", port: 5602, running: false)
         #expect(TaskTag.of(stopped, rollup: TaskRollup(agent: nil), pull: nil, now: now).isEmpty)
@@ -173,6 +199,8 @@ struct TaskTagTests {
             }, now: Clock.now)
         }
         #expect(tags.contains { if case .kibana = $0 { true } else { false } })
+        #expect(tags.contains { if case .note = $0 { true } else { false } })
+        #expect(tags.contains { if case .issue = $0 { true } else { false } })
         let states = Set(tags.compactMap { if case let .pull(pull) = $0 { pull.state } else { nil } })
         #expect(states == [.draft, .open, .merged, .closed])
         let caches = tags.compactMap { if case let .cache(countdown) = $0 { countdown } else { nil } }
