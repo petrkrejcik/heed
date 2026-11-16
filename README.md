@@ -73,6 +73,9 @@ Without GhosttyKit the app builds with placeholder panes, so everything but the 
 Headless checks: `HEED_SNAPSHOT=out.png build/Heed.app/Contents/MacOS/Heed` renders the window to a PNG and quits;
 `HEED_SNAPSHOT_KEYS="2j<C-w>s?"` types keys first (vim notation).
 
+`scripts/install-local.sh` installs a release build as Heed Fork.app; a running Heed Fork keeps its build until it is
+restarted. `scripts/try.sh [fixture]` opens a second instance of it on fixture data next to the one you work in.
+
 ## Documentation
 
 `docs/` is a [docs-builder](https://github.com/elastic/docs-builder) site published to heed.build by

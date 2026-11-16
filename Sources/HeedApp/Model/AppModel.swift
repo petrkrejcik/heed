@@ -240,6 +240,7 @@ final class AppModel {
             diffSplit = true
             zmxHealth = ZmxHealth(path: "/opt/homebrew/bin/zmx", version: "0.8.1")
             issueInfo = Fixtures.issueInfo
+            TerminalSurfaces.shared.socketPath = NSTemporaryDirectory() + "heed-fixture-\(getpid()).sock"
         }
         replace(with: domain)
         updateScope()
@@ -671,6 +672,7 @@ final class AppModel {
 
     /// Settings writes one value into config.toml; the watcher picks the change up like any other edit.
     func setConfig(_ path: [String], _ value: TOMLValue) {
+        guard !isFixture else { return flash = "a fixture does not write config.toml" }
         do {
             try ConfigWatcher.set(path, to: value, in: configFile)
         } catch {

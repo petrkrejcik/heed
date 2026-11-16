@@ -47,8 +47,10 @@ codesign --force --sign - "$dest"
 # Make Spotlight pick it up now rather than whenever it next scans.
 mdimport "$dest" 2>/dev/null || true
 
+# The running app keeps its old build (rsync replaced the files, not the ones it has open) until it is restarted.
 if pgrep -xq Heed; then
-  echo "install-local: Heed is running; quit it, then start \"$name\" to get the new build."
+  echo "install-local: Heed is running and keeps the old build until you restart it."
+  echo "install-local: try the new build next to it on fixture data: scripts/try.sh"
 fi
 echo "install-local: $dest ($(plutil -extract HeedCommit raw "$plist"))"
 echo "install-local: start it with Spotlight (⌘Space, \"$name\") or: open -a \"$name\""

@@ -76,6 +76,9 @@ final class TerminalSurfaces {
 
     /// PATH for new panes: the detected search path (an app opened from Finder has a minimal one).
     var searchPath = ProcessInfo.processInfo.environment["PATH"] ?? "/usr/bin:/bin"
+    /// Where hooks run in a pane report to. A fixture points it at no app, so an agent started by hand in one of its
+    /// shells cannot report to the real Heed running next to it.
+    var socketPath = HeedEnvironment.defaultSocketPath()
 
     /// Whether the pane's terminal exists, so text typed into it lands somewhere.
     func hasTerminal(_ paneID: String) -> Bool { views[paneID] != nil }
@@ -87,7 +90,7 @@ final class TerminalSurfaces {
         }
         let environment = [
             HeedEnvironment.sessionID: sessionID,
-            HeedEnvironment.socket: HeedEnvironment.defaultSocketPath(),
+            HeedEnvironment.socket: socketPath,
             HeedEnvironment.pane: pane.id,
             HeedEnvironment.pkBrowser: "heed",
         ]

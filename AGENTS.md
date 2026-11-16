@@ -32,4 +32,15 @@
 - Keys: add a command to `Commands.all`, bind it in `DefaultKeys`, handle it in `AppModel.perform`. Never handle a key
   anywhere else.
 - Check UI against the design with `HEED_SNAPSHOT` (see README).
+- **After every feature merged into `main`, install it** with `scripts/install-local.sh` (no `--open`). Petr usually
+ has the installed Heed Fork open, with agents in it (`persist = "none"`: a restart ends them). Never quit, kill or
+ restart it, and never `open` it. Installing is safe while it runs: rsync replaces the bundle's files and the running
+ app keeps its old build until Petr restarts it. A change to the hook protocol (`Sources/HeedCore/Protocol`, the
+ helper CLI) is the exception: the running app's agents would call the new helper; say so before installing.
+- **End with a command Petr runs to try it**, without being asked: `~/www/heed/scripts/try.sh [fixture]` opens a
+ second instance of the installed app on fixture data (`tasks` by default), next to the real one. Say which fixture
+ and what to click or type. A fixture does no IO (no cache, pk, gh, git, hook socket, zmx, preferences or
+ config.toml; its shells report hooks to no app), so it can't disturb the real one; only browser cookies are shared.
+ ⌘Q quits it at once. Keep it that way: new IO must stay off in fixtures. When a feature can only be tried on real
+ data, make the fixture show it; else say plainly that it needs a restart of the real app and why.
 - GitHub only via `gh`.

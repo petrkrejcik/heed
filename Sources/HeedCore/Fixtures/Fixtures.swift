@@ -50,13 +50,15 @@ public enum Fixtures {
         let list = [
             WorkTask(
                 id: "t1", title: "Kibana main", status: .inProgress, pinned: true, branch: "main",
-                notePath: "\(notes)/Kibana main.md", port: 5601, running: true, lastActivity: ago(40)
+                notePath: "\(notes)/Kibana main.md", port: 5601, running: true, kibanaURL: "http://localhost:5601",
+                lastActivity: ago(40)
             ),
             WorkTask(
                 id: "t2", title: "Fix image upload 403", status: .inProgress, issue: issueURL(299_433),
                 pr: pullURL(299_455),
                 worktree: upload, branch: "299433-fix-image-upload-403",
-                notePath: "\(notes)/Fix image upload 403.md", port: 5602, running: true, epic: "Chat attachments",
+                notePath: "\(notes)/Fix image upload 403.md", port: 5602, running: true,
+                kibanaURL: "http://localhost:5602", epic: "Chat attachments",
                 lastActivity: ago(2)
             ),
             WorkTask(
