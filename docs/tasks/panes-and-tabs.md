@@ -17,7 +17,7 @@ as in vim.
 | `⌃w z` | Zoom the focused pane (again to unzoom) |
 | `⌃w q` | Close the focused pane; its tabs join the pane beside it, so nothing stops |
 | `gt` / `gT` | Next / previous tab of the focused pane (also `⌘⇧]` / `⌘⇧[`, in INSERT too) |
-| `⌘T` | New tab in the focused pane: `t` a terminal, `b` a web page, `n` a note, `↩` the kind you picked last, `⎋` nothing |
+| `⌘T` | New tab in the focused pane: `t` a terminal, `b` a web page, `n` a note, `f` the task's [Files tab](files.md), `↩` the kind you picked last, `⎋` nothing |
 | `gn` | New tab with a shell in the focused pane (or click a pane's `+`) |
 | `gc` | The task's agent: to its tab; when it was closed, it comes back with its conversation; else a new agent |
 | `:tab.close` | Close the focused pane's tab (or click its `×`, or `⌘W` in INSERT); the agent's tab asks first |
@@ -34,8 +34,10 @@ Where a new tab goes:
   first pane without one. When every pane has an agent, a new pane opens on the right of the agent's.
 - An agent opens in the agent's pane. When that pane was closed, the agent comes back in a new pane on the left.
 - `⌘T`, `gn`, `⌘D` and `⌘⇧D` put the tab where you asked: in the focused pane, even the agent's, or in a new pane.
+- The [Diff](../diff/index.md) and [Files](files.md) tabs, one of each per task, open in the work pane; when the task has
+  one already, it is shown instead.
 
-![⌘T: what the new tab shows (t terminal, b page, n note)](../images/shots/tasks/new-tab.png)
+![⌘T: what the new tab shows (t terminal, b page, n note, f files)](../images/shots/tasks/new-tab.png)
 
 A task can have several agent tabs. Each has its own glyph in the tab strip, its own state and its own Claude session.
 

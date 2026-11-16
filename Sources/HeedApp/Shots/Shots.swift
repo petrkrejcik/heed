@@ -5,7 +5,8 @@ import SwiftUI
 /// docs/images/shots; pages reference them as `../images/shots/<id>.png`.
 @MainActor
 enum Shots {
-    static let all: [Shot] = landing + home + gettingStarted + concepts + tasks + github + diff + keyboard + outside
+    static let all: [Shot] = landing + home + gettingStarted + concepts + tasks + github + diff + files + keyboard +
+        outside
         + configuration
 
     /// Types a sentence (spaces become <Space>).
@@ -136,6 +137,15 @@ enum Shots {
         Shot(id: "diff/unified", keys: "2jgd<C-w>zt"),
         Shot(id: "diff/typescript", keys: "2jgd<C-w>zjj"),
         Shot(id: "diff/files", keys: "2jgd<C-w>z", crop: .diffFiles, cropPadding: 0),
+    ]
+
+    static let fetchFile = ":files<Space>src/core/packages/http/browser/src/fetch.ts"
+
+    static let files: [Shot] = [
+        Shot(id: "files/tab", keys: "2j\(fetchFile):20<CR><C-w>z"),
+        Shot(id: "files/beside", keys: "2j\(fetchFile):20<CR>", highlight: [.filesTab]),
+        Shot(id: "files/finder", keys: "2j\(fetchFile)<CR>gfupload", crop: .filesFinder),
+        Shot(id: "files/search", keys: "2j\(fetchFile)<CR><C-w>z/credentials<CR>"),
     ]
 
     static let keyboard: [Shot] = [

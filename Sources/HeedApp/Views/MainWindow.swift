@@ -70,6 +70,9 @@ struct MainWindow: View {
             if let picker = model.notePicker { NotePickerView(picker: picker) }
         }
         .overlay {
+            if let finder = model.fileFinder { FileFinderView(finder: finder) }
+        }
+        .overlay {
             if let picker = model.tabPicker { TabPickerView(picker: picker) }
         }
         .overlay {
@@ -604,7 +607,7 @@ struct TabPickerView: View {
                 ForEach(NewTabPicker.Kind.allCases, id: \.self) { kind in
                     HStack(spacing: 10) {
                         KeyCap(text: kind.key)
-                        Image(systemName: kind == .page ? "globe" : kind == .note ? "doc.text" : "terminal")
+                        Image(systemName: Self.icon(kind))
                             .font(.system(size: 11))
                             .foregroundStyle(Theme.fg3).frame(width: 16)
                         Text(kind.label).font(Theme.ui(13))
@@ -631,6 +634,15 @@ struct TabPickerView: View {
             .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Theme.line))
             .shadow(color: .black.opacity(0.5), radius: 30)
             .shotRegion(.picker)
+        }
+    }
+
+    private static func icon(_ kind: NewTabPicker.Kind) -> String {
+        switch kind {
+        case .page: "globe"
+        case .note: "doc.text"
+        case .files: "folder"
+        case .terminal: "terminal"
         }
     }
 }

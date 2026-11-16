@@ -278,6 +278,21 @@ struct FileFinderTests {
         #expect(finder.handle(KeyStroke("w", .control)) == .search && finder.query.isEmpty)
         #expect(finder.handle(.escape) == .cancel)
     }
+
+    @Test func theNextKeyCancelsTheMatching() async {
+        let list = list
+        let cancelled = await Task {
+            withUnsafeCurrentTask { $0?.cancel() }
+            return await FileFinder.ranked(
+                "upload", list: list, root: "/w", recent: [], narrowing: nil, exists: { _ in false }
+            )
+        }.value
+        #expect(cancelled == nil)
+        let answered = await FileFinder.ranked(
+            "upload", list: list, root: "/w", recent: [], narrowing: nil, exists: { _ in false }
+        )
+        #expect(answered?.rows.first?.path == "src/upload.ts")
+    }
 }
 
 struct FileLocationTests {
@@ -417,6 +432,28 @@ struct RipgrepParserTests {
         #expect(results.move(by: 1)?.path == "b.ts")
         #expect(results.move(by: 1) == nil)
         #expect(results.move(by: -1)?.line == 5)
+    }
+
+    @Test func typingTheQuery() throws {
+        var results = SearchResults()
+        results.typing = true
+        for key in try KeyNotation.parse("fetch<Space>Url") {
+            #expect(results.edit(key) == .changed)
+        }
+        #expect(results.query == "fetch Url")
+        #expect(results.edit(KeyStroke("w", .control)) == .changed)
+        #expect(results.query == "fetch")
+        #expect(results.edit(KeyStroke("BS")) == .changed)
+        #expect(results.query == "fetc")
+        #expect(results.edit(KeyStroke("j", .control)) == .ignored)
+        #expect(results.edit(KeyStroke("CR")) == .submit)
+        #expect(!results.typing)
+        results.typing = true
+        #expect(results.edit(.escape) == .stop)
+        #expect(!results.typing && results.query == "fetc")
+        #expect(results.edit(KeyStroke("u", .control)) == .changed)
+        #expect(results.query.isEmpty)
+        #expect(results.edit(KeyStroke("BS")) == .ignored)
     }
 }
 

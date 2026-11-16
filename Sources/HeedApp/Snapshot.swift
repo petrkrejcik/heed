@@ -23,6 +23,8 @@ enum Snapshot {
             if let keys = environment["HEED_SNAPSHOT_KEYS"] {
                 for stroke in (try? KeyNotation.parse(keys)) ?? [] {
                     _ = host.current.handle(stroke)
+                    // Typing leaves time between keys for the work one starts off the main actor (the finder's rows).
+                    try? await Task.sleep(for: .milliseconds(20))
                 }
                 // HEED_SNAPSHOT_SETTLE (ms) waits after the keys, for what they start (a git lookup, a fetch).
                 try? await Task.sleep(for: .milliseconds(Int(environment["HEED_SNAPSHOT_SETTLE"] ?? "") ?? 300))

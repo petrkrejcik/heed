@@ -109,6 +109,14 @@ public struct FileFinder: Hashable, Sendable {
         }
     }
 
+    /// `rows` off the main actor, within the calling task: cancelling it (the next key) stops the matching.
+    @concurrent public static func ranked(
+        _ query: String, list: FileList, root: String, recent: [String], narrowing: Narrowing?,
+        exists: @Sendable (String) -> Bool
+    ) async -> (rows: [Row], narrowing: Narrowing?)? {
+        rows(query, list: list, root: root, recent: recent, narrowing: narrowing, exists: exists)
+    }
+
     /// What the finder lists for `query`: a path that names a file first (`exists` checks one the list lacks, as a
     /// file in `node_modules`), then the matches; for an empty query the files opened in the tab, then the changed
     /// ones. Nil when cancelled. Runs off the main actor.

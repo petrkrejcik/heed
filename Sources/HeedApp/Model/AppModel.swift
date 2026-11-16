@@ -205,6 +205,17 @@ final class AppModel {
     /// Each Files tab's tree rows, kept while its list and its open folders stay the same.
     @ObservationIgnored private var fileRowCache: [String: (revision: UUID, open: Set<String>, rows: [FileTree.Row])] =
         [:]
+    /// Each Files tab's running find in files (ripgrep), and the query it runs.
+    @ObservationIgnored private var fileSearches: [String: (query: String, task: Task<Void, Never>?)] = [:]
+    /// Tabs where `↩` asked for the first match before the results came.
+    @ObservationIgnored private var searchOpensFirst: Set<String> = []
+    /// `gf` / `p`: the finder, while it is open, and the task it opens files in.
+    private(set) var fileFinder: FileFinder?
+    @ObservationIgnored private var finderTaskID: String?
+    /// `↩` came before the rows for the query: the first one opens when they do.
+    @ObservationIgnored private var finderOpensFirst = false
+    @ObservationIgnored private var finderMatching: Task<Void, Never>?
+    @ObservationIgnored private var finderNarrowing: FileFinder.Narrowing?
 
     // Note tabs
     /// In-flight note load tasks, by pane id.
@@ -1024,6 +1035,10 @@ final class AppModel {
             answerNotePicker(stroke)
             return true
         }
+        if fileFinder != nil {
+            answerFileFinder(stroke)
+            return true
+        }
         if tabPicker != nil {
             answerTabPicker(stroke)
             return true
@@ -1049,6 +1064,10 @@ final class AppModel {
         }
         if newTask != nil {
             handleNewTask(stroke)
+            return true
+        }
+        if mode == .normal, let paneID = focusedFilesPane, filesBrowsers[paneID]?.search.typing == true {
+            typeSearch(stroke, paneID: paneID)
             return true
         }
         // Escape leaves a page's address field, as in a browser; a page chord (⌘R, ⌘L) leaves it and runs.
@@ -1201,10 +1220,10 @@ final class AppModel {
              "diff.copy", "diff.edit", "diff.refresh":
             diffCommand(command.name)
         case "tab.files": showFilesTab(command.arguments.joined(separator: " "))
-        case "files.pick", "files.search", "files.match.next", "files.match.prev":
-            flash = "\(command.name): the finder and find in files come in the next commit"
+        case "files.pick": openFileFinder(query: command.arguments.joined(separator: " "))
         case "files.down", "files.up", "files.open", "files.fold", "files.page.down", "files.page.up", "files.top",
-             "files.bottom", "files.mode", "files.ask", "files.copy", "files.refresh":
+             "files.bottom", "files.search", "files.mode", "files.match.next", "files.match.prev", "files.ask",
+             "files.copy", "files.refresh":
             filesCommand(command.name)
         case "note.pick":
             openNotePicker(query: command.arguments.joined(separator: " "))
@@ -2707,6 +2726,8 @@ final class AppModel {
         }
         if let path { showFile(path, line: line, column: column, paneID: pane.id) }
         filesTabShown(pane.id)
+        // A tab with nothing to show asks what to open.
+        if path == nil, filesBrowsers[pane.id]?.file == nil { openFileFinder(query: "") }
     }
 
     /// A Files tab came on screen: its browser (the saved file again after a relaunch), and the list and the open
@@ -2756,6 +2777,7 @@ final class AppModel {
                fileLists[directory] == nil
             {
                 fileLists[directory] = tracked
+                fileListChanged(directory)
             }
             do {
                 fileLists[directory] = try await FileListing.full(
@@ -2766,8 +2788,15 @@ final class AppModel {
             }
             fileListLoads[directory] = nil
             fileListReadAt[directory] = Date()
+            fileListChanged(directory)
             readOpenFolders(in: directory)
         }
+    }
+
+    /// A checkout's list arrived: the finder over it matches again.
+    private func fileListChanged(_ directory: String) {
+        guard fileFinder != nil, finderTaskID.flatMap({ task($0)?.directory }) == directory else { return }
+        matchFinder()
     }
 
     /// Ignored folders open in a tab but not read in the current list (opened while it was listed again).
@@ -2873,19 +2902,37 @@ final class AppModel {
             return flash = "not on a Files tab (\(keyText(for: "files.pick")) finds a file)"
         }
         let rows = fileRows(paneID)
+        let searching = browser.mode == .search
         switch name {
-        case "files.down":
-            browser.moveCursor(by: 1, rows: rows)
-            filesBrowsers[paneID] = browser
-        case "files.up":
-            browser.moveCursor(by: -1, rows: rows)
+        case "files.down", "files.up":
+            let delta = name == "files.down" ? 1 : -1
+            if searching { _ = browser.search.move(by: delta) } else { browser.moveCursor(by: delta, rows: rows) }
             filesBrowsers[paneID] = browser
         case "files.fold":
+            guard !searching else { return }
             browser.fold(rows: rows)
             filesBrowsers[paneID] = browser
         case "files.mode":
             browser.mode = browser.mode.other
+            browser.search.typing = false
             filesBrowsers[paneID] = browser
+        case "files.search":
+            browser.mode = .search
+            browser.search.typing = true
+            filesBrowsers[paneID] = browser
+        case "files.match.next", "files.match.prev":
+            guard !browser.search.matches.isEmpty else {
+                return flash = "no matches (\(keyText(for: "files.search")) finds in files)"
+            }
+            guard let match = browser.search.move(by: name == "files.match.next" ? 1 : -1) else {
+                return flash = name == "files.match.next" ? "last match" : "first match"
+            }
+            filesBrowsers[paneID] = browser
+            showFile(match.path, line: match.line, column: match.column, paneID: paneID)
+        case "files.open" where searching:
+            guard let match = browser.search.current ?? browser.search.move(by: 1) else { return }
+            filesBrowsers[paneID] = browser
+            showFile(match.path, line: match.line, column: match.column, paneID: paneID)
         case "files.open":
             guard let row = browser.cursorRow(rows) else { return }
             guard row.isFolder else { return showFile(row.path, paneID: paneID) }
@@ -2911,8 +2958,194 @@ final class AppModel {
         }
     }
 
+    // MARK: File finder
+
+    /// The list the finder searches (its task's checkout).
+    var finderList: FileList? {
+        finderTaskID.flatMap { task($0) }.flatMap { fileLists[$0.directory] }
+    }
+
+    /// `gf`, `p`, `:files.pick [words]`: the finder over the current task's files; what it opens lands in the task's
+    /// Files tab.
+    private func openFileFinder(query: String) {
+        guard let task = currentTask else { return flash = "no task to find a file in" }
+        view = .tasks
+        finderTaskID = task.id
+        finderNarrowing = nil
+        fileFinder = FileFinder(query: query)
+        loadFileList(task.directory)
+        matchFinder()
+    }
+
+    /// Ranks the files for the finder's query off the main actor; the next key cancels it. A longer query only
+    /// searches what the shorter one matched.
+    private func matchFinder() {
+        guard let finder = fileFinder, let task = finderTaskID.flatMap({ task($0) }) else { return }
+        let directory = task.directory
+        let list = fileLists[directory] ?? .empty
+        let query = finder.query
+        let recent = layouts[task.id]?.filesPane.flatMap { filesBrowsers[$0.id]?.recent } ?? []
+        let narrowing = finderNarrowing
+        let fixture = isFixture
+        finderMatching?.cancel()
+        finderMatching = Task {
+            let answer = await FileFinder.ranked(
+                query, list: list, root: directory, recent: recent, narrowing: narrowing,
+                exists: { path in
+                    !fixture && FileManager.default
+                        .fileExists(atPath: (directory as NSString).appendingPathComponent(path))
+                }
+            )
+            guard !Task.isCancelled, let answer, fileFinder?.query == query else { return }
+            finderNarrowing = answer.narrowing
+            fileFinder?.show(answer.rows, for: query)
+            if finderOpensFirst, let row = answer.rows.first {
+                openFinderRow(row)
+            }
+            finderOpensFirst = false
+        }
+    }
+
+    private func answerFileFinder(_ stroke: KeyStroke) {
+        guard var finder = fileFinder else { return }
+        if stroke == KeyStroke("v", .command) {
+            finder.paste(pastedLine())
+            fileFinder = finder
+            return matchFinder()
+        }
+        let outcome = finder.handle(stroke)
+        fileFinder = finder
+        switch outcome {
+        case .handled:
+            if stroke == KeyStroke("CR"), finder.answered != finder.query { finderOpensFirst = true }
+        case .search:
+            finderOpensFirst = false
+            matchFinder()
+        case .cancel: cancelFileFinder()
+        case let .open(row): openFinderRow(row)
+        }
+    }
+
+    /// A row chosen (`↩` or a click): its file in the task's Files tab, at its line.
+    func openFinderRow(_ row: FileFinder.Row) {
+        let taskID = finderTaskID
+        cancelFileFinder()
+        guard let task = taskID.flatMap({ task($0) }) else { return }
+        openFiles(in: task, file: row.path, line: row.line, column: row.column)
+    }
+
+    func cancelFileFinder() {
+        finderOpensFirst = false
+        finderMatching?.cancel()
+        finderMatching = nil
+        finderNarrowing = nil
+        fileFinder = nil
+    }
+
+    // MARK: Find in files
+
+    /// A key while the search query is typed (`/`): it edits the query, which is searched once you pause; `↩` searches
+    /// now and goes to the first match, `⎋` stops typing.
+    private func typeSearch(_ stroke: KeyStroke, paneID: String) {
+        guard var search = filesBrowsers[paneID]?.search else { return }
+        let edit: SearchResults.Edit
+        if stroke == KeyStroke("v", .command) {
+            let pasted = pastedLine()
+            search.type(search.query + pasted)
+            edit = pasted.isEmpty ? .ignored : .changed
+        } else {
+            edit = search.edit(stroke)
+        }
+        filesBrowsers[paneID]?.search = search
+        switch edit {
+        case .submit:
+            searchOpensFirst.insert(paneID)
+            if fileSearches[paneID]?.query != search.query { runSearch(paneID) } else { searchArrived(paneID) }
+        case .changed:
+            runSearch(paneID, after: .milliseconds(250))
+        case .stop, .ignored:
+            break
+        }
+    }
+
+    /// Results came in: after `↩`, the first match opens.
+    private func searchArrived(_ paneID: String) {
+        guard searchOpensFirst.contains(paneID), let search = filesBrowsers[paneID]?.search else { return }
+        guard let match = search.matches.first else {
+            if !search.running { searchOpensFirst.remove(paneID) }
+            return
+        }
+        searchOpensFirst.remove(paneID)
+        guard search.cursor == nil else { return }
+        filesBrowsers[paneID]?.search.cursor = 0
+        showFile(match.path, line: match.line, column: match.column, paneID: paneID)
+    }
+
+    /// Runs ripgrep for the tab's query (after `delay`, unless the query changes again first), its results streaming
+    /// into the tab; the search it replaces is stopped.
+    private func runSearch(_ paneID: String, after delay: Duration = .zero) {
+        fileSearches.removeValue(forKey: paneID)?.task?.cancel()
+        guard let directory = checkout(ofPane: paneID), let query = filesBrowsers[paneID]?.search.query else { return }
+        guard !query.isEmpty else {
+            filesBrowsers[paneID]?.search.start()
+            return
+        }
+        if isFixture {
+            filesBrowsers[paneID]?.search.start()
+            filesBrowsers[paneID]?.search.add(Fixtures.search(query))
+            filesBrowsers[paneID]?.search.running = false
+            fileSearches[paneID] = (query, nil)
+            return searchArrived(paneID)
+        }
+        let exclude = config.fileExclusion
+        let task = Task {
+            if delay > .zero {
+                try? await Task.sleep(for: delay)
+                guard !Task.isCancelled else { return }
+            }
+            filesBrowsers[paneID]?.search.start()
+            guard await ToolLocator.shared.report().tool("rg")?.path != nil else {
+                filesBrowsers[paneID]?.search.running = false
+                filesBrowsers[paneID]?.search.error = "Find in files needs ripgrep: brew install ripgrep (or set [tools] rg)"
+                return
+            }
+            do {
+                for try await batch in FileSearch.run(query, in: directory, exclude: exclude) {
+                    guard !Task.isCancelled else { return }
+                    filesBrowsers[paneID]?.search.add(batch)
+                    searchArrived(paneID)
+                }
+            } catch {
+                guard !Task.isCancelled else { return }
+                filesBrowsers[paneID]?.search.error = "ripgrep failed: \(error.localizedDescription)"
+            }
+            guard !Task.isCancelled else { return }
+            filesBrowsers[paneID]?.search.running = false
+            searchArrived(paneID)
+        }
+        fileSearches[paneID] = (query, task)
+    }
+
+    /// A click on a match in the results.
+    func clickedMatch(_ index: Int, paneID: String) {
+        clickedFiles(paneID)
+        guard let matches = filesBrowsers[paneID]?.search.matches, matches.indices.contains(index) else { return }
+        filesBrowsers[paneID]?.search.cursor = index
+        filesBrowsers[paneID]?.search.typing = false
+        let match = matches[index]
+        showFile(match.path, line: match.line, column: match.column, paneID: paneID)
+    }
+
+    /// A click on the query field: type into it.
+    func clickedSearchField(_ paneID: String) {
+        clickedFiles(paneID)
+        filesBrowsers[paneID]?.search.typing = true
+    }
+
     /// A Files tab closed: its browser goes with it (the checkout's list stays for the finder).
     private func filesTabClosed(_ paneID: String) {
+        fileSearches.removeValue(forKey: paneID)?.task?.cancel()
+        searchOpensFirst.remove(paneID)
         fileTextLoads.removeValue(forKey: paneID)?.cancel()
         filesBrowsers.removeValue(forKey: paneID)
         fileCursors.removeValue(forKey: paneID)
@@ -3594,7 +3827,7 @@ final class AppModel {
     /// Whether a click on a list may act: not while a dialog or form has the keyboard.
     private var clicksReachLists: Bool {
         newTask == nil && confirmation == nil && resume == nil && firstRun == nil && linkPicker == nil
-            && notePicker == nil && tabPicker == nil
+            && notePicker == nil && tabPicker == nil && fileFinder == nil
     }
 
     /// A click on a task in the sidebar or the rail selects it; a double-click also types into its agent pane.

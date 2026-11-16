@@ -27,4 +27,4 @@ view. The header shows it.
 |---|---|
 | `a` | Ask the agent: `About <path> around line <n> (the hunk in my diff): ` is typed into the agent's pane, unsent, and you are in INSERT there to finish the question |
 | `y` | Copy `path:line` |
-| `e` | Open the file in the app that opens it |
+| `e` | Open the file in the task's [Files tab](../tasks/files.md), at the line (a line only the old side has: the top) |

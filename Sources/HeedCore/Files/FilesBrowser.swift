@@ -131,6 +131,43 @@ public struct SearchResults: Hashable, Sendable {
         self.query = query
     }
 
+    public enum Edit: Equatable, Sendable {
+        /// The query changed: search it once typing pauses.
+        case changed
+        /// `↩`: search now and open the first match.
+        case submit
+        /// `⎋`: typing ends, the results stay.
+        case stop
+        case ignored
+    }
+
+    /// A key while the query is typed (`/`).
+    public mutating func edit(_ stroke: KeyStroke) -> Edit {
+        let before = query
+        switch stroke {
+        case .escape:
+            typing = false
+            return .stop
+        case KeyStroke("CR"):
+            typing = false
+            return .submit
+        case KeyStroke("BS"):
+            if !query.isEmpty { query.removeLast() }
+        case KeyStroke("u", .control):
+            query = ""
+        case KeyStroke("w", .control):
+            var words = query.split(separator: " ")
+            if !words.isEmpty { words.removeLast() }
+            query = words.joined(separator: " ")
+        case KeyStroke("Space"):
+            query += " "
+        default:
+            guard !stroke.isNamed, stroke.modifiers.isEmpty || stroke.modifiers == [.shift] else { return .ignored }
+            query += stroke.key
+        }
+        return query == before ? .ignored : .changed
+    }
+
     /// A new search: the old results go.
     public mutating func start() {
         matches = []
