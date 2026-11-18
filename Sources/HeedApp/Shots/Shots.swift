@@ -47,7 +47,7 @@ enum Shots {
         Shot(id: "getting-started/first-task-2-working", keys: "2j", highlight: [.panes]),
         Shot(id: "getting-started/first-task-3-asking", keys: "j", highlight: [.sidebar, .panes]),
         Shot(id: "getting-started/first-task-4-insert", keys: "ji", highlight: [.panes]),
-        Shot(id: "getting-started/first-task-5-pr", keys: "2jgo"),
+        Shot(id: "getting-started/first-task-5-pr", keys: "2j:overlay.pr<CR>"),
     ]
 
     static let concepts: [Shot] = [
@@ -68,7 +68,7 @@ enum Shots {
         Shot(id: "landing/agents", subject: .settings(.agents), size: CGSize(width: 1100, height: 700)),
         Shot(id: "landing/keys", chrome: false, keys: "?"),
         Shot(id: "landing/prs", chrome: false, keys: "gp"),
-        Shot(id: "landing/pr", chrome: false, keys: "2jgo"),
+        Shot(id: "landing/pr", chrome: false, keys: "2j:overlay.pr<CR>"),
         Shot(id: "landing/resume", chrome: false, prepare: { $0.showResumeForFixture() }),
         Shot(id: "landing/diff", chrome: false, keys: "2jgd<C-w>z"),
         Shot(id: "landing/inbox", chrome: false, keys: "gm<Space>j<Space>"),
@@ -128,7 +128,8 @@ enum Shots {
         Shot(id: "github/prs", keys: "gp"),
         Shot(id: "github/reader-pr", keys: "gpgo"),
         Shot(id: "github/reader-issue", size: CGSize(width: 1200, height: 420), keys: "gigo", crop: .reader),
-        Shot(id: "github/pr-overlay", keys: "2jgo"),
+        Shot(id: "github/pr-overlay", keys: "2j:overlay.pr<CR>"),
+        Shot(id: "github/pr-page", keys: "2jgo"),
     ]
 
     static let diff: [Shot] = [

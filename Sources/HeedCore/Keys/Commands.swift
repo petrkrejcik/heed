@@ -112,8 +112,12 @@ public enum Commands {
         .init("view.inbox", "inbox", .views),
         .init("view.issues", "issues", .views),
         .init("view.prs", "pull requests", .views),
-        .init("overlay.pr", "PR overlay for this task (toggle)", .views),
-        .init("overlay.item", "open the PR or issue under the cursor; in Tasks, the task's PR (toggle)", .views),
+        .init("overlay.pr", "the task's PR read in Heed: open threads, failing checks, green rules (toggle)", .views),
+        .init(
+            "overlay.item", "open the PR or issue under the cursor; in Tasks, the task's PR page in the panel (toggle)",
+            .views
+        ),
+        .init("pr.page", "the task's PR as GitHub shows it, in a panel over the task (toggle)", .views),
         .init("overlay.help", "keys & states", .views),
         .init("overlay.close", "close overlay", .views),
         .init("pr.task", "jump from a PR to its task", .views),

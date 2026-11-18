@@ -17,7 +17,8 @@ when its checks or review threads change.
 | [Pull requests](pull-requests.md) | `gp` | Your open pull requests and your tasks' PRs |
 
 From any of them you can [read](reading.md) an item in the app and [make a new task](../tasks/new-task.md#from-github)
-from it. A task's own PR opens in the [PR overlay](pr-overlay.md), with what holds it back from green.
+from it. A task's own PR opens as GitHub shows it in [the PR panel](pr-page.md), or in the
+[PR overlay](pr-overlay.md) with what holds it back from green.
 
 ## When GitHub can't be reached
 

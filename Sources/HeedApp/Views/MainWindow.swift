@@ -51,6 +51,7 @@ struct MainWindow: View {
         .overlay {
             if model.overlay == .pr { PullOverlayView().shotRegion(.reader).padding(.top, 44).padding(.bottom, 28) }
         }
+        .overlay { PullPagePanel().padding(.top, 44).padding(.bottom, 28) }
         .overlay {
             if model.reader != nil { ReaderView().shotRegion(.reader).padding(.top, 44).padding(.bottom, 28) }
         }
@@ -362,6 +363,8 @@ struct StatusBar: View {
         case .normal where model.issueReader != nil: "s new task · gB browser · ⎋ back"
         case .normal where model.reader != nil || model.overlay == .pr:
             "\(model.keyText(for: "pr.start")) new task · gS task · gB browser · ⎋ back"
+        case .normal where model.overlay == .pullPage:
+            "⎋ or \(model.keyText(for: "overlay.item")) close · i or click to type in the page · j k next task's PR · ⌘R reload"
         case .normal where model.view == .inbox: "↩ read · space pick · v range · s new task · x mark read · t unread/all · / filter"
         case .normal where model.view == .issues: "↩ read · space pick · s new task · t filter · ⇥ repo · / filter"
         case .normal where model.view == .prs: "↩ open · v select · gS task · r sync"

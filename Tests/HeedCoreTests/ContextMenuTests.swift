@@ -24,6 +24,15 @@ struct ContextMenuTests {
         #expect(menu.last == .submenu("Status", statusMenu(WorkTask(title: "t"))))
     }
 
+    @Test func aTaskWithAPullHasItsPageFirst() {
+        let task = WorkTask(title: "Fix the flyout", pr: "https://github.com/elastic/kibana/pull/7")
+        let menu = ContextMenus.task(task)
+        #expect(menu.count == 3)
+        guard case let .item(item) = menu[1] else { return #expect(Bool(false), "no PR item") }
+        #expect(item.title == "Pull request")
+        #expect(item.command.name == "overlay.item")
+    }
+
     @Test func statusListsEveryStatusInSidebarOrder() {
         let entries = statusMenu(WorkTask(title: "t"))
         let titles = ["To Do", "In Progress", "Blocked", "Ready for Review", "Done…", "Dropped…"]

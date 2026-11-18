@@ -89,8 +89,9 @@ This page is generated from the code (`mise run shots`).
 | `view.inbox` | `gm` | inbox |
 | `view.issues` | `gi` | issues |
 | `view.prs` | `gp` | pull requests |
-| `overlay.pr` |  | PR overlay for this task (toggle) |
-| `overlay.item` | `go` | open the PR or issue under the cursor; in Tasks, the task's PR (toggle) |
+| `overlay.pr` |  | the task's PR read in Heed: open threads, failing checks, green rules (toggle) |
+| `overlay.item` | `go` | open the PR or issue under the cursor; in Tasks, the task's PR page in the panel (toggle) |
+| `pr.page` |  | the task's PR as GitHub shows it, in a panel over the task (toggle) |
 | `overlay.help` | `?`, `<D-/>`, `?` (VISUAL), `<D-/>` (VISUAL), `<D-/>` (INSERT), `<D-/>` (COMMAND) | keys & states |
 | `overlay.close` | `<Esc>`, `<Esc>` (issue), `<Esc>` (pr) | close overlay |
 | `pr.task` | `gS` | jump from a PR to its task |
