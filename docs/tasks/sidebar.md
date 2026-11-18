@@ -48,7 +48,7 @@ Each row shows:
   - The PR's state, as GitHub labels it: green Open, grey Draft, violet Merged, red Closed. After it, the PR's mark
     when there is something to act on: ✕ a check failed, ⇄ a conflict (or behind), ● open threads or changes
     requested (see [the state of a PR](../github/pr-overlay.md#the-state-of-a-pr)). Hover it for the number; click it
-    to open the PR as a new page in the task.
+    for the PR's page in [the PR panel](../github/pr-page.md), and again to hide it.
   - The task's note, shown as its tags (the note's `tags:`), each a pill in the colour Obsidian's Kanban gives it
     (the vault's Tag Colors plugin; a tag Obsidian has not coloured yet is grey), or as a note icon when it has no
     tags. Click it to open the note as a tab of the task. When the row is short of room, the tags are cut first.
@@ -65,7 +65,8 @@ Click a task to select it; double-click it to type into its agent (INSERT). Rows
 PRs) take clicks the same way: a click moves the cursor there, a double-click opens the row as `↩` does.
 
 Right-click a task (or ⌃-click it), in the sidebar or the rail, for its menu. It selects the task first, as a click
-does. **Status** lists every status, the task's own checked, each with its key; picking one does what that key does
+does. **Pull request** (when it has one) opens [the PR panel](../github/pr-page.md). **Status** lists every status,
+the task's own checked, each with its key; picking one does what that key does
 ([Status](status-and-worktrees.md#status)), so Done and Dropped ask first.
 
 The cursor stays on its task. When the task changes section, the rows move but the selection does not, so what you

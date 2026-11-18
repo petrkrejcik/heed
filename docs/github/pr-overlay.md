@@ -4,8 +4,9 @@ description: A task's pull request, read in place: review threads, failing check
 
 # The PR overlay
 
-In Tasks, `go` opens the PR overlay over the task's pull request: its description, the unresolved review threads with
-the code they are on, and the failing checks. `go` again, or `⎋`, goes back to the task.
+In Tasks, `:overlay.pr` opens the PR overlay over the task's pull request: its description, the unresolved review
+threads with the code they are on, and the failing checks. `⎋` goes back to the task. (`go` opens the task's PR as
+GitHub shows it, in [the PR panel](pr-page.md).)
 
 ![The PR overlay: the description, review threads and failing checks, and beside them the green rules](../images/shots/github/pr-overlay.png)
 

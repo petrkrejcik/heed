@@ -24,11 +24,14 @@ enum AppView: String, CaseIterable, Identifiable {
 enum Overlay: Equatable {
     case help
     case pr
+    /// The task's PR as GitHub shows it, in the panel (`AppModel.pullPage`).
+    case pullPage
 
     var name: String {
         switch self {
         case .help: "help"
         case .pr: "pr"
+        case .pullPage: "pull page"
         }
     }
 }
@@ -164,12 +167,23 @@ final class AppModel {
     // Chrome
     private(set) var view: AppView = .tasks {
         didSet {
+            if view != .tasks, overlay == .pullPage { overlay = nil }
             updateScope()
             if view != oldValue { viewChangedForSync() }
         }
     }
 
-    private(set) var overlay: Overlay? { didSet { updateScope() } }
+    private(set) var overlay: Overlay? {
+        didSet {
+            if overlay != .pullPage { pullPage = nil }
+            updateScope()
+        }
+    }
+
+    /// The PR the panel shows: always the task on screen's.
+    private(set) var pullPage: PullRef?
+    /// The panel's pages kept loaded.
+    @ObservationIgnored private var pullPages = PullPages()
     /// The PR open in the reader, over whatever view it was opened from.
     private(set) var reader: PullRef? { didSet { updateScope() } }
     /// The issue being read (`go` or ↩ on an issue).
@@ -874,6 +888,7 @@ final class AppModel {
             )
         }, layouts: layouts, agents: agents, collapsed: collapsed)
         cursor = list.row(for: selected, before: before, cursor: cursor)
+        pullPageFollowsTask()
     }
 
     private func replace(with domain: Domain) {
@@ -1080,13 +1095,13 @@ final class AppModel {
             return true
         }
         let before = engine.mode
-        engine.paneScope = focusedBrowserPane == nil ? nil : "browser"
+        engine.paneScope = activePagePane == nil ? nil : "browser"
         updateScope()
         let outcome = engine.handle(stroke)
         switch outcome {
         case .terminal:
             // Typing into a web page is not activity on the task.
-            if focusedBrowserPane == nil, var task = currentTask {
+            if activePagePane == nil, var task = currentTask {
                 let now = Date()
                 if now.timeIntervalSince(task.lastActivity) > 60 {
                     task.lastActivity = now
@@ -1204,7 +1219,7 @@ final class AppModel {
         case "tab.diff": showDiffTab()
         case "browser.new": newPageTab(command.arguments.joined(separator: " "))
         case "browser.location":
-            if let pane = focusedBrowserPane { beginAddressEdit(pane) } else { flash = "not on a web page" }
+            if let pane = activePagePane { beginAddressEdit(pane) } else { flash = "not on a web page" }
         case "browser.back", "browser.forward", "browser.reload", "browser.zoom.in", "browser.zoom.out",
              "browser.zoom.reset", "browser.external":
             pageCommand(command.name)
@@ -1236,7 +1251,7 @@ final class AppModel {
         case "sidebar.toggle": sidebarCollapsed.toggle()
         case "section.toggle": toggleSection(named: command.arguments.joined(separator: " "))
         case "mode.normal", "mode.insert", "mode.visual", "mode.command", "mode.hint":
-            if command.name == "mode.insert",
+            if command.name == "mode.insert", pullPage == nil,
                view != .tasks || currentPane == nil
                || currentPane?.role == .diff || currentPane?.role == .note || currentPane?.role == .files
             {
@@ -1269,6 +1284,7 @@ final class AppModel {
         case "links.pick": pickLinks()
         case "overlay.pr": togglePullOverlay()
         case "overlay.item": toggleItemOverlay()
+        case "pr.page": togglePullPage()
         case "jump.back": closeReaderOrOverlay()
         case "pr.start": startFromPull()
         case "pr.task": jumpToPullTask()
@@ -1367,6 +1383,7 @@ final class AppModel {
         let clamped = min(max(index, 0), count - 1)
         if clamped != cursor { previousTaskID = currentTask?.id }
         cursor = clamped
+        pullPageFollowsTask()
     }
 
     /// Going to a task (`'1`, `ga`, `''`, `:task`, a PR's task, the menu bar) opens its section when it is collapsed.
@@ -2297,15 +2314,56 @@ final class AppModel {
         }
     }
 
-    /// `go`: the PR or issue under the cursor, or in Tasks the task's PR overlay; again closes it.
+    /// `go`: the PR or issue under the cursor, or in Tasks the task's PR page in the panel; again closes it.
     private func toggleItemOverlay() {
         if issueReader != nil || reader != nil {
             closeReaderOrOverlay()
         } else if view == .tasks {
-            togglePullOverlay()
+            if overlay == .pr { overlay = nil } else { togglePullPage() }
         } else {
             openReader()
         }
+    }
+
+    // MARK: PR panel
+
+    /// `go` in Tasks, `:pr.page`, the task menu's Pull request: the task's PR page in the panel; again closes it.
+    private func togglePullPage() {
+        if overlay == .pullPage { return closePullPage() }
+        guard let pull = currentTask?.pull else { return flash = "this task has no PR yet" }
+        showPullPage(pull)
+    }
+
+    /// A click on a row's PR pill: its task, with the panel on the PR; the same pill again closes it.
+    private func clickPullTag(_ ref: PullRef, of taskID: String) {
+        view = .tasks
+        select(taskID: taskID)
+        if overlay == .pullPage, pullPage == ref { closePullPage() } else { showPullPage(ref) }
+    }
+
+    /// The panel opens in NORMAL: keys go to the page once you click into it (or `i`).
+    private func showPullPage(_ ref: PullRef) {
+        for dropped in pullPages.show(ref) {
+            BrowserSurfaces.shared.close(paneID: PullPages.paneID(dropped))
+        }
+        clickedOutsideTerminal()
+        overlay = .pullPage
+        pullPage = ref
+    }
+
+    /// ⎋, `go`, a click beside the panel. Its page stays loaded for next time.
+    func closePullPage() {
+        guard overlay == .pullPage else { return }
+        clickedOutsideTerminal()
+        endAddressEdit()
+        overlay = nil
+    }
+
+    /// The panel shows the task on screen: another task's PR when the cursor moves there, closed when it has none.
+    private func pullPageFollowsTask() {
+        guard overlay == .pullPage else { return }
+        guard let pull = currentTask?.pull else { return closePullPage() }
+        if pull != pullPage { showPullPage(pull) }
     }
 
     /// The issue under the cursor: an Issues row, or an issue in the inbox (with what the inbox knows of it when it
@@ -2426,7 +2484,7 @@ final class AppModel {
             guard let url = task.kibanaURL else { return flash = "pk has no Kibana address for this task yet" }
             openLink(url, from: taskID)
         case .pull:
-            if let ref = task.pull { openLink(ref.url, from: taskID) }
+            if let ref = task.pull { clickPullTag(ref, of: taskID) }
         case let .issue(ref):
             openLink(ref.url, from: taskID)
         case let .note(path, _):
@@ -3615,6 +3673,9 @@ final class AppModel {
 
     /// The focused pane's tab when it is a web page on screen (Tasks, nothing over it): what ⌘L and the page's other
     /// keys act on.
+    /// The page the page keys and the toolbar act on: the PR panel's while it is open, else the focused tab's.
+    var activePagePane: String? { pullPage.map(PullPages.paneID) ?? focusedBrowserPane }
+
     var focusedBrowserPane: String? {
         guard view == .tasks, overlay == nil, reader == nil, issueReader == nil, let pane = currentPane,
               pane.role == .browser
@@ -3630,7 +3691,7 @@ final class AppModel {
     /// NORMAL gets its keys back instead of passing them to whatever has focus.
     func addressFieldOwnsKeys(fieldFocused: Bool) -> Bool {
         guard let editing = editingAddress else { return false }
-        if fieldFocused, editing == focusedBrowserPane { return true }
+        if fieldFocused, editing == activePagePane { return true }
         endAddressEdit()
         return false
     }
@@ -3662,12 +3723,24 @@ final class AppModel {
 
     /// A page asked for a new tab (a link with a target, ⌘-click): next to its own, in its task.
     func openPageTab(from paneID: String, url: String, show: Bool) {
+        if PullPages.isPaneID(paneID) { return openPageTabFromPullPage(url, show: show) }
         guard let taskID = currentDomain.task(ofPane: paneID), var layout = layouts[taskID] else { return }
         let directory = layout.panes.first { $0.id == paneID }?.directory ?? task(taskID)?
             .directory ?? NSHomeDirectory()
         layout.openPage(url, nextTo: paneID, directory: directory, show: show)
         commit(.layoutChanged(task: taskID, layout))
         if !show { flash = "opened in a new tab" }
+    }
+
+    /// A link from the PR panel that asked for a new tab: a page in the task. Shown at once (the panel closes, so you
+    /// see it) unless it was ⌘-clicked, which opens it behind the panel.
+    private func openPageTabFromPullPage(_ url: String, show: Bool) {
+        guard let task = currentTask else { return }
+        if show { return openLink(url, from: task.id) }
+        var layout = layouts[task.id] ?? TaskLayout()
+        layout.openPage(url, directory: task.directory, show: false)
+        commit(.layoutChanged(task: task.id, layout))
+        flash = "opened in a new tab"
     }
 
     /// A page went somewhere or got a title: its tab keeps it for the next launch.
@@ -3702,7 +3775,7 @@ final class AppModel {
     }
 
     private func pageCommand(_ name: String) {
-        guard let pane = focusedBrowserPane else {
+        guard let pane = activePagePane else {
             flash = "not on a web page"
             return
         }
@@ -3759,6 +3832,8 @@ final class AppModel {
 
     /// Shows the tab with `paneID` in it and gives its pane the keys.
     func focusPane(_ paneID: String) {
+        // The PR panel's page is no pane of the layout.
+        guard !PullPages.isPaneID(paneID) else { return }
         updateLayout { $0.focus(pane: paneID) }
     }
 

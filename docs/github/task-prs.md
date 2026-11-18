@@ -5,7 +5,8 @@ description: How a task gets its pull request and its issue.
 # A task's PR
 
 A task has one pull request and one issue. The PR shows on the task's sidebar row, in the
-[inspector](../tasks/inspector.md) and in the [PR overlay](pr-overlay.md); the issue in the inspector.
+[inspector](../tasks/inspector.md), in [the PR panel](pr-page.md) and in the [PR overlay](pr-overlay.md); the issue
+in the inspector.
 
 ## How a task gets them
 
@@ -24,5 +25,6 @@ PRs that mention the task's PR (GitHub's cross-references) are listed in the PR 
 
 | Key | |
 |---|---|
-| `go` | The task's PR in the PR overlay |
+| `go` | The task's PR page in [the PR panel](pr-page.md) (also a click on the row's PR pill) |
+| `:overlay.pr` | The task's PR in the PR overlay |
 | `gS` | From a pull request, jump to its task |

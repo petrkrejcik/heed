@@ -20,7 +20,7 @@ The inspector, on the right of the Tasks view, shows the selected task's surroun
 
 **Click a link** to open it here: the PR in the [PR overlay](../github/pr-overlay.md), the issue in the
 [reader](../github/reading.md). **⌘-click** opens its GitHub page as a [web page](web-pages.md) in a new tab. `go`
-opens the PR overlay from the keyboard.
+opens the PR's GitHub page in [the PR panel](../github/pr-page.md).
 
 A task's PR and issue are set by the agent: its `gh pr create` sets the PR, and `heed pr add <url>` or
 `heed issue add <url>` set either by hand. See [A task's PR](../github/task-prs.md).

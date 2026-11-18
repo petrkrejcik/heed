@@ -347,6 +347,9 @@ private struct PaneView: View {
     /// Its pane is the focused one.
     let active: Bool
 
+    /// Your keys go here: the focused pane in INSERT, unless the PR panel over it has them.
+    private var typing: Bool { active && model.mode == .insert && model.pullPage == nil }
+
     var body: some View {
         VStack(spacing: 0) {
             if pane.role == .browser {
@@ -369,12 +372,11 @@ private struct PaneView: View {
                 // Pages in fixtures and snapshots stay off the network.
                 FakeBrowser(pane: pane)
             } else if pane.role == .browser {
-                BrowserPane(
-                    pane: pane, isFocused: active && model.mode == .insert, focusRequest: model.terminalFocusRequest
-                )
-                .overlay {
-                    if let failure = BrowserSurfaces.shared.page(for: pane).failure { PageFailure(message: failure) }
-                }
+                BrowserPane(pane: pane, isFocused: typing, focusRequest: model.terminalFocusRequest)
+                    .overlay {
+                        if let failure = BrowserSurfaces.shared.page(for: pane)
+                            .failure { PageFailure(message: failure) }
+                    }
             } else if !model.terminalsReady {
                 // The PATH and zmx sessions are not known yet; a terminal made now would start with the wrong ones.
                 Theme.pane
@@ -382,7 +384,7 @@ private struct PaneView: View {
                 TerminalPane(
                     pane: pane,
                     sessionID: model.currentTask?.id ?? "",
-                    isFocused: active && model.mode == .insert,
+                    isFocused: typing,
                     focusRequest: model.terminalFocusRequest
                 )
             }
@@ -390,7 +392,7 @@ private struct PaneView: View {
         .background(Theme.pane)
         // White only on the pane your keys go to (INSERT); in NORMAL no pane takes input, so the focused one is quiet.
         .overlay {
-            if active, model.mode == .insert {
+            if typing {
                 Rectangle().strokeBorder(Color.white, lineWidth: 1.5)
             } else if active {
                 Rectangle().strokeBorder(Theme.paneActive.opacity(0.3), lineWidth: 1)

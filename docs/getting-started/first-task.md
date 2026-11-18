@@ -38,8 +38,9 @@ keyboard back to Heed. More in [Typing into agents](../tasks/typing-into-agents.
 
 ## 5. Read what the PR needs
 
-When the agent opens a pull request, it becomes the task's PR, and its state shows on the row. `go` opens the PR
-overlay: review comments with the code they are on, failing checks, and what holds the PR back from green. You decide
-what the agent fixes. More in [The PR overlay](../github/pr-overlay.md) and [A task's PR](../github/task-prs.md).
+When the agent opens a pull request, it becomes the task's PR, and its state shows on the row. Click the PR pill (or
+`go`) for its GitHub page in [a panel](../github/pr-page.md) over the task. `:overlay.pr` reads it in Heed: review
+comments with the code they are on, failing checks, and what holds the PR back from green. You decide what the agent
+fixes. More in [The PR overlay](../github/pr-overlay.md) and [A task's PR](../github/task-prs.md).
 
 ![The PR overlay: review threads, a failing check, and the green rules](../images/shots/getting-started/first-task-5-pr.png)

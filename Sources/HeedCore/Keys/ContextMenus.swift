@@ -48,9 +48,13 @@ public enum ContextMenus {
     /// The statuses in the order of the sidebar's sections and the Kanban's columns; the two that end a task last.
     public static let statusOrder: [TaskStatus] = [.toDo, .inProgress, .blocked, .readyForReview, .done, .dropped]
 
-    /// A task in the sidebar or the rail: its title, then Status.
+    /// A task in the sidebar or the rail: its title, its PR page when it has a PR, then Status. The menu selects the
+    /// task first, so `overlay.item` is the task's PR page, and shows its key (`go`).
     public static func task(_ task: WorkTask) -> [MenuEntry] {
-        [.header(task.title), .submenu("Status", statuses(current: task.status))]
+        let pull: [MenuEntry] = task.pull == nil ? [] : [.item(MenuItem("Pull request", CommandInvocation(
+            name: "overlay.item"
+        )))]
+        return [.header(task.title)] + pull + [.submenu("Status", statuses(current: task.status))]
     }
 
     /// Every status pk knows, the task's own checked. Done and Dropped ask first, hence the ellipsis.
