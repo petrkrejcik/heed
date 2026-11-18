@@ -116,7 +116,7 @@ struct TaskRow: View {
             VStack(alignment: .leading, spacing: 0) {
                 HStack(spacing: 6) {
                     Text(task.title)
-                        .font(Theme.ui(13, weight: .medium))
+                        .font(Theme.ui(13, weight: isCursor ? .semibold : .medium))
                         .lineLimit(1)
                         .truncationMode(.tail)
                     Spacer(minLength: 4)
@@ -128,7 +128,8 @@ struct TaskRow: View {
         .padding(.leading, 16)
         .padding(.trailing, 12)
         .padding(.vertical, 9)
-        .background(isCursor ? Theme.bg3 : .clear)
+        .background(isCursor ? Theme.selected : .clear)
+        .overlay(alignment: .leading) { if isCursor { CursorBar() } }
         .overlay(alignment: .topLeading) {
             if let hint { HintBadge(label: hint).padding(.leading, 8).padding(.top, 8) }
         }
@@ -412,6 +413,13 @@ struct KibanaMark: View {
     }
 }
 
+/// The cursor row's mark at the sidebar's left edge.
+struct CursorBar: View {
+    var body: some View {
+        Theme.paneActive.frame(width: 3)
+    }
+}
+
 /// HINT mode's letter badge.
 struct HintBadge: View {
     let label: String
@@ -456,7 +464,8 @@ struct TaskRail: View {
                         }
                         .frame(width: 44)
                         .padding(.vertical, 8)
-                        .background(isCursor ? Theme.bg3 : .clear)
+                        .background(isCursor ? Theme.selected : .clear)
+                        .overlay(alignment: .leading) { if isCursor { CursorBar() } }
                         .overlay(alignment: .topLeading) {
                             if let hint = model.hintLabel(for: .task(task.id)) { HintBadge(label: hint) }
                         }
