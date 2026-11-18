@@ -3839,6 +3839,21 @@ final class AppModel {
         clickedPane(paneID)
     }
 
+    /// A right-click on a task in the sidebar or the rail selects it as a click does, so its menu acts on the task on
+    /// screen. False while a dialog is up: no menu then.
+    func rightClickTask(_ id: String) -> Bool {
+        guard clicksReachLists else { return false }
+        clickTask(id)
+        return true
+    }
+
+    func taskMenu(_ id: String) -> [MenuEntry] { task(id).map(ContextMenus.task) ?? [] }
+
+    /// What a menu shows beside an item: its NORMAL key (`dd`), else what to type (`:status todo`).
+    func menuKey(for item: MenuItem) -> String {
+        item.keys(in: engine.keymaps[.normal]?.bindings ?? []).first.map { KeyCapText.of($0) } ?? item.typed
+    }
+
     /// A click on a list row (Inbox, Issues, PRs) moves the cursor there; a double-click opens it, as ↩ does.
     func clickRow(_ list: AppView, _ index: Int, open: Bool = false) {
         guard clicksReachLists, view == list else { return }

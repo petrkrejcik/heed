@@ -28,6 +28,9 @@ too: Heed asks pk for its paths rather than keeping a copy.
 | `dr` | Ready for Review |
 | `:status <name>` | Any status: `:status to do`, `:status dropped` (short names work: `wip`, `review`, `drop`) |
 
+Or with the mouse: right-click a task in the sidebar (or the rail) and pick one under **Status**. The task's own status
+is checked, and each status shows its key.
+
 Done and Dropped ask first. Its terminals close, stopping its agents, and the task moves under Done (or Dropped) in
 the sidebar. A review task's worktree is removed too, unless it holds uncommitted or unpushed work; Heed says what kept
 it. Ready for Review and Blocked keep the terminals running.

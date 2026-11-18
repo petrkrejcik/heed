@@ -64,6 +64,10 @@ Hover a row for what its agent is doing; with more than one agent tab, how many 
 Click a task to select it; double-click it to type into its agent (INSERT). Rows in the other lists (Inbox, Issues,
 PRs) take clicks the same way: a click moves the cursor there, a double-click opens the row as `↩` does.
 
+Right-click a task (or ⌃-click it), in the sidebar or the rail, for its menu. It selects the task first, as a click
+does. **Status** lists every status, the task's own checked, each with its key; picking one does what that key does
+([Status](status-and-worktrees.md#status)), so Done and Dropped ask first.
+
 The cursor stays on its task. When the task changes section, the rows move but the selection does not, so what you
 are looking at, and typing into, never switches under you. When it moves into a collapsed section (an agent marks it
 Done, say) and still has tabs, that section opens so its agent stays in front of you. A task with no tabs leaves the
