@@ -35,6 +35,7 @@ extension Fixtures {
     static let fixImageUploadNote = """
     ---
     type: task
+    task_id: 3f1c9a2e-7b4d-4e8a-9c61-5d2f0b8e4a17
     status: In Progress
     epic: "[[Chat attachments]]"
     tags: [kibana, bug]

@@ -310,10 +310,8 @@ function unquote(s: string): string {
   return s.trim().replace(/^(["'])(.*)\1$/, "$2");
 }
 
-const hiddenProperties = new Set(["type", "task_id"]);
-
 function renderProperties(props: [string, string[]][]): string {
-  const rows = props.filter(([key, values]) => !hiddenProperties.has(key) && values.length);
+  const rows = props.filter(([, values]) => values.length);
   if (!rows.length) return "";
   const items = rows.map(([key, values]) => {
     const rendered = values.map((value) => {
