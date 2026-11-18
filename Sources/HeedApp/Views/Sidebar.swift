@@ -38,6 +38,7 @@ struct Sidebar: View {
                                     .simultaneousGesture(TapGesture(count: 2).onEnded {
                                         model.clickTask(task.id, insert: true)
                                     })
+                                    .rightClickMenu { model.rightClickTask(task.id) } _: { model.taskMenu(task.id) }
                                     .id(task.id)
                                 }
                             }
@@ -465,6 +466,7 @@ struct TaskRail: View {
                         .simultaneousGesture(TapGesture(count: 2).onEnded {
                             model.clickTask(task.id, insert: true)
                         })
+                        .rightClickMenu { model.rightClickTask(task.id) } _: { model.taskMenu(task.id) }
                     }
                 }
             }
