@@ -68,8 +68,8 @@ Every link you open in Heed opens as a page inside Heed, and Heed shows it:
 - `gB` in Inbox, Issues and PRs: in Kibana main.
 
 Kibana main is the pinned task in the main checkout. Without one, links open in your default browser. Only web links
-become pages: a file path inside the task's checkout opens in its [Files tab](files.md), at the line; any other path
-or a `mailto:` link opens in the app macOS picks for it.
+become pages: an image's path opens in a [Viewer tab](viewer.md), another file path inside the task's checkout in its
+[Files tab](files.md), at the line; any other path or a `mailto:` link opens in the app macOS picks for it.
 
 Inside a page, a click navigates in place. A `⌘`-click opens the link in a new tab behind; a link meant for a new
 window opens a new tab and shows it. Links to other apps (`mailto:`, `zoommtg:`) open only when you click them, never

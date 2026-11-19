@@ -18,12 +18,15 @@ public struct PaneSpec: Hashable, Sendable, Codable, Identifiable {
         /// The task's files (`directory` is the checkout, `path` the open file relative to it), not a terminal: read
         /// only, keys stay Heed's.
         case files
+        /// A local file shown as it looks (`path` is the absolute path; see `FileViewer`), not a terminal: read only,
+        /// keys stay Heed's.
+        case viewer
 
         /// A tab that shows a terminal and takes keys in INSERT.
         public var isTerminal: Bool {
             switch self {
             case .agent, .shell, .command: true
-            case .browser, .diff, .note, .files: false
+            case .browser, .diff, .note, .files, .viewer: false
             }
         }
 
@@ -41,7 +44,8 @@ public struct PaneSpec: Hashable, Sendable, Codable, Identifiable {
     public var command: String?
     /// The address a page shows, as last navigated; nil for terminals and for a page not given one yet.
     public var url: String?
-    /// The file shown: a note's absolute path, or a Files tab's file relative to `directory`; nil for other roles.
+    /// The file shown: a note's or a Viewer tab's absolute path, or a Files tab's file relative to `directory`; nil
+    /// for other roles.
     public var path: String?
 
     public init(

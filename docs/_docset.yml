@@ -35,6 +35,7 @@ toc:
       - file: web-pages.md
       - file: notes.md
       - file: files.md
+      - file: viewer.md
       - file: inspector.md
       - file: pinning.md
       - file: resume.md
