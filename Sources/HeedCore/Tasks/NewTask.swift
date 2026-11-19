@@ -97,6 +97,14 @@ public enum NewTask {
         return number
     }
 
+    /// What a review's agent is offered: the `/cr` skill on the PR, with the note where each round is kept. The same
+    /// draft starts every round; `/cr` reads the note's `reviewed_sha` to look only at what changed since.
+    public static func reviewDraft(pr: String, note: String) -> String { "/cr \(pr) - task note: \(note)" }
+
+    /// A review's setup command: bootstrap, then Kibana in the same terminal, so the page is up when the review needs
+    /// it (the Kibana icon follows the port). `pk task review round` or Done stops it again.
+    public static func reviewSetup(bootstrap: String, kibana: String) -> String { "\(bootstrap) && \(kibana)" }
+
     /// What the old agent is asked before the worktree is made.
     public static func notePrompt(note: String) -> String {
         "Update the task note at \(note): write what you learned so far. Reply ok when done."

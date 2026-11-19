@@ -58,7 +58,10 @@ public enum Commands {
             "add a worktree: the agent updates the note, then the worktree, bootstrap and a new agent (again: stop waiting)",
             .move
         ),
-        .init("task.review", "review a PR: a task, its worktree, bootstrap and an agent", .move, arguments: "<number>"),
+        .init(
+            "task.review", "review a PR: task, worktree, bootstrap, Kibana, agent; again: next round", .move,
+            arguments: "<number>"
+        ),
         .init("tasks.refresh", "read every task from pk again", .move),
         .init("kibana.run", "run Kibana for this task in a new tab (pk kbn)", .move),
         .init("resume", "pick up where you left off: the agents to resume, as on launch", .move),

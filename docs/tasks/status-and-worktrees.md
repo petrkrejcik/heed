@@ -62,9 +62,18 @@ waits until you press Return (or edit or delete the line).
 ## Reviewing a PR
 
 `:review <number>` (or the PR's URL; `⌘V` pastes into the command line) makes the task "Review PR <number> -
-<title>" with the PR checked out in a worktree, then opens the `bootstrap` tab and an agent with "Review <PR>. The task
-note is at …" typed into its input, waiting for your Return.
-Marking the review Done removes its worktree.
+<title>" with the PR checked out in a worktree, then opens the `bootstrap` tab (bootstrap, then `pk kbn` in the same
+terminal, so Kibana is up for the review) and an agent with `/cr <PR> - task note: …` typed into its input, waiting for
+your Return.
+
+A review can take several rounds:
+
+- **Round done** (`pk task review round <task>`, or say "round done" to the agent): Kibana stops, the reviewed commit
+  is kept in the note as `reviewed_sha`, and the task goes to Blocked (waiting on the author). The worktree stays.
+- **Next round**: `:review <number>` again. The same task and worktree are used: pk pulls the PR's new commits and the
+  task goes back to In Progress. `/cr` reviews only what changed since `reviewed_sha`.
+- **Review done** (Done, or say "review done" to the agent): Kibana stops and the worktree is removed, when nothing
+  would be lost.
 
 ## Running Kibana
 

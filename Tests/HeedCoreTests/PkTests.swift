@@ -286,6 +286,14 @@ struct ReviewNumberTests {
         #expect(NewTask.reviewNumber("0") == nil)
         #expect(NewTask.reviewNumber("soon") == nil)
     }
+
+    @Test func aReviewStartsCrOnThePrAndKibanaAfterBootstrap() {
+        #expect(
+            NewTask.reviewDraft(pr: "https://github.com/elastic/kibana/pull/1", note: "/v/Review PR 1 - x.md")
+                == "/cr https://github.com/elastic/kibana/pull/1 - task note: /v/Review PR 1 - x.md"
+        )
+        #expect(NewTask.reviewSetup(bootstrap: "pk kbn bootstrap", kibana: "pk kbn") == "pk kbn bootstrap && pk kbn")
+    }
 }
 
 struct WorktreeTabsTests {

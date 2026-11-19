@@ -1599,8 +1599,9 @@ final class AppModel {
         enterInsert()
     }
 
-    /// `:review 299044`: pk makes the review task and imports the PR into a worktree; then the same tabs as a new
-    /// worktree, with an agent told what to review.
+    /// `:review 299044`: pk makes the review task and imports the PR into a worktree (a PR reviewed before starts its
+    /// next round in the same task and worktree); then the same tabs as a new worktree, Kibana started after the
+    /// bootstrap, and an agent offered `/cr` on the PR.
     private func startReview(_ argument: String?) {
         guard let number = argument.flatMap(NewTask.reviewNumber) else {
             return flash = ":review <number or elastic/kibana PR URL>"
@@ -1615,8 +1616,11 @@ final class AppModel {
                 let pr = task.pr ?? PullRef(repo: Kibana.repo, number: number).url
                 addWorkTabs(
                     to: fresh, worktree: worktree,
-                    draft: "Review \(pr). The task note is at \(task.notePath ?? "?").",
-                    record: "review of PR \(number) in \((worktree as NSString).lastPathComponent)"
+                    draft: NewTask.reviewDraft(pr: pr, note: task.notePath ?? "?"),
+                    record: "review of PR \(number) in \((worktree as NSString).lastPathComponent)",
+                    bootstrap: NewTask.reviewSetup(
+                        bootstrap: pk.commandLine(["kbn", "bootstrap"]), kibana: pk.commandLine(["kbn"])
+                    )
                 )
             } catch {
                 flash = "could not start the review of PR \(number): \(error)"
@@ -1627,10 +1631,12 @@ final class AppModel {
     /// After the task's tabs: `pk kbn bootstrap`, the pinned commands and a new agent, all in `worktree`, every one
     /// starting at once. `draft` waits in the agent's input, not sent. The agent's tab is shown, and typed into when
     /// the task is still the one on screen.
-    private func addWorkTabs(to fresh: PkTask, worktree: String, draft: String, record: String) {
+    private func addWorkTabs(
+        to fresh: PkTask, worktree: String, draft: String, record: String, bootstrap: String? = nil
+    ) {
         guard let task = upsert(fresh, record: record) else { return }
         let built = NewTask.worktreeTabs(
-            worktree: worktree, bootstrap: pk.commandLine(["kbn", "bootstrap"]), settings: settings,
+            worktree: worktree, bootstrap: bootstrap ?? pk.commandLine(["kbn", "bootstrap"]), settings: settings,
             integration: integration
         )
         if let agent = built.agent, !draft.isEmpty { pendingDrafts[agent.pane] = draft }
