@@ -25,6 +25,8 @@ This page is generated from the code (`mise run shots`).
 | `section.toggle` `[pinned|todo|in progress|blocked|review|done|dropped]` | `za` | collapse / expand a sidebar section: the cursor's, or one by name |
 | `task.filter` | `/` | filter the current view (typed in the status bar) |
 | `filter.clear` |  | clear the current view's filter |
+| `task.next` | `<D-J>`, `<D-J>` (INSERT) | next task in the sidebar, also while you type (you keep typing in its terminal) |
+| `task.prev` | `<D-K>`, `<D-K>` (INSERT) | previous task in the sidebar, also while you type |
 | `task.attention` | `ga` | next task needing you |
 | `task.pin` | `m` | pin / unpin task (in its note) |
 | `task.back` | `''` | back to previous task |

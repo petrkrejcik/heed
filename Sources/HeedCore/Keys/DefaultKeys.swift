@@ -7,6 +7,7 @@ public enum DefaultKeys {
     public static let normal: [(String, String)] = [
         ("j", "row.next"), ("k", "row.prev"), ("<Down>", "row.next"), ("<Up>", "row.prev"),
         ("gg", "row.first"), ("G", "row.last"), ("/", "task.filter"),
+        ("<D-J>", "task.next"), ("<D-K>", "task.prev"),
         ("<C-d>", "row.halfpage.down"), ("<C-u>", "row.halfpage.up"), ("}", "group.next"), ("{", "group.prev"),
         ("h", "pane.left"), ("l", "pane.right"),
         ("o", "task.new"), ("ga", "task.attention"), ("m", "task.pin"), ("''", "task.back"),
@@ -40,6 +41,7 @@ public enum DefaultKeys {
         (insertEscape, "mode.normal"), ("<S-Esc>", "mode.normal"), ("<D-/>", "overlay.help"),
         ("<D-t>", "tab.open"), ("<D-}>", "tab.next"), ("<D-{>", "tab.prev"), ("<D-w>", "tab.close"),
         ("<D-d>", "pane.split.right"), ("<D-D>", "pane.split.below"),
+        ("<D-J>", "task.next"), ("<D-K>", "task.prev"),
     ]
 
     public static let command: [(String, String)] = [

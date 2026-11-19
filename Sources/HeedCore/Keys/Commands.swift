@@ -40,6 +40,8 @@ public enum Commands {
         ),
         .init("task.filter", "filter the current view (typed in the status bar)", .move),
         .init("filter.clear", "clear the current view's filter", .move),
+        .init("task.next", "next task in the sidebar, also while you type (you keep typing in its terminal)", .move),
+        .init("task.prev", "previous task in the sidebar, also while you type", .move),
         .init("task.attention", "next task needing you", .move),
         .init("task.pin", "pin / unpin task (in its note)", .move),
         .init("task.back", "back to previous task", .move),
