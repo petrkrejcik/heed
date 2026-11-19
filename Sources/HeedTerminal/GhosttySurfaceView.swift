@@ -279,7 +279,18 @@ public final class GhosttySurfaceView: NSView, @preconcurrency NSTextInputClient
     override public func mouseMoved(with event: NSEvent) {
         guard let surface else { return }
         let point = convert(event.locationInWindow, from: nil)
-        ghostty_surface_mouse_pos(surface, point.x, frame.height - point.y, Self.mods(event.modifierFlags))
+        ghostty_surface_mouse_pos(surface, point.x, frame.height - point.y, mouseMods(event))
+    }
+
+    /// The modifiers a mouse event goes to Ghostty with. A program that takes the mouse (Claude Code does, to scroll)
+    /// hides links from a ⌘-click: Ghostty looks for links then only with ⇧ held too. So ⌘ alone gets ⇧ added; the
+    /// link still matches on ⌘, since Ghostty drops the ⇧ again before matching.
+    private func mouseMods(_ event: NSEvent) -> ghostty_input_mods_e {
+        var flags = event.modifierFlags
+        if let surface, flags.contains(.command), !flags.contains(.shift), ghostty_surface_mouse_captured(surface) {
+            flags.insert(.shift)
+        }
+        return Self.mods(flags)
     }
 
     override public func scrollWheel(with event: NSEvent) {
@@ -300,7 +311,7 @@ public final class GhosttySurfaceView: NSView, @preconcurrency NSTextInputClient
     ) {
         guard let surface else { return }
         mouseMoved(with: event)
-        _ = ghostty_surface_mouse_button(surface, state, button, Self.mods(event.modifierFlags))
+        _ = ghostty_surface_mouse_button(surface, state, button, mouseMods(event))
     }
 
     // MARK: NSTextInputClient (input methods: Korean, Japanese, dead keys)
