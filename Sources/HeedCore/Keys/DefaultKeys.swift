@@ -101,6 +101,8 @@ public enum DefaultKeys {
             ("gg", "note.scroll.top"), ("G", "note.scroll.bottom"),
             ("e", "note.obsidian"), ("y", "note.copy"), ("r", "note.reload"),
         ],
+        /// A focused Viewer tab (NORMAL only: the file is read only).
+        "viewer": [("e", "viewer.open"), ("y", "viewer.copy"), ("r", "viewer.reload")],
         /// The issue reader.
         "issue": [("s", "items.start"), ("<Esc>", "overlay.close")],
         /// The PR overlay and the reader.

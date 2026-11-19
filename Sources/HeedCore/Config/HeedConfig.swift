@@ -300,7 +300,8 @@ public enum ConfigLoader {
     # Shift+Escape leaves INSERT too; a plain Escape always goes to the terminal. [keys.insert] "<S-Esc>" = "" unbinds.
 
     # Bindings per mode ([keys.normal], [keys.visual], ...) or per view ([keys.tasks], [keys.inbox], [keys.issues],
-    # [keys.diff], [keys.files], [keys.pr]), in vim notation, each naming a command (the same names : completes).
+    # [keys.diff], [keys.files], [keys.note], [keys.viewer], [keys.pr]), in vim notation, each naming a command (the
+    # same names : completes).
     # "" unbinds.
     # [keys.browser] is for a focused web page: single ⌘ or ⌃ chords, which work while you type in the page too.
     # [keys.normal]

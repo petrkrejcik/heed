@@ -195,7 +195,7 @@ final class AppModel {
     private func updateScope() {
         let scope = issueReader != nil ? "issue" : (overlay == .pr || reader != nil) ? "pr"
             : focusedDiffPane != nil ? "diff" : focusedFilesPane != nil ? "files"
-            : focusedNotePane != nil ? "note" : view.rawValue
+            : focusedNotePane != nil ? "note" : focusedViewerPane != nil ? "viewer" : view.rawValue
         if engine.scope != scope { engine.scope = scope }
     }
 
@@ -238,6 +238,12 @@ final class AppModel {
     private(set) var noteIndex: [NoteEntry] = []
     /// The active note picker, when `gN` or `:note` is in progress.
     private(set) var notePicker: NotePicker?
+
+    // Viewer tabs
+    /// What each Viewer tab read, by pane id. Not persisted: the path is, and a relaunch reads it when shown.
+    private(set) var viewerFiles: [String: FileViewer.Read] = [:]
+    @ObservationIgnored private var viewerReadAt: [String: Date] = [:]
+    @ObservationIgnored private var viewerLoads: [String: Task<Void, Never>] = [:]
     /// Side by side (else unified), for every Diff tab; a UI preference, kept in UserDefaults.
     private(set) var diffSplit = UserDefaults.standard.object(forKey: "diffSideBySide") as? Bool ?? true {
         didSet { if !isFixture { UserDefaults.standard.set(diffSplit, forKey: "diffSideBySide") } }
@@ -1246,6 +1252,7 @@ final class AppModel {
              "note.scroll.down", "note.scroll.up", "note.scroll.top", "note.scroll.bottom",
              "note.line.down", "note.line.up":
             noteCommand(command.name)
+        case "viewer.open", "viewer.copy", "viewer.reload": viewerCommand(command.name)
         case "overlay.close": closeTopmost()
         case "inspector.toggle": inspectorVisible.toggle()
         case "sidebar.toggle": sidebarCollapsed.toggle()
@@ -1254,6 +1261,7 @@ final class AppModel {
             if command.name == "mode.insert", pullPage == nil,
                view != .tasks || currentPane == nil
                || currentPane?.role == .diff || currentPane?.role == .note || currentPane?.role == .files
+               || currentPane?.role == .viewer
             {
                 engine.enter(.normal)
             }
@@ -2065,13 +2073,19 @@ final class AppModel {
         openLink(url, from: taskID, nextTo: paneID)
     }
 
-    /// A path from a terminal (`src/a.ts:12`, `./a.ts`, `~/x`, `file:`; relative ones from the task's checkout): a
-    /// file inside the checkout opens in the task's Files tab, anything else goes to macOS as before. Whether it is a
-    /// file is asked of the disk, off the main actor.
+    /// A path from a terminal (`src/a.ts:12`, `./a.ts`, `~/x`, `file:`; relative ones from the task's checkout): an
+    /// image anywhere opens in a Viewer tab, a file inside the checkout in the task's Files tab, anything else goes
+    /// to macOS as before. Whether it is a file is asked of the disk, off the main actor.
     private func openFileLink(_ url: String, in task: WorkTask, nextTo paneID: String) {
-        guard let location = FileLocation.parse(url, root: task.directory),
-              let path = location.relative(to: task.directory)
-        else { return openLink(url, from: task.id, nextTo: paneID) }
+        guard let location = FileLocation.parse(url, root: task.directory) else {
+            return openLink(url, from: task.id, nextTo: paneID)
+        }
+        if FileViewer.kind(of: location.path) != nil {
+            return openViewerLink(location.path, in: task, nextTo: paneID)
+        }
+        guard let path = location.relative(to: task.directory) else {
+            return openLink(url, from: task.id, nextTo: paneID)
+        }
         if isFixture {
             guard fileLists[task.directory]?.contains(file: path) ?? Fixtures.fileList.contains(file: path) else {
                 return
@@ -2109,6 +2123,12 @@ final class AppModel {
         var layout = layouts[taskID] ?? TaskLayout()
         layout.openPage(url, nextTo: paneID, directory: task.directory, show: true)
         commit(.layoutChanged(task: taskID, layout))
+        showOpenedTab(in: taskID)
+    }
+
+    /// A tab you asked for just opened in `taskID`: close what is over the window, go to that task and leave INSERT,
+    /// so its tab is on screen and Heed's keys act on it.
+    private func showOpenedTab(in taskID: String) {
         linkPicker = nil
         overlay = nil
         reader = nil
@@ -2711,8 +2731,8 @@ final class AppModel {
         terminalFocusRequest += 1
     }
 
-    /// An agent in the task finished a turn: its Diff tab reads the diff again, and its Files tab the list and the
-    /// open file, now when on screen, else when next shown.
+    /// An agent in the task finished a turn: its Diff tab reads the diff again, its Files tab the list and the open
+    /// file, and its Viewer tabs their files, now when on screen, else when next shown.
     private func agentTurnEnded(in taskID: String) {
         guard let layout = layouts[taskID] else { return }
         let onScreen = { (pane: PaneSpec) in
@@ -2730,6 +2750,10 @@ final class AppModel {
             if let directory = task(taskID)?.directory { fileListReadAt[directory] = nil }
             filesBrowsers[pane.id]?.readAt = nil
             if onScreen(pane) { filesTabShown(pane.id) }
+        }
+        for pane in layout.panes where pane.role == .viewer && viewerFiles[pane.id] != nil {
+            viewerReadAt[pane.id] = nil
+            if onScreen(pane) { viewerTabShown(pane.id) }
         }
     }
 
@@ -2777,17 +2801,7 @@ final class AppModel {
         let pane = layout.showFiles(directory: task.directory)
         commit(.layoutChanged(task: task.id, layout))
         if filesBrowsers[pane.id] == nil { filesBrowsers[pane.id] = FilesBrowser(file: pane.path) }
-        linkPicker = nil
-        overlay = nil
-        reader = nil
-        issueReader = nil
-        view = .tasks
-        select(taskID: task.id)
-        if mode == .insert {
-            let before = engine.mode
-            engine.enter(.normal)
-            modeChanged(from: before)
-        }
+        showOpenedTab(in: task.id)
         if let path { showFile(path, line: line, column: column, paneID: pane.id) }
         filesTabShown(pane.id)
         // A tab with nothing to show asks what to open.
@@ -3404,6 +3418,107 @@ final class AppModel {
         }
     }
 
+    // MARK: Viewer tab
+
+    /// The focused pane when it is a Viewer tab on screen: what the viewer keys act on.
+    var focusedViewerPane: String? {
+        guard view == .tasks, overlay == nil, reader == nil, issueReader == nil, let pane = currentPane,
+              pane.role == .viewer
+        else { return nil }
+        return pane.id
+    }
+
+    /// An image ⌘-clicked in a terminal: its Viewer tab when the file is there, else the status bar says it isn't (a
+    /// path an agent's output wrapped onto two lines arrives cut). Fixtures read no files: only their own image opens.
+    private func openViewerLink(_ path: String, in task: WorkTask, nextTo paneID: String) {
+        if isFixture {
+            guard path == Fixtures.viewerImage else {
+                return flash = "fixtures show no files; \((Fixtures.viewerImage as NSString).lastPathComponent) only"
+            }
+            return openViewer(path, in: task, nextTo: paneID)
+        }
+        Task {
+            let isFile = await Task.detached {
+                var folder: ObjCBool = false
+                return FileManager.default.fileExists(atPath: path, isDirectory: &folder) && !folder.boolValue
+            }.value
+            guard let task = self.task(task.id) else { return }
+            if isFile {
+                openViewer(path, in: task, nextTo: paneID)
+            } else {
+                flash = "no image at \(Paths.abbreviate(path))"
+            }
+        }
+    }
+
+    /// `task`'s Viewer tab on `path`, opened next to `paneID` or gone to, and read again: you clicked it, maybe
+    /// because it changed.
+    private func openViewer(_ path: String, in task: WorkTask, nextTo paneID: String?) {
+        var layout = layouts[task.id] ?? TaskLayout()
+        let pane = layout.showViewer(path: path, directory: task.directory, nextTo: paneID, show: true)
+        commit(.layoutChanged(task: task.id, layout))
+        showOpenedTab(in: task.id)
+        loadViewerTab(pane.id)
+    }
+
+    /// A Viewer tab came on screen: read its file when it never was, or the last read is a few seconds old (an agent
+    /// may have written it again).
+    func viewerTabShown(_ paneID: String) {
+        if let readAt = viewerReadAt[paneID], Date().timeIntervalSince(readAt) < 2 { return }
+        loadViewerTab(paneID)
+    }
+
+    /// Reads the tab's file off the main actor. The old picture stays until the new one is read, and an unchanged
+    /// file changes nothing.
+    private func loadViewerTab(_ paneID: String) {
+        guard let path = layouts.values.lazy.compactMap({ $0.pane(paneID) }).first?.path else { return }
+        viewerReadAt[paneID] = Date()
+        if isFixture {
+            return setViewerFile(path == Fixtures.viewerImage ? .image(ViewerStill.image) : .missing, paneID: paneID)
+        }
+        viewerLoads[paneID]?.cancel()
+        viewerLoads[paneID] = Task {
+            let read = await Task.detached(priority: .userInitiated) { FileViewer.read(path) }.value
+            guard !Task.isCancelled else { return }
+            viewerLoads.removeValue(forKey: paneID)
+            setViewerFile(read, paneID: paneID)
+        }
+    }
+
+    private func setViewerFile(_ read: FileViewer.Read, paneID: String) {
+        if viewerFiles[paneID] != read { viewerFiles[paneID] = read }
+    }
+
+    func clickedViewer(_ paneID: String) {
+        clickedOutsideTerminal()
+        if currentPane?.id != paneID { focusPane(paneID) }
+    }
+
+    /// Keys for the focused Viewer tab.
+    private func viewerCommand(_ name: String) {
+        guard let paneID = focusedViewerPane, let path = currentLayout?.pane(paneID)?.path else {
+            return flash = "not on a Viewer tab (⌘-click an image's path in a terminal to open one)"
+        }
+        switch name {
+        case "viewer.open":
+            guard !isFixture else { return flash = "fixtures open no apps" }
+            NSWorkspace.shared.open(URL(fileURLWithPath: path))
+        case "viewer.copy":
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(path, forType: .string)
+            flash = "copied \((path as NSString).lastPathComponent)"
+        case "viewer.reload": loadViewerTab(paneID)
+        default: break
+        }
+    }
+
+    /// A Viewer tab closed: what it read goes with it.
+    private func viewerTabClosed(_ paneID: String) {
+        viewerLoads.removeValue(forKey: paneID)?.cancel()
+        viewerReadAt.removeValue(forKey: paneID)
+        viewerFiles.removeValue(forKey: paneID)
+    }
+
     // MARK: Filter
 
     /// `/` in any list view: typing goes to the status bar until ↩ (keep) or ⎋ (clear).
@@ -3551,6 +3666,7 @@ final class AppModel {
         diffTabClosed(paneID)
         noteTabClosed(paneID)
         filesTabClosed(paneID)
+        viewerTabClosed(paneID)
         if layout.isEmpty { taskEmptied(taskID) }
     }
 

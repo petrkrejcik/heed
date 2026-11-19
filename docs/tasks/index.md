@@ -23,5 +23,5 @@ the agents waiting on you on the right.
 
 - [The sidebar](sidebar.md) · [New task](new-task.md) · [Status, worktrees and reviews](status-and-worktrees.md)
 - [Moving around](moving-around.md) · [Typing into agents](typing-into-agents.md)
-- [Panes and tabs](panes-and-tabs.md) · [Web pages](web-pages.md) · [The inspector](inspector.md)
+- [Panes and tabs](panes-and-tabs.md) · [Web pages](web-pages.md) · [Images](viewer.md) · [The inspector](inspector.md)
 - [Pinning](pinning.md) · [Resuming tasks](resume.md) · [Agents that outlive Heed](zmx.md) · [Filtering](filtering.md)

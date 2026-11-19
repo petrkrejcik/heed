@@ -28,7 +28,8 @@ you first show it.
 | `⌘`-click a path in a terminal | The file at its line, when the path is inside the task's checkout and the file exists |
 
 A terminal's path can be absolute, `./`, `~/` or relative (`src/core/fetch.ts:20:7`); a relative one is taken from the
-task's checkout, since Heed does not know a shell's current folder. Other paths open in the app macOS picks for them.
+task's checkout, since Heed does not know a shell's current folder. An image opens in a [Viewer tab](viewer.md)
+instead; other paths open in the app macOS picks for them.
 
 ## The file finder
 
