@@ -11,6 +11,9 @@ can keep several open; `⌘`-clicking one that is open already goes to its tab a
 
 ![A Viewer tab with the review's screenshot, beside the agent that made it](../images/shots/tasks/viewer-tab.png)
 
+`⌘`-click works on links in Claude Code too, which takes the mouse for its own scrolling: Heed tells the terminal
+to look for a link under a `⌘`-click anyway, as `⌘⇧`-click does in Ghostty.
+
 The path can be absolute, `./`, `~/`, `file://` or relative to the task's checkout, inside the checkout or anywhere
 else. Heed shows PNG, JPEG, GIF, WebP, HEIC, TIFF and the other images macOS reads itself; an SVG, a PDF or any other
 file opens in the app macOS picks for it, as before. When nothing is at the path, the status bar says "no image at …":
