@@ -70,6 +70,9 @@ This page is generated from the code (`mise run shots`).
 | `note.line.up` | `k` (note), `<Up>` (note) | note tab: scroll a few lines up |
 | `note.scroll.top` | `gg` (note) | note tab: scroll to the top |
 | `note.scroll.bottom` | `G` (note) | note tab: scroll to the bottom |
+| `viewer.open` | `e` (viewer) | viewer tab: open the file in its macOS app (Preview for an image) |
+| `viewer.copy` | `y` (viewer) | viewer tab: copy the file's absolute path |
+| `viewer.reload` | `r` (viewer) | viewer tab: read the file again |
 | `browser.new` `[url]` |  | new tab in this pane with a web page (no address: type one) |
 | `browser.back` | `<D-[>` (browser) | web page: back |
 | `browser.forward` | `<D-]>` (browser) | web page: forward |

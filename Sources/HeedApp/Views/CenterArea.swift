@@ -235,6 +235,8 @@ private struct TabStrip: View {
             Image(systemName: "doc.text").font(.system(size: 10))
         case .files:
             Image(systemName: "folder").font(.system(size: 10))
+        case .viewer:
+            Image(systemName: "photo").font(.system(size: 10))
         case .shell:
             EmptyView()
         }
@@ -366,6 +368,8 @@ private struct PaneView: View {
                 FilesTabView(pane: pane, active: active)
             } else if pane.role == .note {
                 NoteTabView(pane: pane, active: active)
+            } else if pane.role == .viewer {
+                ViewerTabView(pane: pane, active: active)
             } else if ShotMode.active {
                 if pane.role == .browser { FakeBrowser(pane: pane) } else { FakeTerminal(pane: pane) }
             } else if pane.role == .browser, model.isFixture {
@@ -410,6 +414,7 @@ private struct PaneView: View {
             case .diff: model.clickedDiff(pane.id)
             case .files: model.clickedFiles(pane.id)
             case .note: model.clickedNote(pane.id)
+            case .viewer: model.clickedViewer(pane.id)
             default: model.clickedPane(pane.id)
             }
         }

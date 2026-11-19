@@ -169,6 +169,23 @@ public struct TaskLayout: Hashable, Sendable {
         return pane
     }
 
+    /// The task's Viewer tab on `path`, if it has one open.
+    public func viewerPane(path: String) -> PaneSpec? { panes.first { $0.role == .viewer && $0.path == path } }
+
+    /// A file link (`FileViewer.kind` knows it): the Viewer tab for `path`, opened in the work pane next to the tab
+    /// showing `nextTo` when there is none for it, else the one there is. `show` focuses it. Returns it.
+    @discardableResult
+    public mutating func showViewer(path: String, directory: String, nextTo: String? = nil, show: Bool) -> PaneSpec {
+        if let existing = viewerPane(path: path) {
+            if show { focus(pane: existing.id) }
+            return existing
+        }
+        let title = (path as NSString).lastPathComponent
+        let pane = PaneSpec(role: .viewer, title: title, directory: directory, path: path)
+        add(PaneTab(title: title, pane: pane), show: show, nextTo: nextTo)
+        return pane
+    }
+
     /// Replaces the note shown by pane `id` in place (a wikilink click navigates within the tab).
     public mutating func replaceNote(paneID: String, path: String, title: String) {
         guard let group = group(ofPane: paneID), let index = group.index(ofPane: paneID) else { return }

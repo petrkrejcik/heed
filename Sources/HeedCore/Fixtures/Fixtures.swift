@@ -15,6 +15,10 @@ public enum Fixtures {
     static let worktrees = "\(home)/www/kibana.worktrees"
     static let notes = "\(home)/notes/Projects"
 
+    /// The image the review's agent left in its scratchpad, open in a Viewer tab. The app draws it: fixtures read no
+    /// files, so this is the only path a fixture's Viewer tab shows.
+    public static let viewerImage = "/private/tmp/claude-501/scratchpad/timeline_freeze.png"
+
     static func issueURL(_ number: Int) -> String { "https://github.com/elastic/kibana/issues/\(number)" }
     static func pullURL(_ number: Int) -> String { PullRef(repo: kibana, number: number).url }
 
@@ -140,6 +144,10 @@ public enum Fixtures {
                 PaneTab(id: "t3-t3", title: "Fix image upload 403", pane: PaneSpec(
                     id: "t3-note", role: .note, title: "Fix image upload 403", directory: review,
                     path: "\(notes)/Fix image upload 403.md"
+                )),
+                PaneTab(id: "t3-t4", title: "timeline_freeze.png", pane: PaneSpec(
+                    id: "t3-viewer", role: .viewer, title: "timeline_freeze.png", directory: review,
+                    path: viewerImage
                 )),
             ]),
             "t4": TaskLayout(tabs: [agentTab("t4", undo)]),
