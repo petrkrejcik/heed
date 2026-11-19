@@ -184,6 +184,18 @@ struct BrowserKeyTests {
         #expect(press(&engine, "<D-D>") == [.run(CommandInvocation(name: "pane.split.below"))])
     }
 
+    @Test func commandShiftJAndKSwitchTasksWhileTyping() {
+        var engine = engine()
+        engine.enter(.insert)
+        #expect(press(&engine, "<D-J>") == [.run(CommandInvocation(name: "task.next"))])
+        #expect(press(&engine, "<D-K>") == [.run(CommandInvocation(name: "task.prev"))])
+        #expect(engine.mode == .insert)
+        #expect(press(&engine, "<D-j>") == [.terminal])
+        engine.enter(.normal)
+        #expect(press(&engine, "<D-J>") == [.run(CommandInvocation(name: "task.next"))])
+        #expect(press(&engine, "<D-K>") == [.run(CommandInvocation(name: "task.prev"))])
+    }
+
     @Test func noCommandNumberKeys() {
         let built = Keymaps.build()
         let tables = Mode.allCases.compactMap { built.keymaps[$0] } + built.scoped.values

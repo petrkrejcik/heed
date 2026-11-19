@@ -11,6 +11,7 @@ The standard Mac shortcuts work in every mode, even with a terminal taking your 
 | `⌘W` | Close the tab you are typing in (INSERT): a terminal or a [web page](../tasks/web-pages.md). In NORMAL it does nothing; it never closes the window. |
 | `⌘T` | A new tab in the focused pane: `t` a terminal, `b` a [web page](../tasks/web-pages.md), `↩` the kind you picked last |
 | `⌘D` / `⌘⇧D` | A new [pane](../tasks/panes-and-tabs.md) with a shell, on the right / below |
+| `⌘⇧J` / `⌘⇧K` | The next / previous [task](../tasks/moving-around.md); in INSERT you keep typing, in that task's terminal |
 | `⌘Q` | Quit. With agents running, Heed asks first and lists them. |
 | `⌘H` | Hide Heed |
 | `⌘M` | Minimise |

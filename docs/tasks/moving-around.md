@@ -9,6 +9,7 @@ Moving between tasks works like moving in vim.
 | Key | Moves to |
 |---|---|
 | `j` / `k` | The next / previous task (also `↓` / `↑`) |
+| `⌘⇧J` / `⌘⇧K` | The next / previous task, also while you type (INSERT): you keep typing in that task's terminal |
 | `gg` / `G` | The first / last task |
 | `3j` | Three tasks down: a count repeats any move |
 | `{` / `}` | The previous / next group |

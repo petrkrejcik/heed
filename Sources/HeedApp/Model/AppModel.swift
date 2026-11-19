@@ -1178,6 +1178,8 @@ final class AppModel {
         case "row.halfpage.up": moveRow(by: -10 * count)
         case "group.next": moveGroup(forward: true)
         case "group.prev": moveGroup(forward: false)
+        case "task.next": stepTask(by: count)
+        case "task.prev": stepTask(by: -count)
         case "task.attention":
             view = .tasks
             if let next = list.nextNeedingYou(after: currentTask?.id) {
@@ -1356,6 +1358,22 @@ final class AppModel {
         switch view {
         case .inbox, .issues, .prs: setRow((itemCursor[view] ?? 0) + delta)
         case .tasks: setCursor(cursor + delta)
+        }
+    }
+
+    /// `⌘⇧J` / `⌘⇧K`: the next or previous task, as `j` / `k` in the sidebar, from any view and from INSERT. Typing
+    /// goes on in the task's focused tab when it is a terminal; anything else is NORMAL, as a tab switch is.
+    private func stepTask(by delta: Int) {
+        let typing = mode == .insert
+        view = .tasks
+        setCursor(cursor + delta)
+        guard typing else { return }
+        if currentPane?.role.isTerminal == true {
+            enterInsert()
+        } else {
+            let before = engine.mode
+            engine.enter(.normal)
+            modeChanged(from: before)
         }
     }
 
