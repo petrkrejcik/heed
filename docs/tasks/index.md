@@ -14,10 +14,11 @@ The Tasks view is where Heed opens (`gs` from anywhere). It has four parts.
 2. **The center**: the selected task's panes and their tabs, real terminals running its agents and anything else, and its
    web pages. See [Panes and tabs](panes-and-tabs.md) and [Web pages](web-pages.md).
 3. **The inspector**: the task's checkout, Kibana, PR, issue and agents. See [The inspector](inspector.md).
-4. **The status bar**: the mode, the branch and pane, and the keys that matter right now.
+4. **The status bar**: the mode, the branch, and the keys that matter in a dialog, a reader or a list (`?` lists
+   them all).
 
-Across the top, the title bar names the views with their keys, shows what you are looking at in the middle, and counts
-the agents waiting on you on the right.
+Across the top, the title bar names the views with their keys, shows the task's title and PR (or the item under the
+cursor) in the middle, and counts the agents waiting on you on the right.
 
 ## In this section
 

@@ -27,7 +27,7 @@ struct CenterArea: View {
                 VStack(spacing: 0) {
                     HStack(spacing: 0) {
                         Spacer()
-                        StripHints(keys: true)
+                        StripHints()
                     }
                     .frame(height: 36)
                     .background(Theme.bg2)
@@ -131,11 +131,11 @@ private struct TabStrip: View {
     let topRight: Bool
     let focused: Bool
     @Binding var draggedTab: String?
-    @State private var width: CGFloat = 0
 
     var body: some View {
         HStack(spacing: 0) {
-            // More tabs than fit scroll sideways rather than push the hints off; the active one stays in view.
+            // More tabs than fit scroll sideways rather than push the inspector button off; the active one stays in
+            // view.
             if ShotMode.active {
                 // Docs shots render offscreen, where a scroll view's content isn't drawn.
                 tabs.frame(minWidth: 0, maxWidth: .infinity, alignment: .leading).clipped()
@@ -146,11 +146,9 @@ private struct TabStrip: View {
                         .onChange(of: group.active?.id) { reveal(proxy) }
                 }
             }
-            // A narrow pane keeps its strip for tabs; the status bar has the keys too.
-            if topRight { StripHints(keys: width >= 560) }
+            if topRight { StripHints() }
         }
         .frame(height: 36)
-        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
         .background(Theme.bg2)
         .overlay(alignment: .bottom) { Theme.line.frame(height: 1) }
         .contentShape(Rectangle())
@@ -243,50 +241,14 @@ private struct TabStrip: View {
     }
 }
 
-/// What the keys do here, as you have them bound (unless `keys` is false), and the inspector button when it is
-/// hidden.
+/// The inspector button at the strip's right end, while the inspector is hidden.
 private struct StripHints: View {
     @Environment(AppModel.self) private var model
-    let keys: Bool
 
     var body: some View {
-        HStack(spacing: 10) {
-            // Into the terminal in NORMAL, back out in INSERT.
-            if !keys {
-                EmptyView()
-            } else if model.mode == .insert {
-                HStack(spacing: 5) {
-                    KeyCap(text: "⇧ esc")
-                    let chord = KeyCapText.of(model.config.insertEscape)
-                    if chord != "⇧⎋" {
-                        Text("or").foregroundStyle(Theme.fg3)
-                        KeyCap(text: chord)
-                    }
-                    Text("normal").foregroundStyle(Theme.fg3)
-                }
-                .fixedSize()
-                hint(model.keyLabel(for: "pane.split.right"), "split right")
-            } else {
-                hint(model.keyLabel(for: "mode.insert"), "insert")
-                hint(model.keyLabel(for: "pane.split.right"), "split right")
-                hint(model.keyLabel(for: "tab.next"), "tab")
-            }
-            if !model.inspectorVisible {
-                CollapseButton(systemImage: "sidebar.right", key: "zi") { model.toggleInspector() }
-            }
-        }
-        .font(Theme.ui(11.5))
-        .padding(.horizontal, 14)
-    }
-
-    /// A key and what it does; nothing when the command has no key.
-    @ViewBuilder private func hint(_ key: String?, _ label: String) -> some View {
-        if let key {
-            HStack(spacing: 5) {
-                KeyCap(text: key)
-                Text(label).foregroundStyle(Theme.fg3)
-            }
-            .fixedSize()
+        if !model.inspectorVisible {
+            CollapseButton(systemImage: "sidebar.right", key: "zi") { model.toggleInspector() }
+                .padding(.horizontal, 14)
         }
     }
 }
