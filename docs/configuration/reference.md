@@ -26,6 +26,11 @@ shell_split = false
 # zmx, or none (panes end with heed).
 persist = "auto"
 
+[keepwarm]
+# Keep cache warm (a click on a task's countdown) pings the task's agent's Claude session shortly before its prompt
+# cache expires, so the hour starts again. Every one turns off at this time of day.
+until = "17:00"
+
 [github]
 # How often the view on screen refreshes from GitHub; the others refresh five times less often.
 poll_seconds = 60

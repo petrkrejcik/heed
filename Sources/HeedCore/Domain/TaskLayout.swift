@@ -51,6 +51,8 @@ public struct TaskLayout: Hashable, Sendable {
 
     /// The first agent, else the first tab: where prompts are typed.
     public var agentPane: String? { (panes.first { $0.role == .agent } ?? panes.first)?.id }
+    /// The task's own agent: its first agent tab, whose cache the row counts down and keep-warm keeps.
+    public var taskAgent: String? { panes.first { $0.role == .agent }?.id }
 
     // MARK: Opening tabs
 

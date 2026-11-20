@@ -57,7 +57,8 @@ Each row shows:
   On the right, what is running:
   - A green K when Kibana runs for the task. Hover it for the port; click it to open Kibana as a new page in the
     task.
-  - An hourglass with the minutes left on the agent's prompt cache, amber in the last five.
+  - An hourglass with the minutes left on the agent's prompt cache, amber in the last five. Click it to keep the
+    cache warm ([below](#keep-cache-warm)); while that is on, a flame on an orange pill.
 
 Hover a row for what its agent is doing; with more than one agent tab, how many ("2 agents · running jest").
 
@@ -65,7 +66,9 @@ Click a task to select it; double-click it to type into its agent (INSERT). Rows
 PRs) take clicks the same way: a click moves the cursor there, a double-click opens the row as `↩` does.
 
 Right-click a task (or ⌃-click it), in the sidebar or the rail, for its menu. It selects the task first, as a click
-does. **Pull request** (when it has one) opens [the PR panel](../github/pr-page.md). **Status** lists every status,
+does. **Pull request** (when it has one) opens [the PR panel](../github/pr-page.md). **Keep cache warm** (when it
+has an agent) turns [keep cache warm](#keep-cache-warm) on or off, checked while on; it is greyed while there is no
+cache to keep. **Status** lists every status,
 the task's own checked, each with its key; picking one does what that key does
 ([Status](status-and-worktrees.md#status)), so Done and Dropped ask first.
 
@@ -79,9 +82,25 @@ section collapsed, and the cursor goes to the next row.
 Claude keeps a prompt cache for an hour after the agent's last response: a prompt sent within that hour is cheaper
 and faster. The countdown starts when the agent's turn ends, so 15 minutes after it the tag says `45m`. It stays
 while the agent works or waits on you, and starts again when the next turn ends; it is gone once the hour is up.
-With several agent tabs, it shows the cache that runs out first. Resuming an agent (after a
-relaunch) keeps the countdown of its last turn; a new, cleared or compacted conversation has none until its first
-turn ends.
+It is the task's own agent's: its first agent tab, the one `gc` goes to. Resuming an agent (after a relaunch, or
+with `gc` after its tab was closed) keeps the countdown of its last turn; a new, cleared or compacted conversation
+has none until its first turn ends.
+
+### Keep cache warm
+
+Click the countdown (or pick **Keep cache warm** in the task's menu, or type `:keepwarm`) and Heed keeps the
+agent's cache from running out: 55 minutes after the cache's start it pings the agent's Claude session, and on a hit
+the countdown goes back to `60m`. The ping is a separate headless Claude (`claude -p --resume <session>
+--no-session-persistence --model <the session's model>`) in the agent's folder: nothing is typed into the tab, and
+the session file is not touched. A hit costs about a twentieth of rebuilding the cache (measured: $0.04 on a 77k
+Opus context). Hover the flame for the last ping: when, how much it read from the cache, and what it cost.
+
+It never pings a cache that may be gone: not after 58 minutes (the countdown starts at the turn's end, a little
+after Claude refreshed the cache), and not while the agent works or waits on you, since its turn will start the
+hour again anyway. It turns off, saying why in the status bar and the task's timeline, when the cache expired (a
+Mac asleep through the ping, too), when a ping misses the cache or fails, when the agent's tab is closed, and at
+the day's cut-off: `[keepwarm] until` in config.toml, `17:00` by default. `:keepwarm on` and `:keepwarm off` set it
+either way.
 
 ## The rail
 

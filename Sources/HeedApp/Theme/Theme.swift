@@ -36,6 +36,8 @@ enum Theme {
     static let ask = Color(light: 0x8250DF, dark: 0xC79EF7)
     static let done = Color(light: 0x1A7F37, dark: 0x72D699)
     static let err = Color(light: 0xCF222E, dark: 0xF97770)
+    /// Keep cache warm, while on: the flame on the countdown.
+    static let warm = Color(light: 0xBC4C00, dark: 0xFF9B54)
     static let hint = Color(light: 0x1B7C83, dark: 0x73DFDF)
 
     static func modeColor(_ mode: Mode) -> Color {

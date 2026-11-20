@@ -174,14 +174,20 @@ public struct AgentTab: Hashable, Sendable, Codable {
     public var claudeSessionID: String?
     /// When its last turn ended (the idle or done hook): the prompt cache countdown starts there.
     public var lastTurnAt: Date?
+    /// When a keep-warm ping last refreshed its cache (the ping's start); the countdown starts at the later of the two.
+    public var cacheWarmedAt: Date?
+    /// Keep cache warm, while on.
+    public var keepWarm: KeepWarm?
 
     public init(
         state: ObservedState = ObservedState(.idle, source: .guessed), activity: String = "",
-        claudeSessionID: String? = nil, lastTurnAt: Date? = nil
+        claudeSessionID: String? = nil, lastTurnAt: Date? = nil, cacheWarmedAt: Date? = nil, keepWarm: KeepWarm? = nil
     ) {
         self.state = state
         self.activity = activity
         self.claudeSessionID = claudeSessionID
         self.lastTurnAt = lastTurnAt
+        self.cacheWarmedAt = cacheWarmedAt
+        self.keepWarm = keepWarm
     }
 }

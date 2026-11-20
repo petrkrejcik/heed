@@ -32,6 +32,7 @@ This page is generated from the code (`mise run shots`).
 | `task.back` | `''` | back to previous task |
 | `task.open` `<words>` |  | go to the task matching these words; a To Do one becomes In Progress |
 | `pin.jump` `<1-9>` | `'1`, `'2`, `'3`, `'4`, `'5`, `'6`, `'7`, `'8`, `'9` | jump to pinned task |
+| `cache.keepWarm` `[on|off]` |  | keep cache warm: ping the task's agent before its prompt cache expires, until [keepwarm] until (toggle) |
 | `task.new` `[title]` | `o` | new task: only a title |
 | `task.status` `<done|blocked|in progress|review|todo|dropped>` | `dd`, `db`, `di`, `dr` | set the task's status in its note (done and dropped close its terminals) |
 | `task.worktree` | `W` | add a worktree: the agent updates the note, then the worktree, bootstrap and a new agent (again: stop waiting) |

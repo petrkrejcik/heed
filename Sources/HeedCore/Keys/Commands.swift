@@ -50,6 +50,11 @@ public enum Commands {
             arguments: "<words>"
         ),
         .init("pin.jump", "jump to pinned task", .move, arguments: "<1-9>"),
+        .init(
+            "cache.keepWarm",
+            "keep cache warm: ping the task's agent before its prompt cache expires, until [keepwarm] until (toggle)",
+            .move, arguments: "[on|off]"
+        ),
         .init("task.new", "new task: only a title", .move, arguments: "[title]"),
         .init(
             "task.status", "set the task's status in its note (done and dropped close its terminals)", .move,

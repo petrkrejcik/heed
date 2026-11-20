@@ -11,6 +11,7 @@ public enum CommandAliases {
         case "pin": return CommandInvocation(name: "task.pin", arguments: args)
         case "section": return CommandInvocation(name: "section.toggle", arguments: args)
         case "theme": return CommandInvocation(name: "theme.toggle", arguments: args)
+        case "keepwarm": return CommandInvocation(name: "cache.keepWarm", arguments: args)
         case "review": return CommandInvocation(name: "task.review", arguments: args)
         case "worktree": return CommandInvocation(name: "task.worktree", arguments: args)
         case "pr": return CommandInvocation(name: "open.reader", arguments: ["pr"] + args)

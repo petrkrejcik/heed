@@ -159,6 +159,14 @@ public enum ConfigLoader {
                 problems.append(ConfigProblem(path: "sessions.persist", message: "expected auto, zmx or none"))
             }
         }
+        // [keepwarm]
+        if let text = string(["keepwarm", "until"]) {
+            if let time = ClockTime(parsing: text) {
+                config.work.keepWarmUntil = time
+            } else {
+                problems.append(ConfigProblem(path: "keepwarm.until", message: "expected a time of day, as \"17:00\""))
+            }
+        }
         // [github]
         if let seconds = integer(["github", "poll_seconds"], range: 15 ... 3600) { config.githubPollSeconds = seconds }
         // [tools]
@@ -249,6 +257,11 @@ public enum ConfigLoader {
     # and come back as they were: auto (zmx when it is installed and works; Settings > General shows its check),
     # zmx, or none (panes end with heed).
     persist = "auto"
+
+    [keepwarm]
+    # Keep cache warm (a click on a task's countdown) pings the task's agent's Claude session shortly before its prompt
+    # cache expires, so the hour starts again. Every one turns off at this time of day.
+    until = "17:00"
 
     [github]
     # How often the view on screen refreshes from GitHub; the others refresh five times less often.
