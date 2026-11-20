@@ -179,15 +179,27 @@ public enum NewTask {
         /// A new agent tab in the agent's pane: the agent closed last, resumed where it worked, else a fresh one where
         /// the task works.
         case opened(TaskLayout, pane: String, AgentTab, resumed: Bool)
+        /// The task's agent tab is there but its agent stopped (Heed quit): it starts again in that tab, resumed when
+        /// Claude still has its session, else fresh. `layout` has the pane's new command.
+        case restarted(TaskLayout, pane: String, AgentTab, resumed: Bool)
     }
 
-    /// The task's agent, brought back when its tab was closed. `hasSession` says whether Claude still has a session
-    /// for a folder (nil when it cannot tell). Nil without Claude.
+    /// The task's agent, brought back when its tab was closed or its agent stopped. `stopped`: the agent panes whose
+    /// agent no longer runs (`Resume.stoppedAgents`); `agents` what Heed knew of each pane's agent. `hasSession` says
+    /// whether Claude still has a session for a folder (nil when it cannot tell). Nil without Claude.
     public static func openAgent(
         in layout: TaskLayout, task: WorkTask, agent: AgentProfile?, integration: IntegrationFiles?,
+        stopped: Set<String> = [], agents: [String: AgentTab] = [:],
         hasSession: (_ id: String, _ directory: String) -> Bool? = { _, _ in nil }
     ) -> AgentOpening? {
-        if let pane = layout.panes.first(where: { $0.role == .agent }) { return .existing(pane: pane.id) }
+        let agentPanes = layout.panes.filter { $0.role == .agent }
+        if let running = agentPanes.first(where: { !stopped.contains($0.id) }) { return .existing(pane: running.id) }
+        if let pane = agentPanes.first {
+            guard let agent else { return .existing(pane: pane.id) }
+            return restart(
+                pane, was: agents[pane.id], in: layout, agent: agent, integration: integration, hasSession: hasSession
+            )
+        }
         guard let agent else { return nil }
         var layout = layout
         let tab: PaneTab
@@ -215,6 +227,30 @@ public enum NewTask {
         layout.closedAgent = nil
         layout.add(tab, show: true)
         return .opened(layout, pane: made.pane, made.tab, resumed: resumed)
+    }
+
+    /// A stopped agent's tab gets the line that resumes its session where it worked, or one that starts afresh.
+    private static func restart(
+        _ pane: PaneSpec, was tab: AgentTab?, in layout: TaskLayout, agent: AgentProfile,
+        integration: IntegrationFiles?, hasSession: (_ id: String, _ directory: String) -> Bool?
+    ) -> AgentOpening {
+        var layout = layout
+        if let id = tab?.claudeSessionID, hasSession(id, pane.directory) != false,
+           let command = agent.resumeCommand(id: id, extraArguments: AgentIntegration.launchArguments(
+               agent: agent, claudeSessionID: id, files: integration, resuming: true
+           ))
+        {
+            layout.update(pane: pane.id) { $0.command = command }
+            var resumed = tab ?? AgentTab()
+            resumed.state = ObservedState(.idle, source: .guessed)
+            resumed.activity = "resuming"
+            return .restarted(layout, pane: pane.id, resumed, resumed: true)
+        }
+        let id = newID()
+        let extra = AgentIntegration.launchArguments(agent: agent, claudeSessionID: id, files: integration)
+        layout.update(pane: pane.id) { $0.command = agent.launchCommand(prompt: "", extraArguments: extra) }
+        let fresh = AgentTab(activity: "starting", claudeSessionID: agent.sessionIDFlag == nil ? nil : id)
+        return .restarted(layout, pane: pane.id, fresh, resumed: false)
     }
 
     /// A tab running `agent` on `prompt` in `directory`, with its own Claude session id. Without an agent, a shell.

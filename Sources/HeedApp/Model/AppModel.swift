@@ -282,6 +282,9 @@ final class AppModel {
     private(set) var newTask: NewTaskForm?
     /// Bumped when the focused terminal should take keyboard focus (entering INSERT, moving panes).
     private(set) var terminalFocusRequest = 0
+    /// Agent panes whose agent stopped with Heed (`Resume.stoppedAgents`): they show that, not an empty shell, until
+    /// the resume dialog or `gc` starts them again.
+    private(set) var stoppedAgents: Set<String> = []
 
     init(domain: Domain, settings: WorkSettings = .default, isFixture: Bool) {
         self.settings = settings
@@ -325,6 +328,7 @@ final class AppModel {
         await startPk()
         // Before any terminal is made: which panes still have a live zmx session to reattach to.
         await TerminalSurfaces.shared.refreshLivePanes()
+        stoppedAgents = Resume.stoppedAgents(layouts: layouts, live: TerminalSurfaces.shared.livePanes)
         terminalsReady = true
         loadAvatars()
         startKibanaProbe()
@@ -570,6 +574,11 @@ final class AppModel {
         }
     }
 
+    /// Fixture: as after a relaunch, every agent tab's agent stopped with Heed.
+    func stopAgentsForFixture() {
+        stoppedAgents = Resume.stoppedAgents(layouts: layouts, live: [])
+    }
+
     /// Fixture: open on the resume dialog for the fixture's tasks, without checking any files.
     func showResumeForFixture() {
         resume = ResumeForm(candidates: Resume.candidates(
@@ -614,6 +623,7 @@ final class AppModel {
                 if let draft = pane.draft { pendingDrafts[pane.pane] = draft }
             }
             task.record(candidate.mode == .startFresh ? "relaunched · started fresh" : "resumed after restart")
+            stoppedAgents.subtract(started.map(\.id))
             commit([.layoutChanged(task: task.id, layout), .taskUpserted(task)] + changes)
             for pane in started {
                 TerminalSurfaces.shared.autostartPanes.insert(pane.id)
@@ -1283,6 +1293,9 @@ final class AppModel {
                || currentPane?.role == .viewer
             {
                 engine.enter(.normal)
+            } else if command.name == "mode.insert", pullPage == nil, currentPaneStopped {
+                engine.enter(.normal)
+                flash = stoppedHint
             }
             hintThenInsert = false
         case "hint.insert":
@@ -3796,13 +3809,27 @@ final class AppModel {
         guard let task = currentTask else { return flash = "no task here" }
         view = .tasks
         let opening = NewTask.openAgent(
-            in: layouts[task.id] ?? TaskLayout(), task: task, agent: settings.claude, integration: integration
-        ) { id, directory in AgentIntegration.hasSession(agent: "claude", id: id, directory: directory) }
+            in: layouts[task.id] ?? TaskLayout(), task: task, agent: settings.claude, integration: integration,
+            stopped: stoppedAgents, agents: agents
+        ) { [isFixture] id, directory in
+            isFixture ? nil : AgentIntegration.hasSession(agent: "claude", id: id, directory: directory)
+        }
         switch opening {
         case nil:
             flash = "no agent set up ([agents.claude])"
         case let .existing(pane):
             focusPane(pane)
+            enterInsert()
+        case let .restarted(layout, pane, agent, resumed):
+            stoppedAgents.remove(pane)
+            guard !isFixture else {
+                focusPane(pane)
+                return flash = "fixture: no IO (the agent would \(resumed ? "resume" : "start") here)"
+            }
+            autostart(layout.panes.filter { $0.id == pane })
+            commit([.layoutChanged(task: task.id, layout), .agentChanged(pane: pane, agent)])
+            focusPane(pane)
+            flash = resumed ? "resumed the agent" : "Claude no longer has its session: a new agent"
             enterInsert()
         case let .opened(layout, pane, agent, resumed):
             autostart(layout.panes.filter { $0.id == pane })
@@ -3953,9 +3980,16 @@ final class AppModel {
     /// Going to a tab that is a terminal hands it your keys, so you can type at once.
     private func autoInsert() {
         guard view == .tasks, overlay == nil, reader == nil, issueReader == nil, confirmation == nil,
-              let pane = currentPane, pane.role.isTerminal
+              let pane = currentPane, pane.role.isTerminal, !stoppedAgents.contains(pane.id)
         else { return }
         enterInsert()
+    }
+
+    /// The focused pane is an agent tab whose agent stopped: nothing there to type into.
+    private var currentPaneStopped: Bool { currentPane.map { stoppedAgents.contains($0.id) } ?? false }
+
+    private var stoppedHint: String {
+        "the agent is not running: \(keyCap(for: "tab.agent").map { "\($0) resumes" } ?? ":tab.agent resumes") it"
     }
 
     /// The key bound to `command` in NORMAL (first binding), as key-cap text: what the title bar shows per view.
@@ -4053,6 +4087,7 @@ final class AppModel {
     func clickedPane(_ paneID: String) {
         guard newTask == nil, resume == nil, firstRun == nil, !filtering else { return }
         if currentPane?.id != paneID { focusPane(paneID) }
+        if stoppedAgents.contains(paneID) { return flash = stoppedHint }
         enterInsert()
     }
 

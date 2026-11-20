@@ -384,6 +384,9 @@ private struct PaneView: View {
             } else if !model.terminalsReady {
                 // The PATH and zmx sessions are not known yet; a terminal made now would start with the wrong ones.
                 Theme.pane
+            } else if model.stoppedAgents.contains(pane.id) {
+                // No terminal yet: `gc` makes it with the agent's resume line as its first input.
+                StoppedAgent()
             } else {
                 TerminalPane(
                     pane: pane,
@@ -418,6 +421,22 @@ private struct PaneView: View {
             default: model.clickedPane(pane.id)
             }
         }
+    }
+}
+
+/// An agent tab whose agent stopped with Heed, until `gc` (or the resume dialog) starts it again.
+private struct StoppedAgent: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        VStack(spacing: 10) {
+            Text("The agent is not running").font(Theme.ui(15, weight: .medium))
+            HStack(spacing: 6) {
+                KeyCap(text: model.keyLabel(for: "tab.agent") ?? ":tab.agent")
+                Text("resume it").foregroundStyle(Theme.fg3)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 

@@ -47,7 +47,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let fixture, let base, let domain = Fixtures.named(base) {
             Paths.home = Fixtures.home
             let model = AppModel(domain: domain, isFixture: true)
-            if fixture == "resume" { model.showResumeForFixture() }
+            if fixture == "resume" {
+                model.stopAgentsForFixture()
+                model.showResumeForFixture()
+            }
             if fixture == "firstrun" {
                 model.showFirstRun(report: FirstRunReport(githubUser: "you", agents: [
                     .init(name: "claude", path: "/Users/you/.local/bin/claude"),
