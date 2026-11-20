@@ -43,7 +43,8 @@ public enum AgentIntegration {
     ]
 
     /// The `--settings` JSON: every event runs `heed hook claude <event>`, which reads the hook's JSON on stdin.
-    /// `$HEED_BIN` is set in every Heed pane; outside one the hook is a no-op.
+    /// `$HEED_BIN` is set in every Heed pane; outside one the hook is a no-op. The `auto` theme has Claude follow the
+    /// terminal's colours, so an agent turns light or dark with Heed (its terminal reports the change, mode 2031).
     public static func claudeSettingsJSON() -> String {
         var hooks: [String: Any] = [:]
         for (event, matcher) in claudeEvents {
@@ -53,7 +54,9 @@ public enum AgentIntegration {
             if let matcher { entry["matcher"] = matcher }
             hooks[event] = [entry]
         }
-        let data = try? JSONSerialization.data(withJSONObject: ["hooks": hooks], options: [.prettyPrinted, .sortedKeys])
+        let data = try? JSONSerialization.data(
+            withJSONObject: ["hooks": hooks, "theme": "auto"], options: [.prettyPrinted, .sortedKeys]
+        )
         return data.map { String(decoding: $0, as: UTF8.self) } ?? "{}"
     }
 

@@ -249,6 +249,16 @@ final class AppModel {
         didSet { if !isFixture { UserDefaults.standard.set(diffSplit, forKey: "diffSideBySide") } }
     }
 
+    /// Light or dark (`theme.toggle`); a UI preference, kept in UserDefaults. A fixture takes `HEED_THEME` instead.
+    private(set) var colorTheme = UserDefaults.standard.string(forKey: "colorTheme").flatMap(ColorTheme.init)
+        ?? .default
+    {
+        didSet {
+            colorTheme.apply()
+            if !isFixture { UserDefaults.standard.set(colorTheme.rawValue, forKey: "colorTheme") }
+        }
+    }
+
     /// Pane collapse state is a UI preference, not domain: kept in UserDefaults.
     private(set) var inspectorVisible = UserDefaults.standard.object(forKey: "inspectorVisible") as? Bool ?? true {
         didSet { if !isFixture { UserDefaults.standard.set(inspectorVisible, forKey: "inspectorVisible") } }
@@ -288,6 +298,7 @@ final class AppModel {
             sidebarWidth = 330
             inspectorWidth = 320
             diffSplit = true
+            colorTheme = ProcessInfo.processInfo.environment["HEED_THEME"].flatMap(ColorTheme.init) ?? .default
             zmxHealth = ZmxHealth(path: "/opt/homebrew/bin/zmx", version: "0.8.1")
             issueInfo = Fixtures.issueInfo
             TerminalSurfaces.shared.socketPath = NSTemporaryDirectory() + "heed-fixture-\(getpid()).sock"
@@ -1258,6 +1269,12 @@ final class AppModel {
         case "overlay.close": closeTopmost()
         case "inspector.toggle": inspectorVisible.toggle()
         case "sidebar.toggle": sidebarCollapsed.toggle()
+        case "theme.toggle":
+            if let theme = colorTheme.next(command.arguments) {
+                colorTheme = theme
+            } else {
+                flash = "no theme \(command.arguments.joined(separator: " ")): light or dark"
+            }
         case "section.toggle": toggleSection(named: command.arguments.joined(separator: " "))
         case "mode.normal", "mode.insert", "mode.visual", "mode.command", "mode.hint":
             if command.name == "mode.insert", pullPage == nil,

@@ -8,7 +8,7 @@ struct FirstRunView: View {
     var body: some View {
         if let report = model.firstRun {
             ZStack {
-                Color.black.opacity(0.6)
+                Theme.scrim.opacity(0.6)
                 ListScroll {
                     dialog(report).frame(width: 760).shotRegion(.dialog).padding(.vertical, 40)
                 }

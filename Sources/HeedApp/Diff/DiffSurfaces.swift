@@ -77,11 +77,11 @@ enum DiffDrawing: Hashable {
     }
 }
 
-/// The Diff tab's colours and font, as the CSS variables `Resources/diff` reads: Heed's tokens, so a light theme only
-/// changes them here.
+/// The Diff tab's colours and font, as the CSS variables `Resources/diff` reads: Heed's tokens, in both themes.
 enum DiffWebTheme {
-    static var variables: [(String, String)] {
-        [
+    static func variables(_ theme: ColorTheme) -> [(String, String)] {
+        func css(_ color: Color, _ opacity: Double = 1) -> String { WebTheme.css(color, opacity, theme) }
+        return [
             ("--heed-bg", css(Theme.pane)), ("--heed-bg2", css(Theme.bg2)), ("--heed-bg3", css(Theme.bg3)),
             ("--heed-line", css(Theme.line)), ("--heed-fg", css(Theme.fg)), ("--heed-code", css(Theme.terminalText)),
             ("--heed-muted", css(Theme.fg3)), ("--heed-gutter", css(Theme.dim)),
@@ -100,26 +100,7 @@ enum DiffWebTheme {
         ]
     }
 
-    /// Sets the variables before the page's own script runs.
-    static var script: String {
-        let rules = variables.map { "\($0.0): \($0.1);" }.joined(separator: " ")
-        let literal = String(data: (try? JSONEncoder().encode(
-            ":root { \(rules) }"
-        )) ?? Data(), encoding: .utf8) ?? "\"\""
-        return """
-        (() => {
-          const style = document.createElement('style');
-          style.textContent = \(literal);
-          document.documentElement.appendChild(style);
-        })();
-        """
-    }
-
-    static func css(_ color: Color, _ opacity: Double = 1) -> String {
-        guard let rgb = NSColor(color).usingColorSpace(.sRGB) else { return "transparent" }
-        let channels = [rgb.redComponent, rgb.greenComponent, rgb.blueComponent].map { Int(($0 * 255).rounded()) }
-        return "rgba(\(channels[0]), \(channels[1]), \(channels[2]), \(opacity))"
-    }
+    static var script: String { WebTheme.script(variables) }
 }
 
 /// Owns every Diff and Files tab's web view, keyed by pane id, as `BrowserSurfaces` does pages: made when the tab is

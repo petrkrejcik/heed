@@ -184,8 +184,9 @@ enum NoteLink: Sendable {
 // MARK: Theme
 
 enum NoteWebTheme {
-    static var variables: [(String, String)] {
-        [
+    static func variables(_ theme: ColorTheme) -> [(String, String)] {
+        func css(_ color: Color, _ opacity: Double = 1) -> String { WebTheme.css(color, opacity, theme) }
+        return [
             ("--heed-bg", css(Theme.pane)),
             ("--heed-bg2", css(Theme.bg2)),
             ("--heed-bg3", css(Theme.bg3)),
@@ -197,6 +198,8 @@ enum NoteWebTheme {
             ("--heed-muted", css(Theme.dim)),
             ("--heed-link", css(Theme.busy)),
             ("--heed-added", css(Theme.done)),
+            ("--heed-deleted", css(Theme.err)),
+            ("--heed-selection", css(Theme.busy, 0.3)),
             ("--heed-syntax-keyword", css(Theme.busy)),
             ("--heed-syntax-string", css(OrgPalette.lime.foreground)),
             ("--heed-syntax-number", css(OrgPalette.orange.foreground)),
@@ -210,25 +213,7 @@ enum NoteWebTheme {
         ]
     }
 
-    static var script: String {
-        let rules = variables.map { "\($0.0): \($0.1);" }.joined(separator: " ")
-        let literal = String(
-            data: (try? JSONEncoder().encode(":root { \(rules) }")) ?? Data(), encoding: .utf8
-        ) ?? "\"\""
-        return """
-        (() => {
-          const style = document.createElement('style');
-          style.textContent = \(literal);
-          document.documentElement.appendChild(style);
-        })();
-        """
-    }
-
-    static func css(_ color: Color, _ opacity: Double = 1) -> String {
-        guard let rgb = NSColor(color).usingColorSpace(.sRGB) else { return "transparent" }
-        let channels = [rgb.redComponent, rgb.greenComponent, rgb.blueComponent].map { Int(($0 * 255).rounded()) }
-        return "rgba(\(channels[0]), \(channels[1]), \(channels[2]), \(opacity))"
-    }
+    static var script: String { WebTheme.script(variables) }
 }
 
 // MARK: WKWebView subclass

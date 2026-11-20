@@ -445,7 +445,7 @@ struct ConfirmationView: View {
 
     var body: some View {
         ZStack {
-            Color.black.opacity(0.5)
+            Theme.scrim.opacity(0.5)
             VStack(alignment: .leading, spacing: 14) {
                 Text(confirmation.title).font(Theme.ui(15, weight: .semibold))
                     .fixedSize(horizontal: false, vertical: true)
@@ -525,7 +525,7 @@ struct LinkPickerView: View {
 
     var body: some View {
         ZStack {
-            Color.black.opacity(0.5)
+            Theme.scrim.opacity(0.5)
                 .onTapGesture { model.cancelLinkPicker() }
             VStack(alignment: .leading, spacing: 0) {
                 Text(picker.title).font(Theme.ui(15, weight: .semibold)).padding(18)
@@ -603,7 +603,7 @@ struct TabPickerView: View {
 
     var body: some View {
         ZStack {
-            Color.black.opacity(0.5)
+            Theme.scrim.opacity(0.5)
                 .onTapGesture { model.cancelTabPicker() }
             VStack(alignment: .leading, spacing: 0) {
                 Text("New tab").font(Theme.ui(15, weight: .semibold)).padding(18)
@@ -657,7 +657,7 @@ struct NotePickerView: View {
 
     var body: some View {
         ZStack {
-            Color.black.opacity(0.5)
+            Theme.scrim.opacity(0.5)
                 .onTapGesture { model.cancelNotePicker() }
             VStack(alignment: .leading, spacing: 0) {
                 // Query input row.

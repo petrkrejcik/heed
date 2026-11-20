@@ -74,6 +74,7 @@ public final class GhosttySurfaceView: NSView, @preconcurrency NSTextInputClient
             return ghostty_surface_new(app, &config)
         }
         if surface == nil { NSLog("heed: ghostty_surface_new failed for \(launch.directory)") }
+        GhosttyRuntime.shared.register(self)
     }
 
     /// Types `text` without pressing Return, leaving it for the user to finish.

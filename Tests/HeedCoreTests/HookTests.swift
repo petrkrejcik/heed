@@ -56,6 +56,7 @@ struct ClaudeHookTests {
             .jsonObject(with: Data(AgentIntegration.claudeSettingsJSON().utf8)) as? [String: Any])
         let hooks = try #require(json["hooks"] as? [String: Any])
         #expect(Set(hooks.keys) == Set(AgentIntegration.claudeEvents.map(\.event)))
+        #expect(json["theme"] as? String == "auto")
     }
 
     @Test func claudeLaunchesWithSettingsAndItsOwnSessionID() {

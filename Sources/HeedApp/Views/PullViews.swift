@@ -9,7 +9,7 @@ struct PullOverlayView: View {
         if let ref = model.shownPull {
             GeometryReader { geometry in
                 HStack(spacing: 0) {
-                    Color.black.opacity(0.45).frame(width: min(330, geometry.size.width * 0.25))
+                    Theme.scrim.opacity(0.45).frame(width: min(330, geometry.size.width * 0.25))
                     VStack(spacing: 0) {
                         tabs(current: ref)
                         PullDetailView(ref: ref, backHint: false)

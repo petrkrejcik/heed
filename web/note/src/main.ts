@@ -330,6 +330,12 @@ function renderProperties(props: [string, string[]][]): string {
 // ── Mermaid, loaded only when a note has a diagram ──────────────────────────
 
 let mermaidLoading: Promise<any> | null = null;
+/** Heed's theme, as the page sees it: diagrams are drawn in it, and again when it changes. */
+const darkQuery = window.matchMedia("(prefers-color-scheme: dark)");
+
+function mermaidSettings() {
+  return { startOnLoad: false, theme: darkQuery.matches ? "dark" : "default", securityLevel: "strict" };
+}
 
 function loadMermaid(): Promise<any> {
   mermaidLoading ??= new Promise((resolve) => {
@@ -337,7 +343,7 @@ function loadMermaid(): Promise<any> {
     script.src = "mermaid.js";
     script.onload = () => {
       const mermaid = (window as any).mermaid;
-      mermaid?.initialize({ startOnLoad: false, theme: "dark", securityLevel: "strict" });
+      mermaid?.initialize(mermaidSettings());
       resolve(mermaid);
     };
     script.onerror = () => resolve(null);
@@ -356,6 +362,7 @@ async function renderMermaid(): Promise<void> {
       const { svg } = await mermaid.render(`heed-mermaid-${Date.now()}-${index}`, source.textContent || "");
       const figure = document.createElement("div");
       figure.className = "heed-mermaid";
+      figure.dataset.source = source.textContent || "";
       figure.innerHTML = svg;
       source.replaceWith(figure);
     } catch {
@@ -363,6 +370,22 @@ async function renderMermaid(): Promise<void> {
     }
   }
 }
+
+darkQuery.addEventListener("change", async () => {
+  const figures = Array.from(document.querySelectorAll<HTMLElement>("div.heed-mermaid"));
+  if (!figures.length) return;
+  const mermaid = await loadMermaid();
+  if (!mermaid) return;
+  mermaid.initialize(mermaidSettings());
+  for (const [index, figure] of figures.entries()) {
+    try {
+      const { svg } = await mermaid.render(`heed-mermaid-${Date.now()}-${index}`, figure.dataset.source || "");
+      figure.innerHTML = svg;
+    } catch {
+      // Keeps the diagram as drawn before.
+    }
+  }
+});
 
 // ── Rendering ───────────────────────────────────────────────────────────────
 

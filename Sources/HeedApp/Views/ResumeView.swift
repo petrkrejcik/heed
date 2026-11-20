@@ -9,7 +9,7 @@ struct ResumeView: View {
         if let form = model.resume {
             GeometryReader { geometry in
                 ZStack {
-                    Color.black.opacity(0.6)
+                    Theme.scrim.opacity(0.6)
                     ListScroll {
                         dialog(form)
                             .frame(width: min(1060, max(geometry.size.width - 48, 360)))

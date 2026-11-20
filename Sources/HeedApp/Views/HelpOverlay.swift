@@ -34,7 +34,7 @@ struct HelpOverlay: View {
 
     var body: some View {
         ZStack {
-            Color.black.opacity(0.55)
+            Theme.scrim.opacity(0.55)
             helpCard.shotRegion(.help)
         }
     }

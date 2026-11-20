@@ -444,7 +444,7 @@ struct CheckBar: View {
     private var segments: [Color] {
         Array(repeating: Theme.done, count: checks.passed) + Array(repeating: Theme.err, count: checks.failed)
             + Array(repeating: Theme.busy, count: checks.pending) + Array(
-                repeating: Color(hex: 0x3A4047),
+                repeating: Color(light: 0xD0D7DE, dark: 0x3A4047),
                 count: checks.skipped
             )
     }
