@@ -112,8 +112,10 @@ public extension Domain {
             var layout = layout
             let kept = Set(layout.panes.map(\.id))
             for pane in layouts[task]?.panes ?? [] where !kept.contains(pane.id) {
-                if pane.role == .agent, let id = agents[pane.id]?.claudeSessionID {
-                    layout.closedAgent = ClosedAgent(claudeSessionID: id, directory: pane.directory)
+                if pane.role == .agent, let agent = agents[pane.id], let id = agent.claudeSessionID {
+                    layout.closedAgent = ClosedAgent(
+                        claudeSessionID: id, directory: pane.directory, lastTurnAt: agent.lastTurnAt
+                    )
                 }
                 agents[pane.id] = nil
             }

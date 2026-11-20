@@ -326,9 +326,10 @@ struct NewTaskTests {
     }
 
     @Test func aClosedAgentComesBackResumedWhereItWorked() throws {
+        let turn = Date(timeIntervalSince1970: 1_000_000)
         var domain = Domain(
             tasks: [task("t")], layouts: ["t": layout("t", agents: ["a"])],
-            agents: ["t-a": AgentTab(claudeSessionID: "s-1")]
+            agents: ["t-a": AgentTab(claudeSessionID: "s-1", lastTurnAt: turn)]
         )
         var moved = try #require(domain.layouts["t"])
         moved.update(pane: "t-a") { $0.directory = "/wt/fix" }
@@ -337,7 +338,7 @@ struct NewTaskTests {
         closed.removePane("t-a")
         domain.apply(.layoutChanged(task: "t", closed))
         let kept = try #require(domain.layouts["t"])
-        #expect(kept.closedAgent == ClosedAgent(claudeSessionID: "s-1", directory: "/wt/fix"))
+        #expect(kept.closedAgent == ClosedAgent(claudeSessionID: "s-1", directory: "/wt/fix", lastTurnAt: turn))
 
         let opening = NewTask.openAgent(
             in: kept, task: task("t"), agent: WorkSettings.default.claude, integration: nil
@@ -356,6 +357,8 @@ struct NewTaskTests {
         #expect(pane.directory == "/wt/fix")
         #expect(pane.command == "claude --resume s-1")
         #expect(agent.claudeSessionID == "s-1")
+        // Its prompt cache outlived the tab: the countdown goes on from the same turn.
+        #expect(agent.lastTurnAt == turn)
     }
 
     @Test func withoutAClosedAgentClaudeHasItStartsAFreshOneWhereTheTaskWorks() throws {
