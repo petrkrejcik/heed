@@ -159,9 +159,10 @@ struct TaskRow: View {
     }
 }
 
-/// A row's tags; nothing at all (no line, no gap) when there are none. A click on one opens it. Every tag has a fixed
-/// width, so they line up down the list: the PR pill at the left edge, then the note and the issue; Kibana and the
-/// countdown at the right edge, the countdown's place kept when only Kibana shows.
+/// A row's tags; nothing at all (no line, no gap) when there are none. A click on one opens it. They sit in columns,
+/// each in the same place on every row whether the task has it or not, so a note's tag is never where another row's
+/// PR is: the PR pill at the left edge, the issue, then the note's tags one under another; Kibana and the countdown at
+/// the right edge, the countdown's place kept when only Kibana shows.
 struct TaskTagsLine: View {
     let tags: [TaskTag]
     var colors = TagColors.none
@@ -169,16 +170,23 @@ struct TaskTagsLine: View {
 
     var body: some View {
         if !tags.isEmpty {
-            HStack(spacing: 8) {
-                ForEach(tags.filter { !$0.isLive }, id: \.self) { tag in
-                    switch tag {
-                    case let .pull(pull): TagButton { open(tag) } label: { PullTagMark(tag: pull) }
-                    case let .note(_, names) where !names.isEmpty:
-                        TagButton { open(tag) } label: { NoteTagsMark(tags: names, colors: colors) }
-                            .layoutPriority(-1)
-                    case .note: TagButton { open(tag) } label: { NoteMark() }
-                    case let .issue(ref): TagButton { open(tag) } label: { IssueMark(ref: ref) }
-                    case .kibana, .cache: EmptyView()
+            HStack(alignment: .top, spacing: 8) {
+                ZStack(alignment: .leading) {
+                    PullTagMark(tag: PullTag(number: 0, state: .merged)).hidden()
+                    if let pull { TagButton { open(.pull(pull)) } label: { PullTagMark(tag: pull) } }
+                }
+                ZStack {
+                    if let issue { TagButton { open(.issue(issue)) } label: { IssueMark(ref: issue) } }
+                }
+                .frame(width: 14)
+                if let note {
+                    if note.tags.isEmpty {
+                        TagButton { open(.note(path: note.path, tags: [])) } label: { NoteMark() }
+                    } else {
+                        TagButton { open(.note(path: note.path, tags: note.tags)) } label: {
+                            NoteTagsMark(tags: note.tags, colors: colors)
+                        }
+                        .layoutPriority(-1)
                     }
                 }
                 Spacer(minLength: 8)
@@ -190,6 +198,18 @@ struct TaskTagsLine: View {
             .lineLimit(1)
             .padding(.top, 5)
         }
+    }
+
+    private var pull: PullTag? {
+        tags.lazy.compactMap { if case let .pull(pull) = $0 { pull } else { nil } }.first
+    }
+
+    private var issue: IssueRef? {
+        tags.lazy.compactMap { if case let .issue(ref) = $0 { ref } else { nil } }.first
+    }
+
+    private var note: (path: String, tags: [String])? {
+        tags.lazy.compactMap { if case let .note(path, names) = $0 { (path, names) } else { nil } }.first
     }
 
     private var kibanaPort: Int? {
@@ -329,14 +349,14 @@ struct PullGlyph: View {
     }
 }
 
-/// The task's note as its tags, each a pill in the colour the Kanban gives it; a click opens the note as a note tab.
-/// When the row is short of room the pills give way first, cut at the end.
+/// The task's note as its tags, each a pill in the colour the Kanban gives it, one under another; a click opens the
+/// note as a note tab. When the row is short of room the pills give way first, cut at the end.
 struct NoteTagsMark: View {
     let tags: [String]
     let colors: TagColors
 
     var body: some View {
-        HStack(spacing: 4) {
+        VStack(alignment: .leading, spacing: 3) {
             ForEach(tags, id: \.self) { tag in
                 let hue = colors.hue(of: tag)
                 Text(verbatim: tag)
