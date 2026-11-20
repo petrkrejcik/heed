@@ -8,7 +8,7 @@ struct FileFinderView: View {
 
     var body: some View {
         ZStack {
-            Color.black.opacity(0.5)
+            Theme.scrim.opacity(0.5)
                 .onTapGesture { model.cancelFileFinder() }
             VStack(alignment: .leading, spacing: 0) {
                 HStack(spacing: 8) {

@@ -107,6 +107,7 @@ This page is generated from the code (`mise run shots`).
 | `open.reader` | `<CR>` | read inbox item, issue or PR |
 | `inspector.toggle` | `zi` | collapse / expand the inspector |
 | `sidebar.toggle` | `zs` | collapse / expand the tasks sidebar |
+| `theme.toggle` `[light|dark]` | `zt` | light / dark theme: the other one, or the one named (window, terminals, pages) |
 | `config.edit` |  | open config.toml in $EDITOR |
 | `agents.stop` |  | stop every agent and shell in every pane (with [sessions] persist = "zmx") |
 | `tools.detect` |  | find git and gh again (login shell PATH, usual places, [tools]) |

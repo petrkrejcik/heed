@@ -2,7 +2,7 @@
 // file (`heedDiff.file`) and drives it with commands (`hunk`, `setMode`, `scrollPage`, `edge`); it reports the hunk or
 // line you are on back through the `heed` message handler, so Swift's `a`, `y` and `e` know the line. Read-only:
 // nothing here edits a document. The colours and the font are CSS variables Swift sets before this runs
-// (`--heed-*`), so a light theme only swaps their values.
+// (`--heed-*`), light under `prefers-color-scheme: light`, so the page follows Heed's theme by itself.
 import { css } from "@codemirror/lang-css";
 import { html } from "@codemirror/lang-html";
 import { javascript } from "@codemirror/lang-javascript";
@@ -12,7 +12,7 @@ import { sass } from "@codemirror/lang-sass";
 import { yaml } from "@codemirror/lang-yaml";
 import { HighlightStyle, type LanguageSupport, syntaxHighlighting } from "@codemirror/language";
 import { type Chunk, getChunks, MergeView, unifiedMergeView } from "@codemirror/merge";
-import { EditorState, type Extension, type Range, StateEffect, StateField } from "@codemirror/state";
+import { Compartment, EditorState, type Extension, type Range, StateEffect, StateField } from "@codemirror/state";
 import { Decoration, type DecorationSet, EditorView, highlightSpecialChars, lineNumbers } from "@codemirror/view";
 import { tags as t } from "@lezer/highlight";
 
@@ -142,8 +142,12 @@ const theme = EditorView.theme(
     ".cm-heed-match": { backgroundColor: "var(--heed-match)", borderRadius: "2px" },
     ".cm-deletedChunk": { paddingLeft: "0" },
   },
-  { dark: true },
 );
+
+// CodeMirror's own light or dark defaults (panels, cursor), as Heed's theme: every editor follows a switch.
+const darkQuery = window.matchMedia("(prefers-color-scheme: dark)");
+const darkness = new Compartment();
+const darkMode = (): Extension => darkness.of(EditorView.darkTheme.of(darkQuery.matches));
 
 // The hunk you are on, marked with a bar at its left edge.
 const setCurrent = StateEffect.define<{ from: number; to: number } | null>();
@@ -201,6 +205,7 @@ function editorExtensions(language: string | null, side: "a" | "b"): Extension[]
     highlightSpecialChars(),
     syntaxHighlighting(syntax),
     theme,
+    darkMode(),
     EditorState.readOnly.of(true),
     EditorView.editable.of(false),
     currentField,
@@ -404,6 +409,7 @@ function fileExtensions(language: string | null): Extension[] {
     highlightSpecialChars(),
     syntaxHighlighting(syntax),
     theme,
+    darkMode(),
     EditorState.readOnly.of(true),
     EditorView.editable.of(false),
     fileMarks,
@@ -568,6 +574,13 @@ const api = {
     fileClicked = null;
   },
 };
+
+darkQuery.addEventListener("change", () => {
+  const views = [merge?.a, merge?.b, unified, single].filter((view): view is EditorView => view != null);
+  for (const view of views) {
+    view.dispatch({ effects: darkness.reconfigure(EditorView.darkTheme.of(darkQuery.matches)) });
+  }
+});
 
 window.heedDiff = api;
 post({ type: "ready" });

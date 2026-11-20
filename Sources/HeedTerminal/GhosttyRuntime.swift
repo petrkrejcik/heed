@@ -1,5 +1,6 @@
 import AppKit
 import GhosttyKit
+import HeedCore
 
 /// The one libghostty app instance. Owns the Ghostty config and the runtime callbacks; surfaces are created from it.
 ///
@@ -19,6 +20,10 @@ public final class GhosttyRuntime {
     /// A URL ⌘-clicked in a surface (or opened by a program through OSC 8).
     public var onOpenURL: ((GhosttySurfaceView, String) -> Void)?
 
+    /// Every live surface, told when the colour scheme changes.
+    private let surfaces = NSHashTable<GhosttySurfaceView>.weakObjects()
+    private var appearanceObservation: NSKeyValueObservation?
+
     private init() {
         if ghostty_init(UInt(CommandLine.argc), CommandLine.unsafeArgv) != GHOSTTY_SUCCESS {
             NSLog("heed: ghostty_init failed")
@@ -33,12 +38,44 @@ public final class GhosttyRuntime {
         var runtime = Self.runtimeConfig()
         app = withUnsafeMutablePointer(to: &runtime) { ghostty_app_new($0, config) }
         if app == nil { NSLog("heed: ghostty_app_new failed") }
+        // The terminals' colours follow the app's appearance, as the window does: Heed sets it (`ColorTheme`). New
+        // surfaces start in the app's scheme.
+        if let app { ghostty_app_set_color_scheme(app, colorScheme) }
+        appearanceObservation = NSApp.observe(\.effectiveAppearance) { _, _ in
+            DispatchQueue.main.async { MainActor.assumeIsolated { GhosttyRuntime.shared.appearanceChanged() } }
+        }
     }
 
-    /// Pane settings that keep a terminal in step with the design: the pane background, padding and the mono face.
+    /// Ghostty's light or dark, as the app's appearance is now.
+    var colorScheme: ghostty_color_scheme_e {
+        NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            ? GHOSTTY_COLOR_SCHEME_DARK : GHOSTTY_COLOR_SCHEME_LIGHT
+    }
+
+    private func appearanceChanged() {
+        let scheme = colorScheme
+        if let app { ghostty_app_set_color_scheme(app, scheme) }
+        for view in surfaces.allObjects {
+            if let surface = view.surface { ghostty_surface_set_color_scheme(surface, scheme) }
+        }
+    }
+
+    /// Tells a new surface every scheme change from now on.
+    func register(_ view: GhosttySurfaceView) {
+        surfaces.add(view)
+        if let surface = view.surface { ghostty_surface_set_color_scheme(surface, colorScheme) }
+    }
+
+    /// Pane settings that keep a terminal in step with the design: its colours per theme (the theme files), padding
+    /// and the mono face. Colours set here directly would win over the theme.
+    static func overrides(light: String, dark: String) -> String {
+        """
+        theme = light:\(light),dark:\(dark)
+        \(overrides)
+        """
+    }
+
     static let overrides = """
-    background = 0c0d0f
-    foreground = cfd3d8
     font-family = JetBrains Mono
     font-size = 12
     window-padding-x = 14
@@ -53,9 +90,13 @@ public final class GhosttyRuntime {
         let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("Heed")
         let file = support.appendingPathComponent("ghostty-panes.conf")
+        let light = support.appendingPathComponent("ghostty-light.theme")
+        let dark = support.appendingPathComponent("ghostty-dark.theme")
         do {
             try FileManager.default.createDirectory(at: support, withIntermediateDirectories: true)
-            try overrides.write(to: file, atomically: true, encoding: .utf8)
+            try ColorTheme.light.ghosttyTheme.write(to: light, atomically: true, encoding: .utf8)
+            try ColorTheme.dark.ghosttyTheme.write(to: dark, atomically: true, encoding: .utf8)
+            try overrides(light: light.path, dark: dark.path).write(to: file, atomically: true, encoding: .utf8)
             return file.path
         } catch {
             NSLog("heed: could not write \(file.path): \(error)")
@@ -113,8 +154,12 @@ public final class GhosttyRuntime {
         }
     }
 
-    /// Only opening a URL is Heed's; every other action keeps libghostty's default (returning false says so).
+    /// Opening a URL and a soft config reload are Heed's; every other action keeps libghostty's default (returning
+    /// false says so).
     private nonisolated static func action(_ target: ghostty_target_s, _ action: ghostty_action_s) -> Bool {
+        if action.tag == GHOSTTY_ACTION_RELOAD_CONFIG {
+            return reloadConfig(target, soft: action.action.reload_config.soft)
+        }
         guard action.tag == GHOSTTY_ACTION_OPEN_URL, target.tag == GHOSTTY_TARGET_SURFACE,
               let handle = target.target.surface, let pointer = action.action.open_url.url
         else { return false }
@@ -126,6 +171,29 @@ public final class GhosttyRuntime {
             MainActor.assumeIsolated {
                 guard let view = surface(userdata.value) else { return }
                 GhosttyRuntime.shared.onOpenURL?(view, url)
+            }
+        }
+        return true
+    }
+
+    /// A colour scheme change asks for a soft reload: the same config again, which Ghostty re-reads in the new
+    /// scheme (the `theme = light:…,dark:…` line), as Ghostty.app answers it. A full reload (re-reading config files)
+    /// is not Heed's.
+    private nonisolated static func reloadConfig(_ target: ghostty_target_s, soft: Bool) -> Bool {
+        guard soft else { return false }
+        let handle = target.tag == GHOSTTY_TARGET_SURFACE ? target.target.surface : nil
+        let userdata = RawPointer(handle.flatMap { ghostty_surface_userdata($0) })
+        DispatchQueue.main.async {
+            MainActor.assumeIsolated {
+                let runtime = GhosttyRuntime.shared
+                guard let config = runtime.config else { return }
+                guard let userdata = userdata.value else {
+                    if let app = runtime.app { ghostty_app_update_config(app, config) }
+                    return
+                }
+                // The surface may have closed since: only a live one is reloaded.
+                let view = runtime.surfaces.allObjects.first { Unmanaged.passUnretained($0).toOpaque() == userdata }
+                if let surface = view?.surface { ghostty_surface_update_config(surface, config) }
             }
         }
         return true

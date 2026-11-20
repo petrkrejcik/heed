@@ -8,9 +8,10 @@ struct Attention: Equatable {
     var asking: Int
 
     var total: Int { blocked + asking }
-    /// Blocked outranks asking: an agent that cannot go on at all comes first.
+    /// Blocked outranks asking: an agent that cannot go on at all comes first. The dark theme's hues under the
+    /// badge's dark text, whatever Heed's theme: the Dock is macOS's.
     var color: NSColor? {
-        blocked > 0 ? NSColor(Theme.block) : asking > 0 ? NSColor(Theme.ask) : nil
+        blocked > 0 ? Theme.block.resolved(.dark) : asking > 0 ? Theme.ask.resolved(.dark) : nil
     }
 }
 

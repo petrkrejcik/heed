@@ -64,11 +64,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private lazy var router = KeyRouter(host: host)
 
     func applicationDidFinishLaunching(_: Notification) {
-        // Heed's palette is dark only. Without this, anything left to the system colours (a Text with no style, native
-        // controls, Settings) follows macOS and turns black on the dark panels in light mode.
-        NSApp.appearance = NSAppearance(named: .darkAqua)
         // HEED_SHOTS: render the docs' screenshots from the fake world, then quit; nothing else starts.
         if ShotRunner.requested {
+            ColorTheme.dark.apply()
             NSApp.setActivationPolicy(.accessory)
             Task {
                 await ShotRunner.run()
@@ -76,6 +74,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             return
         }
+        // Heed's theme, not macOS's: the palette, the system's colours and controls, terminals and pages follow it.
+        model.colorTheme.apply()
         // No NSApp.activate(): Heed never takes focus, it only asks for attention.
         NSApp.setActivationPolicy(.regular)
         router.start()
@@ -106,7 +106,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             ?? NSApp.windows.first
         else { return }
         window.identifier = AppModel.mainWindowID
-        window.backgroundColor = NSColor(red: 0.067, green: 0.071, blue: 0.078, alpha: 1)
+        window.backgroundColor = NSColor(Theme.bg)
         window.titlebarAppearsTransparent = true
         window.isMovableByWindowBackground = false
         Snapshot.runIfRequested(window: window, host: host)

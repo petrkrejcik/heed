@@ -214,8 +214,6 @@ final class PlaceholderTerminalView: NSView {
     init(pane: PaneSpec) {
         self.pane = pane
         super.init(frame: .zero)
-        wantsLayer = true
-        layer?.backgroundColor = NSColor(red: 0.047, green: 0.051, blue: 0.059, alpha: 1).cgColor
     }
 
     @available(*, unavailable)
@@ -235,12 +233,14 @@ final class PlaceholderTerminalView: NSView {
     }
 
     override func draw(_: NSRect) {
+        NSColor(Theme.pane).setFill()
+        bounds.fill()
         let font = NSFont(name: "JetBrains Mono", size: 12) ?? .monospacedSystemFont(ofSize: 12, weight: .regular)
         let dim: [NSAttributedString.Key: Any] = [
-            .font: font, .foregroundColor: NSColor(red: 0.48, green: 0.51, blue: 0.54, alpha: 1),
+            .font: font, .foregroundColor: NSColor(Theme.dim),
         ]
         let text: [NSAttributedString.Key: Any] = [
-            .font: font, .foregroundColor: NSColor(red: 0.81, green: 0.83, blue: 0.85, alpha: 1),
+            .font: font, .foregroundColor: NSColor(Theme.terminalText),
         ]
         let lines = [
             ("libghostty not built yet: mise run ghostty", dim),

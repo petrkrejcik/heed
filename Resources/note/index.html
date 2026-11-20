@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="utf-8">
-<meta name="color-scheme" content="dark">
+<meta name="color-scheme" content="light dark">
 <!-- The Note tab: loaded from the app bundle with loadFileURL; nothing here reaches the network. -->
 <style>
   :root {
@@ -17,6 +17,7 @@
     --heed-muted: #666c7a;
     --heed-link: #6b9bd2;
     --heed-added: #4caf7a;
+    --heed-deleted: #ef5350;
     --heed-selection: rgba(99,153,210,0.3);
     --heed-syntax-keyword: #c792ea;
     --heed-syntax-string: #c3e88d;
@@ -101,7 +102,7 @@
   .hljs-type, .hljs-class .hljs-title { color: var(--heed-syntax-type); }
   .hljs-function .hljs-title, .hljs-title { color: var(--heed-syntax-function); }
   .hljs-meta, .hljs-selector-pseudo { color: var(--heed-syntax-tag); }
-  .hljs-deletion { color: #ef5350; }
+  .hljs-deletion { color: var(--heed-deleted); }
   .hljs-addition { color: var(--heed-added); }
 
   /* ── Tables ── */
@@ -143,16 +144,16 @@
   .heed-callout-content:not(:empty) { margin-top: 6px; }
   .heed-callout-content > :first-child { margin-top: 0; }
   .heed-callout-content > :last-child { margin-bottom: 0; }
-  .heed-callout-note   { border-left: 3px solid #6b9bd2; }
-  .heed-callout-info   { border-left: 3px solid #6b9bd2; }
-  .heed-callout-tip    { border-left: 3px solid #4caf7a; }
-  .heed-callout-important { border-left: 3px solid #c792ea; }
-  .heed-callout-warning { border-left: 3px solid #f78c6c; }
-  .heed-callout-caution { border-left: 3px solid #ef5350; }
-  .heed-callout-danger  { border-left: 3px solid #ef5350; }
-  .heed-callout-example { border-left: 3px solid #82aaff; }
-  .heed-callout-quote   { border-left: 3px solid #80cbc4; }
-  .heed-callout-todo    { border-left: 3px solid #f78c6c; }
+  .heed-callout-note   { border-left: 3px solid var(--heed-link); }
+  .heed-callout-info   { border-left: 3px solid var(--heed-link); }
+  .heed-callout-tip    { border-left: 3px solid var(--heed-added); }
+  .heed-callout-important { border-left: 3px solid var(--heed-syntax-keyword); }
+  .heed-callout-warning { border-left: 3px solid var(--heed-syntax-number); }
+  .heed-callout-caution { border-left: 3px solid var(--heed-deleted); }
+  .heed-callout-danger  { border-left: 3px solid var(--heed-deleted); }
+  .heed-callout-example { border-left: 3px solid var(--heed-syntax-function); }
+  .heed-callout-quote   { border-left: 3px solid var(--heed-syntax-tag); }
+  .heed-callout-todo    { border-left: 3px solid var(--heed-syntax-number); }
 
   /* ── Wikilinks ── */
   .heed-wikilink { color: var(--heed-link); cursor: pointer; }

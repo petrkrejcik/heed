@@ -23,7 +23,7 @@ struct BrowserToolbar: View {
                 .frame(height: 22)
                 .background(RoundedRectangle(cornerRadius: 5).fill(typing ? Theme.bg3 : Theme.bg2))
                 // White where your keys go, as on a pane in INSERT.
-                .overlay { if typing { RoundedRectangle(cornerRadius: 5).strokeBorder(Color.white, lineWidth: 1) } }
+                .overlay { if typing { RoundedRectangle(cornerRadius: 5).strokeBorder(Theme.typing, lineWidth: 1) } }
                 .overlay(alignment: .bottomLeading) {
                     if page.loading {
                         GeometryReader { geometry in

@@ -11,7 +11,7 @@ struct PullPagePanel: View {
         GeometryReader { geometry in
             ZStack(alignment: .trailing) {
                 if let ref = model.pullPage {
-                    Color.black.opacity(0.45)
+                    Theme.scrim.opacity(0.45)
                         .contentShape(Rectangle())
                         .onTapGesture { model.closePullPage() }
                         .transition(.opacity)
@@ -59,7 +59,7 @@ struct PullPagePanel: View {
         }
         .background(Theme.pane)
         .overlay(alignment: .leading) { Theme.line.frame(width: 1) }
-        // White where your keys go, as on a pane in INSERT.
-        .overlay { if model.mode == .insert { Rectangle().strokeBorder(Color.white, lineWidth: 1.5) } }
+        // A ring where your keys go, as on a pane in INSERT.
+        .overlay { if model.mode == .insert { Rectangle().strokeBorder(Theme.typing, lineWidth: 1.5) } }
     }
 }

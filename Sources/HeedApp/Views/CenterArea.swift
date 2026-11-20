@@ -394,10 +394,10 @@ private struct PaneView: View {
             }
         }
         .background(Theme.pane)
-        // White only on the pane your keys go to (INSERT); in NORMAL no pane takes input, so the focused one is quiet.
+        // A ring only on the pane your keys go to (INSERT); in NORMAL no pane takes input, so the focused one is quiet.
         .overlay {
             if typing {
-                Rectangle().strokeBorder(Color.white, lineWidth: 1.5)
+                Rectangle().strokeBorder(Theme.typing, lineWidth: 1.5)
             } else if active {
                 Rectangle().strokeBorder(Theme.paneActive.opacity(0.3), lineWidth: 1)
             }

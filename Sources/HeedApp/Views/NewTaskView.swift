@@ -9,7 +9,7 @@ struct NewTaskView: View {
 
     var body: some View {
         ZStack {
-            Color.black.opacity(0.55)
+            Theme.scrim.opacity(0.55)
                 .onTapGesture { model.cancelNewTask() }
             VStack(alignment: .leading, spacing: 0) {
                 HStack {

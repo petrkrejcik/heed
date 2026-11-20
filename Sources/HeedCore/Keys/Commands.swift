@@ -140,6 +140,10 @@ public enum Commands {
         .init("open.reader", "read inbox item, issue or PR", .views),
         .init("inspector.toggle", "collapse / expand the inspector", .views),
         .init("sidebar.toggle", "collapse / expand the tasks sidebar", .views),
+        .init(
+            "theme.toggle", "light / dark theme: the other one, or the one named (window, terminals, pages)", .views,
+            arguments: "[light|dark]"
+        ),
         .init("config.edit", "open config.toml in $EDITOR", .views),
         .init("agents.stop", "stop every agent and shell in every pane (with [sessions] persist = \"zmx\")", .views),
         .init("tools.detect", "find git and gh again (login shell PATH, usual places, [tools])", .views),
