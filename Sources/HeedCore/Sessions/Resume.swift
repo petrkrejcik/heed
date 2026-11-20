@@ -66,6 +66,13 @@ public struct ResumeCandidate: Identifiable, Hashable, Sendable {
 }
 
 public enum Resume {
+    /// The agent panes whose agent stopped with Heed: every agent pane in `layouts` but those whose zmx session is
+    /// still alive (`live`). A pane restored from the cache never runs its command again, so these wait for the resume
+    /// dialog or `gc` instead of opening as an empty shell.
+    public static func stoppedAgents(layouts: [String: TaskLayout], live: Set<String>) -> Set<String> {
+        Set(layouts.values.flatMap(\.panes).filter { $0.role == .agent && !live.contains($0.id) }.map(\.id))
+    }
+
     /// The tasks worth offering on launch: every listed task with an agent tab. `hasSession` answers whether Claude
     /// still has a session id for a directory (nil when unknown); it does file IO, so call this off the main actor.
     /// `newID` gives the Claude session id of an agent that starts fresh.

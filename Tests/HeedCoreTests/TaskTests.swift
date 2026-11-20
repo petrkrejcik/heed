@@ -276,6 +276,55 @@ struct NewTaskTests {
         #expect(opening == .existing(pane: "t-a"))
     }
 
+    @Test func anAgentThatStoppedWithHeedResumesInItsOwnTab() throws {
+        var layout = layout("t", agents: ["a"])
+        layout.update(pane: "t-a") { $0.directory = "/wt/fix" }
+        let opening = NewTask.openAgent(
+            in: layout, task: task("t"), agent: WorkSettings.default.claude, integration: nil,
+            stopped: ["t-a"], agents: ["t-a": AgentTab(state: ObservedState(.done), claudeSessionID: "s-1")]
+        ) { id, directory in id == "s-1" && directory == "/wt/fix" }
+        guard case let .restarted(restarted, paneID, agent, resumed) = opening else {
+            Issue.record("expected the agent to start again in its tab, got \(String(describing: opening))")
+            return
+        }
+        #expect(resumed)
+        #expect(paneID == "t-a")
+        // The same tabs, in the same place: only the agent's line changed.
+        #expect(restarted.groups.map { $0.tabs.map(\.title) } == layout.groups.map { $0.tabs.map(\.title) })
+        #expect(restarted.pane("t-a")?.command == "claude --resume s-1")
+        #expect(agent.claudeSessionID == "s-1")
+        #expect(agent.state.state == .idle)
+    }
+
+    @Test func aStoppedAgentWhoseSessionIsGoneStartsAfreshInItsTab() throws {
+        let opening = NewTask.openAgent(
+            in: layout("t", agents: ["a"]), task: task("t"), agent: WorkSettings.default.claude, integration: nil,
+            stopped: ["t-a"], agents: ["t-a": AgentTab(claudeSessionID: "s-1")]
+        ) { _, _ in false }
+        guard case let .restarted(restarted, _, agent, resumed) = opening else {
+            Issue.record("expected the agent to start again in its tab, got \(String(describing: opening))")
+            return
+        }
+        #expect(!resumed)
+        let id = try #require(agent.claudeSessionID)
+        #expect(id != "s-1")
+        #expect(restarted.pane("t-a")?.command == "claude --session-id \(id)")
+    }
+
+    @Test func theAgentKeyPrefersAnAgentThatStillRuns() {
+        let opening = NewTask.openAgent(
+            in: layout("t", agents: ["a", "b"]), task: task("t"), agent: WorkSettings.default.claude,
+            integration: nil, stopped: ["t-a"]
+        )
+        #expect(opening == .existing(pane: "t-b"))
+    }
+
+    @Test func agentsStopWithHeedUnlessTheirZmxSessionLives() {
+        let layouts = ["t": layout("t", agents: ["a", "b"]), "u": layout("u", agents: [])]
+        #expect(Resume.stoppedAgents(layouts: layouts, live: ["t-b", "t-shell"]) == ["t-a"])
+        #expect(Resume.stoppedAgents(layouts: layouts, live: []) == ["t-a", "t-b"])
+    }
+
     @Test func aClosedAgentComesBackResumedWhereItWorked() throws {
         var domain = Domain(
             tasks: [task("t")], layouts: ["t": layout("t", agents: ["a"])],
