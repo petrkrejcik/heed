@@ -16,7 +16,7 @@ Heed has four views, named along the top with their keys. Every view key starts 
 | `gp` | [Pull requests](../github/pull-requests.md) |
 
 Clicking a view's name works too, and `:inbox`, `:prs` and the rest switch by name. The middle of the title bar shows
-what you are looking at: the task's worktree and PR, or the item under the cursor. On narrow windows the view keys
+what you are looking at: the task's title and PR, or the item under the cursor. On narrow windows the view keys
 are hidden first, never the names.
 
 `⎋` closes an overlay or a reader, but never changes the view: views are places of their own.

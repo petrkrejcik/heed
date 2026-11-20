@@ -159,10 +159,6 @@ struct TitleBar: View {
             Label { Text(compact ? "\(model.askingCount)" : "\(model.askingCount) asking").fixedSize() }
                 icon: { StateGlyph(state: .asking) }
         }
-        HStack(spacing: 6) {
-            KeyCap(text: "ga")
-            if !compact { Text("next attention").foregroundStyle(Theme.fg3).fixedSize() }
-        }
     }
 
     /// Unread inbox items; PRs that need you.
@@ -287,15 +283,6 @@ struct StatusBar: View {
                     }
                     .padding(.horizontal, 12)
                 }
-                if let layout = model.currentLayout, let pane = layout.focusedPane,
-                   let index = layout.groups.firstIndex(where: { $0.id == layout.focused?.id })
-                {
-                    let title = pane.role == .browser ? BrowserAddress.tabTitle(title: pane.title, url: pane.url)
-                        : pane.title
-                    Text("pane \(index + 1) · \(title)")
-                        .foregroundStyle(Theme.fg3)
-                        .padding(.horizontal, 12)
-                }
                 if let flash = model.flash {
                     Text(flash).foregroundStyle(Theme.block).lineLimit(1).truncationMode(.middle).padding(
                         .horizontal,
@@ -350,6 +337,8 @@ struct StatusBar: View {
         .padding(.horizontal, 12)
     }
 
+    /// The keys that matter right now: in a dialog, a reader, a list or a Diff tab. Plain NORMAL and INSERT have
+    /// none: `?` and ⌘/ list them.
     private var hints: String {
         switch model.mode {
         case let .normal where model.confirmation.map { !$0.alternatives.isEmpty } == true:
@@ -370,8 +359,7 @@ struct StatusBar: View {
         case .normal where model.view == .prs: "↩ open · v select · gS task · r sync"
         case .normal where model.focusedDiffPane != nil:
             "j k file · n hunk · ⇥ scope · c commit · t side by side · r read again · h l pane · gt tab"
-        case .normal: "i insert · o new task · m pin · { } group · : command · ? keys"
-        case .insert: "⇧⎋ or \(KeyCapText.of(model.config.insertEscape)) normal · ⌘/ keys"
+        case .normal, .insert: ""
         case .visual where model.view == .inbox:
             "\(model.pickedIDs(model.view).count) selected · space toggle · s new task · x read · ⎋ cancel"
         case .visual where model.view == .issues:

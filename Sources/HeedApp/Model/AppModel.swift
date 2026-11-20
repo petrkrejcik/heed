@@ -1038,9 +1038,7 @@ final class AppModel {
         switch view {
         case .tasks:
             guard let task = currentTask else { return nil }
-            return TitleContext(
-                lead: task.worktreeName ?? "kibana", main: task.title, detail: task.pull.map { "#\($0.number)" }
-            )
+            return TitleContext(lead: nil, main: task.title, detail: task.pull.map { "#\($0.number)" })
         case .inbox:
             let rows = inboxRows
             guard rows.indices.contains(index) else { return nil }
