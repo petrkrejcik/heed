@@ -11,6 +11,8 @@ public struct WorkSettings: Hashable, Sendable, Codable {
     public var continuePrompt: String
     /// New tasks open a shell split beside the agent (`[sessions] shell_split`); off means one pane.
     public var shellSplit = false
+    /// Keep cache warm stops at this time of day (`[keepwarm] until`).
+    public var keepWarmUntil = ClockTime(hour: 17, minute: 0)
     /// Whether panes outlive heed: `zmx` keeps each pane's terminal in a zmx session that heed reattaches to.
     public var persist: PanePersistence = .auto
 

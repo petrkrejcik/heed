@@ -139,7 +139,7 @@ struct TaskRow: View {
     /// The tags line. With a prompt cache counting down it redraws on its own once a minute, on the minute the
     /// countdown changes (counted from the turn), and nothing else in the list does.
     @ViewBuilder private var tags: some View {
-        if let cache = PromptCache.countdown(turns: rollup.cacheTurns, now: Clock.now) {
+        if let turn = rollup.cacheTurn, let cache = PromptCache.countdown(from: turn, now: Clock.now) {
             TimelineView(.periodic(from: cache.turnEndedAt, by: 60)) { _ in
                 TaskTagsLine(tags: tagList(now: Clock.now), colors: model.tagColors, open: open)
             }
@@ -193,7 +193,13 @@ struct TaskTagsLine: View {
                 if let port = kibanaPort {
                     TagButton { open(.kibana(port: port)) } label: { KibanaMark(port: port) }
                 }
-                if kibanaPort != nil || countdown != nil { CacheMark(countdown: countdown) }
+                if let cache {
+                    TagButton { open(.cache(cache.countdown, warm: cache.warm)) } label: {
+                        CacheMark(countdown: cache.countdown, warm: cache.warm)
+                    }
+                } else if kibanaPort != nil {
+                    CacheMark(countdown: nil, warm: nil)
+                }
             }
             .lineLimit(1)
             .padding(.top, 5)
@@ -216,8 +222,8 @@ struct TaskTagsLine: View {
         tags.lazy.compactMap { if case let .kibana(port) = $0 { port } else { nil } }.first
     }
 
-    private var countdown: PromptCache.Countdown? {
-        tags.lazy.compactMap { if case let .cache(countdown) = $0 { countdown } else { nil } }.first
+    private var cache: (countdown: PromptCache.Countdown, warm: KeepWarm?)? {
+        tags.lazy.compactMap { if case let .cache(countdown, warm) = $0 { (countdown, warm) } else { nil } }.first
     }
 }
 
@@ -397,27 +403,54 @@ struct IssueMark: View {
     }
 }
 
-/// The prompt cache's minutes left, amber in its last five, as wide as `60m` and right-aligned. Without a countdown it
-/// keeps its place empty, so Kibana's K stays in line.
+/// The prompt cache's minutes left, amber in its last five, as wide as `60m` and right-aligned. A click keeps the cache
+/// warm, or stops: while on, a flame instead of the hourglass, on a filled pill. Without a countdown it keeps its place
+/// empty, so Kibana's K stays in line.
 struct CacheMark: View {
+    @Environment(AppModel.self) private var model
     let countdown: PromptCache.Countdown?
+    let warm: KeepWarm?
 
     var body: some View {
         HStack(spacing: 3) {
-            Image(systemName: "hourglass").font(.system(size: 9.5))
+            ZStack {
+                Image(systemName: "flame.fill").hidden()
+                Image(systemName: warm == nil ? "hourglass" : "flame.fill")
+            }
+            .font(.system(size: 9.5))
             ZStack(alignment: .trailing) {
                 Text(verbatim: "00m").hidden()
                 Text(verbatim: "\(countdown?.minutesLeft ?? 0)m")
             }
             .font(Theme.mono(10.5))
         }
-        .foregroundStyle(countdown?.isWarning == true ? Theme.block : Theme.fg3)
+        .foregroundStyle(color)
+        .padding(.horizontal, 5)
+        .padding(.vertical, 1.5)
+        .background { if warm != nil { Capsule().fill(Theme.warm.opacity(0.2)) } }
         .opacity(countdown == nil ? 0 : 1)
         .fixedSize()
-        .help(countdown.map {
-            "Prompt cache: \($0.minutesLeft) min left. It lasts an hour from the agent's last turn; "
-                + "a prompt sent before then is cheaper and faster."
-        } ?? "")
+        .help(help)
+    }
+
+    private var color: Color {
+        if warm != nil { return Theme.warm }
+        return countdown?.isWarning == true ? Theme.block : Theme.fg3
+    }
+
+    private var help: String {
+        guard let countdown else { return "" }
+        let left = "Prompt cache: \(countdown.minutesLeft) min left."
+        guard let warm else {
+            return left + " It lasts an hour from the agent's last turn; a prompt sent before then is cheaper and "
+                + "faster. Click to keep the cache warm until \(model.settings.keepWarmUntil.text)."
+        }
+        let ping = warm.lastPing.map { ping in
+            let read = ping.read >= 1000 ? "\(ping.read / 1000)k" : "\(ping.read)"
+            return " Last ping \(ping.at.formatted(date: .omitted, time: .shortened)): \(read) tokens from the "
+                + "cache, $\(String(format: "%.2f", ping.cost))."
+        } ?? " No ping yet: the first goes 5 min before it expires."
+        return left + " Keeping it warm until \(model.settings.keepWarmUntil.text)." + ping + " Click to stop."
     }
 }
 

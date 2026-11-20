@@ -63,17 +63,22 @@ struct PromptCacheTests {
         #expect(PromptCache.countdown(from: ago(57), now: now)?.isWarning == true)
     }
 
-    @Test func ofSeveralTheSoonestToExpireThatHasNot() {
-        #expect(PromptCache.countdown(turns: [ago(10), ago(50), ago(70)], now: now)?.minutesLeft == 10)
-        #expect(PromptCache.countdown(turns: [ago(70)], now: now) == nil)
-        #expect(PromptCache.countdown(turns: [], now: now) == nil)
-    }
-
     @Test func theCountdownStaysWhileTheAgentWorks() {
         for state in [AgentState.idle, .done, .working, .asking, .blocked, .limited, .exited] {
             #expect(PromptCache.turnEnded(agent(state, turn: 5)) == ago(5))
         }
         #expect(PromptCache.turnEnded(agent(.idle, turn: nil)) == nil)
+    }
+
+    @Test func aKeepWarmPingRestartsTheCountdownAndANewTurnAfterItToo() {
+        var warmed = agent(.idle, turn: 50)
+        warmed.cacheWarmedAt = ago(5)
+        #expect(PromptCache.turnEnded(warmed) == ago(5))
+        warmed.lastTurnAt = ago(1)
+        #expect(PromptCache.turnEnded(warmed) == ago(1))
+        // A new conversation has no cache, whatever a ping warmed before it.
+        warmed.lastTurnAt = nil
+        #expect(PromptCache.turnEnded(warmed) == nil)
     }
 
     @Test func onlyAFinishedTurnRestartsTheCountdown() {
@@ -94,16 +99,19 @@ struct PromptCacheTests {
         }
     }
 
-    @Test func theRollupKeepsTheEndedTurnsOfItsAgentTabs() {
+    @Test func theRollupCountsDownTheTasksOwnAgent() {
         let task = WorkTask(id: "t", title: "t")
         let tabs = ["a", "b", "c"].map { id in
             PaneTab(title: id, pane: PaneSpec(id: "t-\(id)", role: .agent, title: "claude", directory: "/"))
         }
-        let agents = ["t-a": agent(.working, turn: 3), "t-b": agent(.idle, turn: 20), "t-c": agent(.done, turn: 50)]
+        var own = agent(.working, turn: 3)
+        own.keepWarm = KeepWarm(since: ago(3))
+        let agents = ["t-a": own, "t-b": agent(.idle, turn: 20), "t-c": agent(.done, turn: 50)]
         let rollup = TaskRollup.of(task, layout: TaskLayout(tabs: tabs), agents: agents)
-        #expect(rollup.cacheTurns == [ago(3), ago(20), ago(50)])
-        // The one about to go, the working agent's included.
-        #expect(PromptCache.countdown(turns: rollup.cacheTurns, now: now)?.minutesLeft == 10)
+        // The first agent tab, the one `gc` goes to, working or not; the others' caches are not the task's.
+        #expect(rollup.cacheTurn == ago(3))
+        #expect(rollup.keepWarm == KeepWarm(since: ago(3)))
+        #expect(TaskRollup.of(task, layout: TaskLayout(), agents: agents).cacheTurn == nil)
     }
 }
 
@@ -146,11 +154,11 @@ struct PullTagTests {
 struct TaskTagTests {
     @Test func thePullThenKibanaThenTheCache() {
         let task = WorkTask(id: "t", title: "t", port: 5602, running: true)
-        let rollup = TaskRollup(agent: nil, kibanaRunning: true, cacheTurns: [ago(15)])
+        let rollup = TaskRollup(agent: nil, kibanaRunning: true, cacheTurn: ago(15))
         let pull = PullTag(number: 42, state: .open)
         let tags = TaskTag.of(task, rollup: rollup, pull: pull, now: now)
         let countdown = PromptCache.countdown(from: ago(15), now: now)!
-        #expect(tags == [.pull(pull), .kibana(port: 5602), .cache(countdown)])
+        #expect(tags == [.pull(pull), .kibana(port: 5602), .cache(countdown, warm: nil)])
         #expect(tags.map(\.isLive) == [false, true, true])
     }
 
@@ -159,7 +167,7 @@ struct TaskTagTests {
             id: "t", title: "t", issue: "https://github.com/elastic/kibana/issues/7", notePath: "/vault/t.md",
             port: 5602, running: true, tags: ["heed-fork"]
         )
-        let rollup = TaskRollup(agent: nil, kibanaRunning: true, cacheTurns: [ago(15)])
+        let rollup = TaskRollup(agent: nil, kibanaRunning: true, cacheTurn: ago(15))
         let pull = PullTag(number: 42, state: .draft)
         let tags = TaskTag.of(task, rollup: rollup, pull: pull, now: now)
         let countdown = PromptCache.countdown(from: ago(15), now: now)!
@@ -169,7 +177,7 @@ struct TaskTagTests {
             .note(path: "/vault/t.md", tags: ["heed-fork"]),
             .issue(issue),
             .kibana(port: 5602),
-            .cache(countdown),
+            .cache(countdown, warm: nil),
         ])
         // An `issue:` that is not a GitHub issue link is no tag.
         let odd = WorkTask(id: "t", title: "t", issue: "see Slack")
@@ -187,7 +195,7 @@ struct TaskTagTests {
         let portless = WorkTask(id: "t", title: "t", running: true)
         #expect(TaskTag.of(portless, rollup: TaskRollup(agent: nil, kibanaRunning: true), pull: nil, now: now).isEmpty)
         // An expired cache is no tag.
-        let cold = TaskRollup(agent: nil, cacheTurns: [ago(61)])
+        let cold = TaskRollup(agent: nil, cacheTurn: ago(61))
         #expect(TaskTag.of(stopped, rollup: cold, pull: nil, now: now).isEmpty)
     }
 
@@ -204,8 +212,9 @@ struct TaskTagTests {
         #expect(tags.contains { if case .issue = $0 { true } else { false } })
         let states = Set(tags.compactMap { if case let .pull(pull) = $0 { pull.state } else { nil } })
         #expect(states == [.draft, .open, .merged, .closed])
-        let caches = tags.compactMap { if case let .cache(countdown) = $0 { countdown } else { nil } }
+        let caches = tags.compactMap { if case let .cache(countdown, _) = $0 { countdown } else { nil } }
         #expect(caches.contains { !$0.isWarning })
         #expect(caches.contains { $0.isWarning })
+        #expect(tags.contains { if case .cache(_, warm: .some) = $0 { true } else { false } })
     }
 }

@@ -163,13 +163,18 @@ public enum Fixtures {
                 lastTurnAt: turn.map(ago)
             )
         }
-        // The cache tags: Kibana main 20m, the upload fix 42m (its working agent refreshes its own cache, the idle one
-        // counts), the review 3m (amber); the others expired.
+        // The cache tags: Kibana main 20m, kept warm (its last ping 40 min ago), the upload fix 30m (the task's own
+        // agent's, the first tab), the review 4m (amber; keep warm on it pings at once); the others expired.
+        var kept = agent(.idle, "idle 2h", id: "4d0c2a5e-1f6b-4c8e-9a37-2b5e8d1f0c64", turn: 140)
+        kept.cacheWarmedAt = ago(40)
+        kept.keepWarm = KeepWarm(
+            since: ago(150), lastPing: KeepWarm.Ping(at: ago(40), read: 77394, written: 3238, cost: 0.04)
+        )
         let agents: [String: AgentTab] = [
-            "t1-agent": agent(.idle, "idle 40m", id: "4d0c2a5e-1f6b-4c8e-9a37-2b5e8d1f0c64", turn: 40),
+            "t1-agent": kept,
             "t2-agent": agent(.working, "running jest · 2m", id: "7f3a9c1e-52b4-4e0d-9a61-0c8d3e1f2b77", turn: 30),
             "t2-agent2": agent(.idle, "idle 18m", id: "2c81d6aa-9e17-4b3f-8d05-6a4e7b9c0d12", turn: 18),
-            "t3-agent": agent(.idle, "idle 57m", id: "91be40d2-7a35-4c68-b2f9-13e5a8d07c46", turn: 57),
+            "t3-agent": agent(.idle, "idle 56m", id: "91be40d2-7a35-4c68-b2f9-13e5a8d07c46", turn: 56),
             "t4-agent": agent(.idle, "idle 1d", id: "e0457f3b-18c2-4d9a-a6b1-5f2d9c8e3a04", turn: 60 * 26),
             "t8-agent": agent(.done, "done 5h", id: "5a9e2f60-3c71-4b8d-9e24-81f0d6c3a7b5", turn: 60 * 5),
             "t5-agent": agent(

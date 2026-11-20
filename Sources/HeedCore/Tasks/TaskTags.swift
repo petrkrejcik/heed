@@ -9,7 +9,8 @@ public enum TaskTag: Hashable, Sendable {
     case note(path: String, tags: [String])
     case issue(IssueRef)
     case kibana(port: Int)
-    case cache(PromptCache.Countdown)
+    /// The task's agent's cache, and its keep-warm while on: a click switches that.
+    case cache(PromptCache.Countdown, warm: KeepWarm?)
 
     /// What is running for the task, rather than what it links to: kept apart, at the row's trailing edge.
     public var isLive: Bool {
@@ -26,7 +27,9 @@ public enum TaskTag: Hashable, Sendable {
         if let path = task.notePath { tags.append(.note(path: path, tags: task.tags)) }
         if let issue = task.issueRef { tags.append(.issue(issue)) }
         if rollup.kibanaRunning, let port = task.port { tags.append(.kibana(port: port)) }
-        if let cache = PromptCache.countdown(turns: rollup.cacheTurns, now: now) { tags.append(.cache(cache)) }
+        if let turn = rollup.cacheTurn, let cache = PromptCache.countdown(from: turn, now: now) {
+            tags.append(.cache(cache, warm: rollup.keepWarm))
+        }
         return tags
     }
 }
@@ -110,11 +113,6 @@ public enum PromptCache {
         return Countdown(turnEndedAt: turnEndedAt, minutesLeft: Int((left / 60).rounded(.up)))
     }
 
-    /// Of several agents' turns, the cache that expires soonest and has not yet: the one to use before it is gone.
-    public static func countdown(turns: [Date], now: Date) -> Countdown? {
-        turns.compactMap { countdown(from: $0, now: now) }.min { $0.turnEndedAt < $1.turnEndedAt }
-    }
-
     /// `lastTurnAt` after a state report. Only a turn that ended (Stop: done, no error) got a response from Claude.
     /// Idle
     /// is not a response: a resumed session (SessionStart `resume`) or the idle notice keep the last turn's time, and a
@@ -127,8 +125,11 @@ public enum PromptCache {
         }
     }
 
-    /// When the agent's cache started counting: its last turn's end, in any state. While it works the countdown stays
-    /// (a background agent's tools report working too, though the conversation's cache is not refreshed), and it
-    /// starts again when the turn ends.
-    public static func turnEnded(_ agent: AgentTab) -> Date? { agent.lastTurnAt }
+    /// When the agent's cache started counting: its last turn's end, in any state, or a keep-warm ping after it. While
+    /// it works the countdown stays (a background agent's tools report working too, though the conversation's cache is
+    /// not refreshed), and it starts again when the turn ends.
+    public static func turnEnded(_ agent: AgentTab) -> Date? {
+        guard let turn = agent.lastTurnAt else { return nil }
+        return max(turn, agent.cacheWarmedAt ?? turn)
+    }
 }

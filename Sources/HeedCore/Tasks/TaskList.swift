@@ -9,18 +9,20 @@ public struct TaskRollup: Hashable, Sendable {
     public var activity: String
     public var agentCount: Int
     public var kibanaRunning: Bool
-    /// Where the prompt cache countdowns start (`PromptCache.turnEnded`), one per agent tab that has one.
-    public var cacheTurns: [Date]
+    /// Where the task's agent's prompt cache countdown starts (`PromptCache.turnEnded`), and its keep-warm.
+    public var cacheTurn: Date?
+    public var keepWarm: KeepWarm?
 
     public init(
         agent: ObservedState?, activity: String = "", agentCount: Int = 0, kibanaRunning: Bool = false,
-        cacheTurns: [Date] = []
+        cacheTurn: Date? = nil, keepWarm: KeepWarm? = nil
     ) {
         self.agent = agent
         self.activity = activity
         self.agentCount = agentCount
         self.kibanaRunning = kibanaRunning
-        self.cacheTurns = cacheTurns
+        self.cacheTurn = cacheTurn
+        self.keepWarm = keepWarm
     }
 
     public var needsYou: Bool { agent?.state.needsYou ?? false }
@@ -38,16 +40,18 @@ public struct TaskRollup: Hashable, Sendable {
         }
     }
 
-    /// The task's agent tabs are the `.agent` panes of its layout; one with no report yet counts as idle, guessed.
+    /// The task's agent tabs are the `.agent` panes of its layout; one with no report yet counts as idle, guessed. The
+    /// cache is the task's own agent's (`TaskLayout.taskAgent`, the one `gc` goes to).
     public static func of(_ task: WorkTask, layout: TaskLayout?, agents: [String: AgentTab]) -> TaskRollup {
         let panes = (layout?.panes ?? []).filter { $0.role == .agent }
         let tabs = panes.map { agents[$0.id] ?? AgentTab() }
         let top = tabs.enumerated().min {
             (urgency($0.element.state.state), $0.offset) < (urgency($1.element.state.state), $1.offset)
         }?.element
+        let own = tabs.first
         return TaskRollup(
             agent: top?.state, activity: top?.activity ?? "", agentCount: tabs.count, kibanaRunning: task.running,
-            cacheTurns: tabs.compactMap(PromptCache.turnEnded)
+            cacheTurn: own.flatMap(PromptCache.turnEnded), keepWarm: own?.keepWarm
         )
     }
 }

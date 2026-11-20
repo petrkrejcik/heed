@@ -285,6 +285,10 @@ final class AppModel {
     /// Agent panes whose agent stopped with Heed (`Resume.stoppedAgents`): they show that, not an empty shell, until
     /// the resume dialog or `gc` starts them again.
     private(set) var stoppedAgents: Set<String> = []
+    /// Keep cache warm: each agent's timer for its next check, by pane, and the agents whose ping is on its way.
+    private var keepWarmTimers: [String: Task<Void, Never>] = [:]
+    private var pinging: Set<String> = []
+    private var wakeObserver: NSObjectProtocol?
 
     init(domain: Domain, settings: WorkSettings = .default, isFixture: Bool) {
         self.settings = settings
@@ -308,6 +312,22 @@ final class AppModel {
         }
         replace(with: domain)
         updateScope()
+        if isFixture {
+            // Whenever you try it: the fixture's keep-warm never meets the day's cut-off.
+            self.settings.keepWarmUntil = ClockTime(hour: 23, minute: 59)
+            startKeepWarm()
+        }
+    }
+
+    /// Keep cache warm's timers for the agents that have it on, and a check again whenever the Mac wakes: a window
+    /// slept through turns it off rather than pinging late.
+    private func startKeepWarm() {
+        wakeObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didWakeNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.planAllKeepWarm() }
+        }
+        planAllKeepWarm()
     }
 
     // MARK: Domain
@@ -324,6 +344,7 @@ final class AppModel {
         let cached = await DomainStore.load(from: file)
         replace(with: cached)
         store = DomainStore(domain: cached, file: file)
+        startKeepWarm()
         await detectTools()
         await startPk()
         // Before any terminal is made: which panes still have a live zmx session to reattach to.
@@ -688,6 +709,7 @@ final class AppModel {
         configProblems = problems
         guard let decoded else { return }
         let toolsChanged = decoded.tools != config.tools
+        let cutoffChanged = decoded.work.keepWarmUntil != settings.keepWarmUntil
         if decoded.pkPython != config.pkPython, !isFixture {
             pk = Self.livePk(python: decoded.pkPython)
             if pkSync != nil { Task { await startPk() } }
@@ -713,6 +735,7 @@ final class AppModel {
         }
         updateOutsideWindow()
         if toolsChanged, !isFixture { Task { await detectTools() } }
+        if cutoffChanged { planAllKeepWarm() }
     }
 
     /// `[tools] zmx` (a path, or a name on the search path), else zmx on the search path.
@@ -795,6 +818,7 @@ final class AppModel {
             agent.lastTurnAt = PromptCache.lastTurn(
                 after: state, reason: reason, at: message.sentAt, previous: agent.lastTurnAt
             )
+            if agent.lastTurnAt == nil { agent.cacheWarmedAt = nil }
             task.lastActivity = message.sentAt
             events[task.id] = AgentEvent.log(
                 events[task.id] ?? [], adding: AgentEvent(at: message.sentAt, state: state, reason: reason)
@@ -845,6 +869,7 @@ final class AppModel {
             return
         }
         commit([.taskUpserted(task)] + changes)
+        if let pane, agents[pane]?.keepWarm != nil { planKeepWarm(pane) }
     }
 
     /// Writes an issue or PR link into the task's note through pk, then shows what pk wrote.
@@ -1245,6 +1270,7 @@ final class AppModel {
         case "tab.new": newTab()
         case "tab.open": openTabPicker()
         case "tab.agent": openAgentTab()
+        case "cache.keepWarm": toggleKeepWarm(currentTask?.id, arguments: command.arguments)
         case "tab.diff": showDiffTab()
         case "browser.new": newPageTab(command.arguments.joined(separator: " "))
         case "browser.location":
@@ -2568,7 +2594,130 @@ final class AppModel {
             view = .tasks
             select(taskID: taskID)
         case .cache:
+            toggleKeepWarm(taskID, arguments: [])
+        }
+    }
+
+    // MARK: Keep cache warm
+
+    /// `cache.keepWarm` (`:keepwarm`, a click on the countdown, the task's menu): on or off for the task's own agent.
+    func toggleKeepWarm(_ taskID: String?, arguments: [String]) {
+        guard let taskID, let task = task(taskID) else { return flash = "no task here" }
+        guard let pane = layouts[taskID]?.taskAgent, var agent = agents[pane] else {
+            return flash = "\(task.title) has no agent to keep warm"
+        }
+        let on: Bool
+        switch arguments.first?.lowercased() {
+        case nil: on = agent.keepWarm == nil
+        case "on": on = true
+        case "off": on = false
+        default: return flash = "keepwarm takes on or off"
+        }
+        guard on else {
+            guard agent.keepWarm != nil else { return flash = "keep cache warm is off" }
+            keepWarmTimers.removeValue(forKey: pane)?.cancel()
+            agent.keepWarm = nil
+            commit(.agentChanged(pane: pane, agent))
+            return flash = "keep cache warm off"
+        }
+        guard agent.keepWarm == nil else { return flash = "already keeping the cache warm" }
+        agent.keepWarm = KeepWarm(since: Clock.now)
+        if case let .stop(reason) = KeepWarm.next(agent, now: Clock.now, until: settings.keepWarmUntil) {
+            return flash = "can't keep the cache warm: \(reason.text)"
+        }
+        commit(.agentChanged(pane: pane, agent))
+        flash = "keep cache warm on, until \(settings.keepWarmUntil.text)"
+        planKeepWarm(pane)
+    }
+
+    /// Every agent with keep-warm on: at launch, on wake, and when the cut-off changes.
+    func planAllKeepWarm() {
+        for (pane, agent) in agents where agent.keepWarm != nil {
+            planKeepWarm(pane)
+        }
+    }
+
+    /// The next step for one agent's keep-warm: a ping now, a timer for when one is due (or the cut-off), nothing while
+    /// it works, or off with the reason.
+    private func planKeepWarm(_ pane: String) {
+        keepWarmTimers.removeValue(forKey: pane)?.cancel()
+        guard let agent = agents[pane], agent.keepWarm != nil, !pinging.contains(pane) else { return }
+        switch KeepWarm.next(agent, now: Clock.now, until: settings.keepWarmUntil) {
+        case .ping:
+            ping(pane)
+        case let .wait(until):
+            let delay = max(until.timeIntervalSince(Clock.now), 1)
+            keepWarmTimers[pane] = Task { [weak self] in
+                try? await Task.sleep(for: .seconds(delay))
+                guard !Task.isCancelled else { return }
+                self?.planKeepWarm(pane)
+            }
+        case .waitForTurn:
             break
+        case let .stop(reason):
+            stopKeepWarm(pane, reason)
+        }
+    }
+
+    private func stopKeepWarm(_ pane: String, _ reason: KeepWarm.StopReason) {
+        keepWarmTimers.removeValue(forKey: pane)?.cancel()
+        guard var agent = agents[pane], agent.keepWarm != nil else { return }
+        agent.keepWarm = nil
+        var changes: [DomainChange] = [.agentChanged(pane: pane, agent)]
+        if let id = layouts.first(where: { $0.value.contains(pane: pane) })?.key, var task = task(id) {
+            task.record("keep cache warm off: \(reason.text)")
+            changes.append(.taskUpserted(task))
+            flash = "keep cache warm off for \(task.title): \(reason.text)"
+        }
+        commit(changes)
+    }
+
+    /// The headless ping, off the main actor; a fixture's answers a hit after two seconds and runs nothing.
+    private func ping(_ pane: String) {
+        guard let agent = agents[pane], let session = agent.claudeSessionID,
+              let directory = layouts.values.lazy.compactMap({ $0.pane(pane) }).first?.directory
+        else { return }
+        pinging.insert(pane)
+        let started = Clock.now
+        let command = settings.claude?.command ?? "claude"
+        let fake = isFixture
+        Task { [weak self] in
+            let outcome: Result<ClaudePing.Result, ClaudePing.Failure>
+            if fake {
+                try? await Task.sleep(for: .seconds(2))
+                outcome = .success(ClaudePing.Result(read: 77394, written: 3238, cost: 0.04, seconds: 2))
+            } else {
+                outcome = await Task.detached(priority: .utility) {
+                    do {
+                        let reply = try await ClaudePing.run(command: command, sessionID: session, directory: directory)
+                        return .success(reply)
+                    } catch let failure as ClaudePing.Failure {
+                        return .failure(failure)
+                    } catch {
+                        return .failure(ClaudePing.Failure(description: "\(error)"))
+                    }
+                }.value
+            }
+            self?.pinged(pane, started: started, outcome)
+        }
+    }
+
+    /// A hit starts the cache's hour again from the ping's start; a miss or a failure turns keep-warm off.
+    private func pinged(_ pane: String, started: Date, _ outcome: Result<ClaudePing.Result, ClaudePing.Failure>) {
+        pinging.remove(pane)
+        guard var agent = agents[pane], agent.keepWarm != nil else { return }
+        switch outcome {
+        case let .success(reply) where KeepWarm.isHit(read: reply.read, written: reply.written):
+            agent.cacheWarmedAt = started
+            agent.keepWarm?.lastPing = KeepWarm.Ping(
+                at: started, read: reply.read, written: reply.written, cost: reply.cost
+            )
+            commit(.agentChanged(pane: pane, agent))
+            planKeepWarm(pane)
+        case let .success(reply):
+            stopKeepWarm(pane, .miss(read: reply.read, written: reply.written))
+        case let .failure(failure):
+            stopKeepWarm(pane, .failed(failure.description))
         }
     }
 
@@ -4114,7 +4263,18 @@ final class AppModel {
         return true
     }
 
-    func taskMenu(_ id: String) -> [MenuEntry] { task(id).map(ContextMenus.task) ?? [] }
+    func taskMenu(_ id: String) -> [MenuEntry] {
+        guard let task = task(id) else { return [] }
+        let agent = layouts[id]?.taskAgent.flatMap { agents[$0] }
+        let warm = agent.map { agent in
+            ContextMenus.KeepWarmItem(
+                on: agent.keepWarm != nil,
+                cacheLive: PromptCache.turnEnded(agent).flatMap { PromptCache.countdown(from: $0, now: Clock.now) }
+                    != nil
+            )
+        }
+        return ContextMenus.task(task, keepWarm: settings.claude == nil ? nil : warm)
+    }
 
     /// What a menu shows beside an item: its NORMAL key (`dd`), else what to type (`:status todo`).
     func menuKey(for item: MenuItem) -> String {

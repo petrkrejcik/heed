@@ -15,7 +15,11 @@ public struct MenuItem: Equatable, Sendable {
 
     /// What to type for it when no key is bound: `:status todo`.
     public var typed: String {
-        let name = command.name == "task.status" ? "status" : command.name
+        let name = switch command.name {
+        case "task.status": "status"
+        case "cache.keepWarm": "keepwarm"
+        default: command.name
+        }
         return ":" + ([name] + command.arguments).joined(separator: " ")
     }
 
@@ -48,13 +52,32 @@ public enum ContextMenus {
     /// The statuses in the order of the sidebar's sections and the Kanban's columns; the two that end a task last.
     public static let statusOrder: [TaskStatus] = [.toDo, .inProgress, .blocked, .readyForReview, .done, .dropped]
 
-    /// A task in the sidebar or the rail: its title, its PR page when it has a PR, then Status. The menu selects the
-    /// task first, so `overlay.item` is the task's PR page, and shows its key (`go`).
-    public static func task(_ task: WorkTask) -> [MenuEntry] {
+    /// Keep cache warm on a task's menu: whether it is on, and whether its agent has a live cache to keep.
+    public struct KeepWarmItem: Equatable, Sendable {
+        public let on: Bool
+        public let cacheLive: Bool
+
+        public init(on: Bool, cacheLive: Bool) {
+            self.on = on
+            self.cacheLive = cacheLive
+        }
+    }
+
+    /// A task in the sidebar or the rail: its title, its PR page when it has a PR, Keep cache warm when it has an
+    /// agent, then Status. The menu selects the task first, so `overlay.item` is the task's PR page, and shows its key
+    /// (`go`).
+    public static func task(_ task: WorkTask, keepWarm: KeepWarmItem? = nil) -> [MenuEntry] {
         let pull: [MenuEntry] = task.pull == nil ? [] : [.item(MenuItem("Pull request", CommandInvocation(
             name: "overlay.item"
         )))]
-        return [.header(task.title)] + pull + [.submenu("Status", statuses(current: task.status))]
+        // Greyed without a live cache: there is nothing to keep, and a ping would rebuild it at full price.
+        let warm: [MenuEntry] = keepWarm.map { item in
+            [.item(MenuItem(
+                "Keep cache warm", CommandInvocation(name: "cache.keepWarm"), enabled: item.on || item.cacheLive,
+                checked: item.on
+            ))]
+        } ?? []
+        return [.header(task.title)] + pull + warm + [.submenu("Status", statuses(current: task.status))]
     }
 
     /// Every status pk knows, the task's own checked. Done and Dropped ask first, hence the ellipsis.
