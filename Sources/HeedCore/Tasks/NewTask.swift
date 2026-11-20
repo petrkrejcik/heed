@@ -217,7 +217,9 @@ public enum NewTask {
                 id: newID(), role: .agent, title: agent.name, directory: closed.directory, command: command
             )
             tab = PaneTab(id: newID(), title: "agent", pane: pane)
-            made = (pane.id, AgentTab(activity: "resuming", claudeSessionID: closed.claudeSessionID))
+            made = (pane.id, AgentTab(
+                activity: "resuming", claudeSessionID: closed.claudeSessionID, lastTurnAt: closed.lastTurnAt
+            ))
             resumed = true
         } else {
             let built = agentTab(in: task.directory, prompt: "", agent: agent, integration: integration)

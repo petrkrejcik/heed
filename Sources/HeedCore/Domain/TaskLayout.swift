@@ -335,14 +335,17 @@ public struct TaskLayout: Hashable, Sendable {
     }
 }
 
-/// An agent tab that was closed: its Claude session and the folder it last worked in.
+/// An agent tab that was closed: its Claude session, the folder it last worked in, and when its last turn ended (the
+/// session's prompt cache outlives the tab, so its countdown comes back with it).
 public struct ClosedAgent: Hashable, Sendable, Codable {
     public var claudeSessionID: String
     public var directory: String
+    public var lastTurnAt: Date?
 
-    public init(claudeSessionID: String, directory: String) {
+    public init(claudeSessionID: String, directory: String, lastTurnAt: Date? = nil) {
         self.claudeSessionID = claudeSessionID
         self.directory = directory
+        self.lastTurnAt = lastTurnAt
     }
 }
 
